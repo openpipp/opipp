@@ -25,3 +25,6 @@ obj/
 
 # Local tooling
 .dotnet-sdk/
+
+# Published alpha builds are produced locally and never committed.
+/dist/

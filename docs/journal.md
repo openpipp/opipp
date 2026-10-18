@@ -591,3 +591,28 @@ Two real defects surfaced while checking the move, both worth recording:
 - The quality-log labels were guesses: the engine prints **"Old (As taken from Ninox)"** and
   **"Histogram"**. We printed "PIPP Old" and "PIPP Histogram". Fixed, with both algorithms now locked
   into the parity harness so the labels cannot drift again.
+
+## M27 - Surface tracking ported, and the first alpha build
+
+The tracker is now the engine's own, decoded from `FUN_1400a7470` -> `FUN_1400a6e40` ->
+`FUN_1400a5f40`: a reference template captured once, blurred 5x5 and percentile-stretched; a
+per-candidate brightness/contrast LUT built from the candidate's even-even subsample; an SSD over the
+same subsample; and an asymmetric window of `[-box/16, +box/16-1]`. On the real Saturn fixture it
+reproduces 22 of 30 frames byte-identically. The remaining 8 are off by exactly one pixel.
+
+Measured along the way, and worth not repeating:
+
+- The **reference block is blurred** by `FUN_1400a4ef0` with the same 5x5/25 kernel before
+  `FUN_1400a5400` takes its percentiles. Comparing a blurred moving frame against a *raw* template
+  was the single largest error: it scored 5/30.
+- The fine stage's SSD samples **every other row and column**, and the reference pointer advances
+  two rows per sampled row. Porting that stride as one row produced large scores and a rejected
+  self-match - the bug that made every frame fall back to the old aligner.
+- Bayer frames are demosaiced and reduced to Rec.601 luma before tracking; tracking the raw mosaic
+  scores measurably worse (20/30 vs 22/30).
+- The coarse stage is decoded but disabled: without its percentile/brightness acceptance gates a
+  global seed search latches onto auto-correlation echoes and scores 6/30. Seeding at the box - where
+  the gated stage lands on this data - is strictly better until those gates are ported.
+
+The alpha is built: `OPIPP-0.1.0-alpha-win-x64.zip`, self-contained, 50.7 MB, recorded in
+`docs/alpha.md` with its SHA-256 and smoke tests.

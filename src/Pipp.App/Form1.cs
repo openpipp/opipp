@@ -4573,7 +4573,7 @@ public class Form1 : Form
 		runBTN.Text = "Start Processing";
 		dotestrunBTN.Enabled = true;
 		dotestrunBTN.Text = "Test Options";
-		Text = "PIPP";
+		Text = "OPIPP 0.1.0-alpha - Open PIPP";
 		((Control)tabPage1).Enabled = true;
 		((Control)tabPage7).Enabled = true;
 		((Control)tabPage2).Enabled = true;
@@ -9787,7 +9787,7 @@ public class Form1 : Form
 		base.Icon = (System.Drawing.Icon)resources.GetObject("$this.Icon");
 		base.MainMenuStrip = this.menuStrip1;
 		base.Name = "Form1";
-		this.Text = "PIPP";
+		this.Text = "OPIPP 0.1.0-alpha - Open PIPP";
 		base.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.Form1_FormClosing);
 		base.Load += new System.EventHandler(this.Form1_Load);
 		this.menuStrip1.ResumeLayout(false);
