@@ -142,3 +142,11 @@ author's permission is obtained. See [`../notes/provenance.md`](../notes/provena
 skips and 12 inert (accepted by the engine with no observable effect). The six skips are `-raw_db`,
 `-raw_hl`, `-raw_ocs`, `-raw_hpf` (need dcraw 9.27, which the engine statically links), `-aoi_reject`
 (the discard rule could not be pinned down) and `-flat_bayer` (private master format).
+
+## Deliberate divergences (current)
+
+- 16-bit TIFF: original writes byte-swapped samples under an `II` header; we write spec-correct files.
+- GIF: original emits an image-less file; we write a valid animation.
+- Non-tracking `-aoi_crop`: original writes a quarter-filled out-of-bounds buffer; we clamp.
+- **M25 - start-up paths**: the original aborts on a URI/colon argument during `Form_Load`; our port
+  rejects the entry and reports it in the "could not be added" dialog.

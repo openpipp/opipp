@@ -344,6 +344,50 @@ public class c_filelist : ListView
 		add_source(openFD.FileNames);
 	}
 
+	/// <summary>
+	/// True when <paramref name="path"/> can be turned into a <see cref="FileInfo"/> at all. The
+	/// original assumes every argument is a native path and aborts during Form_Load otherwise.
+	/// </summary>
+	public static bool IsUsablePath(string path)
+	{
+		if (string.IsNullOrWhiteSpace(path))
+		{
+			return false;
+		}
+
+		// .NET 10 no longer performs the CAS path check that killed the .NET Framework original, so
+		// a URI is silently accepted as a *relative* file name here instead of throwing. Reject the
+		// shapes that can never name a local file on Windows before the filesystem sees them:
+		//   file:///C:/x.ser, http://..., ::, C:\dir:name.ser
+		if (path.Contains("://", StringComparison.Ordinal))
+		{
+			return false;
+		}
+		int colon = path.IndexOf(':');
+		if (colon is 0 || colon > 1)
+		{
+			return false;
+		}
+
+		try
+		{
+			_ = new FileInfo(path);
+			return true;
+		}
+		catch (ArgumentException)
+		{
+			return false;
+		}
+		catch (NotSupportedException)
+		{
+			return false;
+		}
+		catch (PathTooLongException)
+		{
+			return false;
+		}
+	}
+
 	public void add_source(string[] filelist)
 	{
 		bool flag = false;
@@ -359,13 +403,25 @@ public class c_filelist : ListView
 		string text = "";
 		foreach (string text2 in filelist)
 		{
-			if (!(text2 != ""))
+			if (string.IsNullOrWhiteSpace(text2))
 			{
 				continue;
 			}
 			num4 = 0.0;
 			num2 = 0;
 			num3 = 0;
+
+			// The original crashes on start-up here when an argument is not a legal Windows path
+			// (Form1_Load -> add_source -> new FileInfo -> FileIOPermission): a URI such as
+			// file:///C:/x.ser or a colon in a non-drive position raises NotSupportedException
+			// ("The given path's format is not supported") before the window ever appears.
+			// Report it with the other files that could not be added instead of dying.
+			if (!IsUsablePath(text2))
+			{
+				num5++;
+				text = text + text2 + "\n";
+				continue;
+			}
 			FileInfo fileInfo = new FileInfo(text2);
 			DateTime lastWriteTime = fileInfo.LastWriteTime;
 			string extension = fileInfo.Extension;

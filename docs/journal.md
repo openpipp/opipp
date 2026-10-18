@@ -548,3 +548,28 @@ rejects the match when the score exceeds a stored threshold. There is no sub-pix
 
 That differs from our ZNCC search over +-32 px, which is why our peaks were different - and why a
 wide search finds *better* correlations than the engine ever considers.
+
+## M25 - Start-up crash on a non-native path argument (original bug, guarded in the port)
+
+Reported crash from the original `bin/PIPP.exe`:
+
+```
+System.NotSupportedException: The given path's format is not supported.
+   at System.Security.Permissions.FileIOPermission.EmulateFileIOPermissionChecks(String fullPath)
+   at System.IO.FileInfo.Init(String fileName, Boolean checkHost)
+   at PIPP_Application.c_filelist.add_source(String[] filelist)
+   at PIPP_Application.Form1.Form1_Load(Object sender, EventArgs e)
+```
+
+`Form1_Load` passes `Environment.GetCommandLineArgs()[1..]` straight to `add_source`, which builds a
+`FileInfo` per entry. On .NET Framework 4.8 a path that is not a legal Windows path - a URI such as
+`file:///C:/x.ser`, or a colon anywhere but the drive separator - throws `NotSupportedException` from
+the CAS path check, so the application dies **before the window appears**. Confirmed by probing .NET
+Framework: that exact message comes only from the URI/colon shapes; illegal characters give "Illegal
+characters in path" and an empty string gives "The path is not of a legal form".
+
+**Deliberate divergence M25.** Our port keeps the original structure but validates each entry first
+(`c_filelist.IsUsablePath`) and reports rejects through the existing "files could not be added" dialog
+instead of aborting. The check cannot lean on the framework: .NET 10 has no CAS path check and silently
+accepts `file:///C:/x.ser` as a *relative* file name, so URIs and misplaced colons are rejected
+explicitly. `PIPP_PATHGUARD_TEST=1` runs the guard headlessly and exits 3 when any argument is invalid.
