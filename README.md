@@ -1,5 +1,7 @@
 # OPIPP — Open PIPP
 
+![Open PIPP](docs/assets/opipp-banner.png)
+
 **OPIPP** (pronounced "oh-pip", *Open PIPP*) is an independent, fully managed continuation of
 **PIPP (Planetary Imaging PreProcessor)** by Chris Garry. The name keeps the original's initials so
 the lineage stays obvious, while everything in this repository — assemblies, namespaces, executables,
@@ -28,6 +30,14 @@ output, Ghidra listings and black-box measurements of the original), and AI will
 for the modernization work. Every behaviour claim is backed by a test or a parity case against the
 original binaries; where something could not be verified it is recorded as a known gap in
 [docs/status.md](docs/status.md) rather than asserted.
+
+## License
+
+OPIPP is free software: you can redistribute it and/or modify it under the terms of the **GNU General
+Public License, version 3 or later**. See [LICENSE](LICENSE).
+
+The licence covers this repository's own code and artwork. It does not relicense PIPP itself, and it
+does not make this an official release — see [NOTICE](NOTICE).
 
 ## Not affiliated with PIPP
 

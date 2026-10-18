@@ -1,18 +1,36 @@
 OPIPP - Open PIPP
 =================
 
-This repository contains an independent, clean reimplementation of the command-line and processing
+This repository is an independent, clean reimplementation of the command-line and processing
 behaviour of PIPP (Planetary Imaging PreProcessor), originally written by Chris Garry.
 
-- OPIPP is NOT affiliated with, endorsed by, sponsored by or supported by Chris Garry or the PIPP
-  project, and it is not an official PIPP release.
-- The MIT licence in LICENSE covers the original work in this repository only. It does not grant any
-  rights in PIPP itself, and it does not relicense anything by the original author.
-- No original PIPP binaries are distributed here. The decompiled output and Ghidra listings used as
-  development reference are not included in this repository or its history.
+Licence
+-------
+The code and artwork in this repository are free software: you can redistribute them and/or modify
+them under the terms of the GNU General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version. See LICENSE.
+
+That licence covers this repository's own work only. It does not relicense PIPP itself, does not
+grant any rights in the original author's work, and does not make this an official PIPP release.
+
+Affiliation
+-----------
+OPIPP is NOT affiliated with, endorsed by, sponsored by or supported by Chris Garry or the PIPP
+project. "PIPP" refers to the original software; "OPIPP" names this independent continuation.
+
+What is and is not here
+-----------------------
+- No original PIPP binaries are distributed in this repository.
+- The decompiled output and Ghidra listings used as development reference are not included, and are
+  excluded from version control.
 - The project reproduces file formats and a command-line vocabulary for interoperability and
   modernization, and is published in the belief that this is fair use. That is the project's
   position, not a legal determination.
 
-If you are the rights holder and want something changed or removed, please open an issue and it will
-be handled promptly.
+Artwork
+-------
+The OPIPP logo, banner and application icon in docs/assets were created for this project and are
+licensed under the same GPLv3 terms. They contain no third-party logos or trademarks.
+
+If you are a rights holder and want something changed or removed, please open an issue and it will be
+handled promptly.

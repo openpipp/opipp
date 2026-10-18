@@ -18,7 +18,7 @@ working - but the code is new, readable C#, and the UI and algorithms can be mod
 **This is not affiliated with PIPP.** I am not Chris Garry, this is not an official release, and bugs
 in the original are not mine to fix. PIPP itself is closed-source freeware; OPIPP is an independent
 reimplementation published in the belief that reproducing formats and behaviour for interoperability
-is fair use. No original binaries are distributed, and the MIT licence covers only the new code.
+is fair use. No original binaries are distributed, and the GPLv3 licence covers only the new code.
 
 **AI was used to build this, and will keep being used.** The port was written with large-language-model
 assistance, working from decompiled output and black-box measurements of the original. That is a

@@ -38,7 +38,7 @@ continue that way. Claims in this file are expected to be backed by a test or a 
 
 | Item | State |
 | --- | --- |
-| `LICENSE` (MIT, for this repository's own code) | added |
+| `LICENSE` (GPLv3, for this repository's own code and artwork) | added |
 | `NOTICE` (no affiliation, no original binaries, fair-use position) | added |
 | Reference artefacts excluded from the repo and its history | `bin/`, `decompiled/`, `ghidra/` are git-ignored and were never committed |
 | Evaluation data excluded | `samples/` git-ignored, never committed |

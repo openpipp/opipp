@@ -9,5 +9,6 @@
     <Company>OPIPP contributors</Company>
     <Description>Open, managed continuation of PIPP (Planetary Imaging PreProcessor) by Chris Garry.</Description>
     <Copyright>Reconstruction of PIPP by Chris Garry; reconstruction and managed code by the OPIPP contributors.</Copyright>
+      <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
   </PropertyGroup>
 </Project>
