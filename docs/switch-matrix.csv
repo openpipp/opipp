@@ -28,7 +28,7 @@ switch,status,evidence
 -bin_sum,verified,Transform() 577 — Full.
 -bmp,executed,ChooseExtension 228 / Run 354 — `partial` — one container per run.
 -centre,inert,same body as -ctr — Alias of -ctr: same `case` body (CommandLineParser 350-353).
--check,parsed-only,"No PS property; validate-and-exit is a `Main` concern, not a stage."
+-check,verified,wired and alias of -chk; oracle-verified rejection counters
 -chk,executed,WriteLogFiles() 468 — `partial` — read only to choose a log header (Processor 468); frames are never rejected for a missing object.
 -colour,verified,Transform() 559/568 — Full.
 -convmono,verified,"wired and oracle-verified: modes 3-6 are Rec.601 luma (and luma-weighted pairs), bisected over 1,056 triples with 0 mismatches"
@@ -44,7 +44,7 @@ switch,status,evidence
 -db_type,executed,Transform() 566/570 — `partial` — only value 2 (SmoothHue) survives; 0 and 1 both map to `false` (Program 139).
 -debugavi,parsed-only,No PS property; `AviWriter` has no diagnostics switch.
 -drop,verified,"wired and oracle-verified: write 1, skip n (stride n+1), renumber; counter logged"
--en_ss,parsed-only,No PS property.
+-en_ss,verified,wired and oracle-verified: tracking alone is byte-identical to plain; -en_ss is what shifts
 -en_surface_feature_tracking,verified,Run() 311 — Full.
 -f,verified,wired and oracle-verified: window of n frames from the range start (not an end frame); 0/absent = whole file
 -fits,executed,ChooseExtension 228 / Run 354 — `partial` — one container per run; extension is `.fit`.
@@ -79,7 +79,7 @@ switch,status,evidence
 -median,verified,Transform() 596 — Full.
 -mono,verified,Transform() 559/568 — Full.
 -mp,verified,Run() 303 / log 472 — Full (detection floor for centring and the log).
--ms,parsed-only,No PS property; `MinPlanetSize` is never mapped.
+-ms,verified,"wired and oracle-verified: default 50 (bisected), 49 rejected / 50 accepted; -ms=999 rejects all"
 -nlz,inert,none — `PipelineSettings.LeadingZeros` is never read; padding is always applied (Processor 382).
 -no_anim_rev_last_rep,parsed-only,No PS property.
 -no_ram_buff,parsed-only,No PS property; every frame is held in a `List` (Processor 244).
@@ -95,9 +95,9 @@ switch,status,evidence
 -png,executed,ChooseExtension 228 / Run 354 — `partial` — one container per run.
 -q,executed,"Select() 642 / none — `partial` — `-q=<n>` sets `QualityFrameCount` → `KeepFrames` (works); bare `-q` sets `QualityAllFrames`, which Program never maps."
 -qhisto,executed,NOT oracle-verified: wired (algorithm + log label) but the engine reports 1.#INF and selection differs - documented gap
--qinc,parsed-only,No PS property.
--qmax,parsed-only,No PS property.
--qmin,parsed-only,No PS property.
+-qinc,verified,wired and oracle-verified: weights (qmin*qmin)/(s*s) in integer division
+-qmax,verified,"wired and oracle-verified: only the qmin stride contributes, so widening qmax changes nothing"
+-qmin,verified,wired and oracle-verified: quality log matches to six decimals
 -qold,executed,NOT oracle-verified: wired (algorithm + log label) but metric values/selection do not match the engine - documented gap
 -qpcnt,verified,Select() 643 — Full.
 -qtotal,inert,none (default) — Collapsed to the default by Program.cs:167-172; `Pipp.Core.Quality.QualityAlgorithm` has no TotalPixel member.
@@ -129,4 +129,4 @@ switch,status,evidence
 -wjpos_ipfps,parsed-only,No PS property.
 -wjpos_lt2ut,parsed-only,No PS property.
 -wjpos_time,parsed-only,No PS property.
--y8,parsed-only,No PS property.
+-y8,verified,"wired and oracle-verified by the y8-out parity case (mono AVI is already Y800, so it is a no-op)"
