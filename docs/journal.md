@@ -140,3 +140,22 @@ caller - that is where the `1065.667424`-style decimal is produced.
 
 Also noted: `FUN_1400aecf0` (called with the blurred buffer) compares `threshold << 8` against
 samples and marks a 3x3 neighbourhood - it is the overexposed/no-signal marker, not the metric.
+
+## M9 - Centring: the offset looks like a binary centroid at a low threshold
+
+Measured the oracle's exact translation per frame from the object bbox (a rigid move keeps bbox size
+constant; frames where the object is clipped by the shift are unusable and were excluded). Frame 1
+moves `(-19,+37)`.
+
+Candidate rule: **binary centroid of the mask at a threshold well below the detection threshold, then
+truncation toward zero**, `shift = (320 - cx, 319 - cy)`.
+
+- threshold 8 on frame 1: centroid `(339.38, 281.26)` -> `(320-339.38, 319-281.26)` = `(-19.38, 37.74)`
+  -> truncates to `(-19,+37)` - **exactly the observed shift**;
+- frames 2 and 4 agree on y and miss x by one (`-19` predicted vs `-20`/`-21` observed), so the
+  threshold or the target is not quite right yet.
+
+Why 8: unknown. It is not the detection threshold (18) and not half of it (9 predicts frame 2's y but
+not frame 1's). Next: sweep the threshold on clean frames only, and check whether the mask is built
+on the 3x3-blurred 1/3-scale image (which would move the centroid in 1/3-pixel steps and explain the
+one-unit misses).

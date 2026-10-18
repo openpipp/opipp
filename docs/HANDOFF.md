@@ -96,9 +96,11 @@ vacated border is filled with the frame's background level (3 on the Saturn capt
 rule: binary, v, v-thr, v^2 and 1/3-scale centroids all land 2-4 px from the engine's implied
 measurement (339,282) for target (320,319 or 320,318).
 
-Next: find the routine that turns the threshold into an offset. Start from the detection call
-`FUN_140077560(image, ...)` (its `-1` return means "no object") and follow where it stores the
-object position; compare that against `FrameAligner.Centroid`. Then extend `--real` with a
+Current best hypothesis (journal M9): the offset is a **binary centroid at a threshold around 8**
+(not the detection threshold of 18), truncated toward zero against the target `(320,319)`. That
+reproduces frame 1's shift `(-19,+37)` exactly and misses x by one on frames 2 and 4. Next: sweep the
+threshold over frames with unclipped objects, and test whether the mask is built on the 3x3-blurred
+1/3-scale image (which would quantise the centroid in thirds). Then extend `--real` with a
 `real-centre` case (30 frames), which should go from 0/30 to 30/30 identical.
 
 Two smaller items found while doing the stretch, both recorded in `status.md`:
