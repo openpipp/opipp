@@ -8,7 +8,6 @@ obj/
 .vs/
 
 # Reference artefacts: original binaries and reversed source. Never commit or publish these.
-/PIPP-RE/bin/
 /bin/
 /decompiled/
 /ghidra/

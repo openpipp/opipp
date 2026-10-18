@@ -439,7 +439,7 @@ step 6). Feeding it a different processing stage changes the luma and therefore 
 cat samples/ctr/oracle/logs/saturn30_pipp_log.txt          # "Calculated minpixel value: 18"
 
 # Python reference: detection, shifts, and the full pixel comparison
-python C:/Users/ilanp/AppData/Local/hermes/cache/scratch/verify_ctr3.py
+python <scratch>/verify_ctr3.py
 #   exact shifts: 16 / 16
 #   pixel-exact frames: 30 / 30
 
@@ -448,11 +448,11 @@ python C:/Users/ilanp/AppData/Local/hermes/cache/scratch/verify_ctr3.py
 #   threshold 19 -> 8 / 16
 
 # C# recipe: same numbers from the exact source listed above
-cd C:/Users/ilanp/AppData/Local/hermes/cache/scratch/recipecheck && dotnet run -c Release
+cd <scratch>/recipecheck && dotnet run -c Release
 #   recipe: 16/16
 
 # repo threshold code against the same frames
-cd C:/Users/ilanp/AppData/Local/hermes/cache/scratch/thrcheck && dotnet run -c Release
+cd <scratch>/thrcheck && dotnet run -c Release
 #   frame 1..5: threshold 18
 ```
 

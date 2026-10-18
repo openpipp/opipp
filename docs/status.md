@@ -125,7 +125,7 @@ without `-hsrgb`. Next is the rest of Phase 4a: the quality metric's integer str
 ## Environment notes
 
 - `DOTNET_ROOT="$HOME/.dotnet-sdk"`, `PATH` must include it plus `$DOTNET_ROOT/tools`.
-- Ghidra: `GHIDRA_INSTALL_DIR=C:\tools\ghidra_12.1.4_PUBLIC`, `JAVA_HOME=C:\Users\ilanp\.jdks\jdk-21.0.12+8`.
+- Ghidra: `GHIDRA_INSTALL_DIR=C:\tools\ghidra_12.1.4_PUBLIC`, `JAVA_HOME=C:\Users\<you>\.jdks\jdk-21.0.12+8`.
 - The oracle needs **argv for switches** and **stdin terminated by `DONE`**; stdin-only produces nothing.
 - Synthetic fixtures must be accepted by the detector: flat dark background, object not touching an
   edge, and `-ms` relaxed (default 15) when the object is small.

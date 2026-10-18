@@ -14,7 +14,7 @@ be published or committed. No `LICENSE` until the author's permission is obtaine
 
 | Item | Value |
 | --- | --- |
-| Repo | `C:\Users\ilanp\Projects\OPIPP` (git, local only, HEAD `093eea2`) |
+| Repo | `<repo>` (git, local only; see `git log -1`) |
 | Build | `dotnet build OPIPP.slnx` - clean |
 | Tests | **481 passing, 0 failing** (7 projects) |
 | Parity | **18 synthetic + 4 real-data cases** (`--real`), all matching; GIF is a deliberate divergence |
@@ -27,7 +27,7 @@ Run everything with:
 
 ```bash
 export DOTNET_ROOT="$HOME/.dotnet-sdk"; export PATH="$DOTNET_ROOT:$DOTNET_ROOT/tools:$PATH"
-cd "C:/Users/ilanp/Projects/OPIPP"
+cd "<repo>"
 dotnet test OPIPP.slnx --nologo
 dotnet build src/Opipp.Cli/Opipp.Cli.csproj && dotnet build tools/Opipp.Parity/Opipp.Parity.csproj
 dotnet run --project tools/Opipp.Parity --no-build              # expect: ALL CASES MATCH

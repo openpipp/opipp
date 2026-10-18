@@ -16,6 +16,37 @@ order, and how each step is proven.
 Recovery is finished. Parity is complete except one algorithm (surface tracking). The alpha is built
 and smoke-tested. Release is blocked on permission, not on code.
 
+## Status and community
+
+Early development. The engine is functionally complete and parity-tested, the GUI is ported and fully
+managed, and 0.1.1-alpha is installable - but surface tracking is not exact yet and the UI has not had
+broad real-world use. The project is being published now specifically to get feedback from people who
+image planets, not because it is finished.
+
+Feedback that moves the project most:
+
+1. captures that fail, stall, or come out worse than the original (SER/AVI, the command line, and
+   `<output>/logs/`);
+2. workflow gaps compared with how you actually process;
+3. behaviour differences not already listed in [`status.md`](status.md).
+
+AI assistance is disclosed in the README and applies to this roadmap too: the port was written with
+large-language-model assistance against decompiled output and black-box measurements, and will
+continue that way. Claims in this file are expected to be backed by a test or a parity case.
+
+## GitHub readiness
+
+| Item | State |
+| --- | --- |
+| `LICENSE` (MIT, for this repository's own code) | added |
+| `NOTICE` (no affiliation, no original binaries, fair-use position) | added |
+| Reference artefacts excluded from the repo and its history | `bin/`, `decompiled/`, `ghidra/` are git-ignored and were never committed |
+| Evaluation data excluded | `samples/` git-ignored, never committed |
+| Build output excluded | `dist/`, `obj/`, `bin/` per project are git-ignored |
+| Secrets | none: no credentials, tokens or connection strings anywhere in the tree |
+| Tests runnable from a clone | yes - the 80 KB synthetic parity fixtures are committed |
+| CI | not yet configured; build + tests is the required gate |
+
 ## Where the numbers come from
 
 - **131 distinct switches** are emitted or understood by the original stack, extracted from the
@@ -50,8 +81,8 @@ Saturn fixture, with the remaining frames off by one pixel. Everything else is a
 
 | | |
 | --- | --- |
-| Artifact | `dist/OPIPP-0.1.0-alpha-win-x64.zip` (self-contained win-x64, 50.7 MB) |
-| Provenance | `Version=0.1.0-alpha` in `Directory.Build.props`; window title `OPIPP 0.1.0-alpha - Open PIPP` |
+| Artifact | `dist/OPIPP-0.1.1-alpha-win-x64.zip` (self-contained win-x64, 50.7 MB) |
+| Provenance | `Version=0.1.1-alpha` in `Directory.Build.props`; window title `OPIPP 0.1.1-alpha - Open PIPP` |
 | Verified | 553 tests, 29/29 parity cases, CLI conversion of 30 real frames, GUI launch, no native DLL |
 | Notes | [`alpha.md`](alpha.md) |
 
@@ -70,7 +101,7 @@ Rebuild with the two `dotnet publish` commands in `alpha.md`. `dist/` is git-ign
 | 5. Animation and long tail | **done** — `-anim_*`, WinJUPOS, legacy AVI, RAW switches |
 | 6. GUI parity | **done** — managed, `LegacyNativeApi` deleted, `-gui` verified |
 | 7. Open-source release | **blocked on Chris Garry's written permission** |
-| 8. Alpha build | **done** — 0.1.0-alpha |
+| 8. Alpha build | **done** — 0.1.1-alpha, binaries renamed to Opipp.* |
 
 ### Phase 4 remainder — tracking exactness
 

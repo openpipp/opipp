@@ -5,6 +5,30 @@
 the lineage stays obvious, while everything in this repository — assemblies, namespaces, executables,
 projects — is `Opipp.*`.
 
+## Status: early development — feedback wanted
+
+OPIPP is at **0.1.1-alpha**. The engine is functionally complete and parity-tested against the
+original across 29 cases, but one algorithm (surface-feature tracking) is still one pixel off on part
+of the real-data fixture, and the UI has not seen broad real-world use. Treat it as a working preview.
+
+Feedback is genuinely wanted, especially from people who image planets:
+
+- a capture that fails, stalls or produces a worse result than PIPP (SER/AVI plus the command line);
+- workflows that are missing or awkward compared with how you actually process;
+- anything the port does differently from the original that isn't listed in
+  [docs/status.md](docs/status.md).
+
+Open an issue, or start a discussion. "It didn't work on my data" is a useful report — attach the log
+from `<output>/logs/`.
+
+## AI-assisted development
+
+Parts of this codebase were written with AI assistance (large language models working from decompiled
+output, Ghidra listings and black-box measurements of the original), and AI will continue to be used
+for the modernization work. Every behaviour claim is backed by a test or a parity case against the
+original binaries; where something could not be verified it is recorded as a known gap in
+[docs/status.md](docs/status.md) rather than asserted.
+
 ## Not affiliated with PIPP
 
 OPIPP is an independent project. It is **not affiliated with, endorsed by, sponsored by, or supported
