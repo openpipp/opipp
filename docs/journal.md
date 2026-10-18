@@ -573,3 +573,21 @@ characters in path" and an empty string gives "The path is not of a legal form".
 instead of aborting. The check cannot lean on the framework: .NET 10 has no CAS path check and silently
 accepts `file:///C:/x.ser` as a *relative* file name, so URIs and misplaced colons are rejected
 explicitly. `PIPP_PATHGUARD_TEST=1` runs the guard headlessly and exits 3 when any argument is invalid.
+
+## M26 - The project becomes OPIPP, and the tree is cleaned
+
+The reconstruction is now **OPIPP - Open PIPP**. The initials of the original survive, which keeps the
+lineage obvious, and the "O" states the change: the engine is open, readable managed C#. Namespaces stay
+`Pipp.*` and the drop-in binary stays `Pipp.Cli`, so nothing about compatibility moves with the name.
+
+Cleanup: the working tree drops from 5.3 GB to ~150 MB. Removed were the 3.5 GB source capture, its
+1.2 GB zip, the derived run directories under `samples/` and the `parity/` scratch tree - all
+regenerable, with `samples/saturn30.ser` kept so real-data parity still runs offline.
+
+Two real defects surfaced while checking the move, both worth recording:
+
+- `GuiTranscriptTests.FindRepoRoot` looked for a file literally named `PIPP.slnx`. A rename therefore
+  failed the whole suite. It now detects the root by `src/Pipp.Core` beside any `.slnx`.
+- The quality-log labels were guesses: the engine prints **"Old (As taken from Ninox)"** and
+  **"Histogram"**. We printed "PIPP Old" and "PIPP Histogram". Fixed, with both algorithms now locked
+  into the parity harness so the labels cannot drift again.
