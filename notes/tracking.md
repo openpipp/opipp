@@ -124,3 +124,19 @@ accepted. It also means the gate is what stops the tracker locking onto texture 
 Not yet ported: `CoarseSeed` still runs without these gates and is disabled in favour of seeding at
 the box. Porting the gate is the step that should make the probe match the original (no shift) and
 may move the gated seed enough to close the 8 Saturn frames.
+
+## Negative result: gates alone make Saturn worse (2026-10-18)
+
+The coarse gates were implemented from the extracted constants and measured:
+
+- arrow probe: **matches the original** - no shift applied, because no candidate passes the gates;
+- Saturn fixture: **3/30 identical frames**, down from 23/30 with box seeding.
+
+So the gates are necessary but not sufficient: our coarse *scoring* (block-downsampled LUT-SSD over the
+whole frame) accepts candidates at the wrong places on real data, and a seed a few pixels off cannot be
+recovered by the +/-3 fine window. The change was reverted; box seeding restores 23/30.
+
+The engine's coarse stage therefore differs from ours in more than its gates - most likely the coarse
+reference capture (`FUN_1400a7ec0`, which takes its own block dimensions and downsample factors from
+the context rather than reusing box/16) and the per-candidate histogram scoring. Porting those is the
+prerequisite for enabling any coarse seed.
