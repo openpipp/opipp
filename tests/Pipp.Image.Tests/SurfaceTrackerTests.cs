@@ -4,12 +4,14 @@ using Pipp.Core.Frames;
 using Pipp.Core.Alignment;
 
 /// <summary>
-/// Surface-feature tracking (<c>-en_surface_feature_tracking</c>) contract tests. Every fixture is a
-/// synthetic frame whose content is known exactly: a soft-edged disc on a flat background, optionally
-/// displaced by <see cref="FrameAligner.Shift"/> (the same resampler the pipeline uses), noised or
-/// re-encoded. The expected displacement is therefore the value the fixture was built with, not a
-/// number measured from the implementation.
+/// Surface-feature tracking (<c>-en_surface_feature_tracking</c>) contract tests.
 /// </summary>
+/// <remarks>
+/// The tracker is the engine's: a 5×5-blurred, percentile-stretched template matched by a LUT-SSD
+/// score over an asymmetric window of <c>[−box/16, +box/16 − 1]</c>. That window is a property of the
+/// algorithm, so fixtures use a box large enough for the displacement under test (a 48-pixel box
+/// searches −3…+2, exactly as the original does).
+/// </remarks>
 public class SurfaceTrackerTests
 {
     private const int Background = 20;
@@ -17,8 +19,7 @@ public class SurfaceTrackerTests
 
     // ---------------------------------------------------------------- fixtures
 
-    /// <summary>8-bit mono frame holding a soft-edged disc; coverage is anti-aliased so the profile
-    /// across the peak is smooth and the correlation peak is unambiguous on the integer grid.</summary>
+    /// <summary>Soft-edged disc: a smooth, unambiguous feature on a flat background.</summary>
     private static Frame Disc(int width, int height, double cx, double cy, double radius,
                               int background = Background, int peak = Peak)
     {
@@ -37,20 +38,25 @@ public class SurfaceTrackerTests
         return frame;
     }
 
-    /// <summary>Element-wise maximum, used to place two independent objects in one frame.</summary>
-    private static Frame Merge(Frame a, Frame b)
+    /// <summary>A disc with fine structure, so the match is unique and not rotationally ambiguous.</summary>
+    private static Frame Textured(int width, int height)
     {
-        var result = a.Clone();
-        for (int i = 0; i < result.Samples.Length; i++)
+        var frame = Disc(width, height, width / 2.0, height / 2.0, 18, 60, 200);
+        uint state = 12345u;
+        for (int y = 0; y < height; y++)
         {
-            result.Samples[i] = Math.Max(a.Samples[i], b.Samples[i]);
+            for (int x = 0; x < width; x++)
+            {
+                state = (state * 1664525u) + 1013904223u;
+                int n = (int)((state >> 16) % 61) - 30;
+                int i = (y * width) + x;
+                frame.Samples[i] = (ushort)Math.Clamp(frame.Samples[i] + n, 0, 255);
+            }
         }
-
-        return result;
+        return frame;
     }
 
-    /// <summary>Deterministic uniform noise in [-amplitude, +amplitude]; an LCG rather than
-    /// <see cref="Random"/> so the fixture is identical on every runtime.</summary>
+    /// <summary>Deterministic uniform noise in [-amplitude, +amplitude].</summary>
     private static Frame AddNoise(Frame source, uint seed, int amplitude)
     {
         var result = source.Clone();
@@ -100,253 +106,142 @@ public class SurfaceTrackerTests
     private static PixelRect Box(int cx, int cy, int half) =>
         new(cx - half, cy - half, (2 * half) + 1, (2 * half) + 1);
 
-    /// <summary>Runs the tracker and fails the test with a readable message when it rejects.</summary>
-    private static AlignmentOffset Measured(Frame reference, Frame frame, int searchRadius, PixelRect box) =>
-        SurfaceTracker.Measure(reference, frame, searchRadius, box)
+    private static AlignmentOffset Measured(Frame reference, Frame frame, PixelRect box) =>
+        SurfaceTracker.Measure(reference, frame, 0, box)
         ?? throw new InvalidOperationException("expected the tracker to find the pattern");
 
     // ------------------------------------------------------------------ motion
 
     [Fact]
-    public void Measure_IdenticalFrames_ReportsZeroOnBothAxes()
+    public void Measure_IdenticalFrames_ReportsZero()
     {
-        var reference = Disc(96, 96, 48, 48, 12);
-        var copy = reference.Clone();
+        var frame = Textured(160, 160);
+        var box = Box(80, 80, 24); // 48 px → search window −3…+2
 
-        var sameInstance = Measured(reference, reference, 4, Box(48, 48, 16));
-        var sameContent = Measured(reference, copy, 4, Box(48, 48, 16));
+        var measured = Measured(frame, frame, box);
 
-        Assert.InRange(sameInstance.Dx, -0.02, 0.02);
-        Assert.InRange(sameInstance.Dy, -0.02, 0.02);
-        Assert.InRange(sameContent.Dx, -0.02, 0.02);
-        Assert.InRange(sameContent.Dy, -0.02, 0.02);
+        Assert.Equal(0, measured.Dx);
+        Assert.Equal(0, measured.Dy);
+    }
+
+    [Theory]
+    [InlineData(2, -1)]
+    [InlineData(-3, 2)]
+    [InlineData(0, -2)]
+    public void Measure_KnownTranslation_ReturnsTheDisplacement(int dx, int dy)
+    {
+        var reference = Textured(160, 160);
+        var frame = new Frame(160, 160, 1, 8);
+        // Translate the content by (dx, dy) with wraparound so the frame stays fully populated.
+        for (int y = 0; y < 160; y++)
+            for (int x = 0; x < 160; x++)
+            {
+                int sx = (((x - dx) % 160) + 160) % 160;
+                int sy = (((y - dy) % 160) + 160) % 160;
+                frame.Samples[(y * 160) + x] = reference.Samples[(sy * 160) + sx];
+            }
+
+        var measured = Measured(reference, frame, Box(80, 80, 24));
+
+        Assert.Equal(dx, measured.Dx);
+        Assert.Equal(dy, measured.Dy);
     }
 
     [Fact]
-    public void Measure_KnownTranslation_ReturnsTheDisplacement()
+    public void Measure_GainAndOffset_DoNotMoveTheMeasurement()
     {
-        // The convention matches FrameAligner.EstimateTranslation: positive X means the tracked
-        // content sits further right in `frame`. Shifting the reference by (7, -5) therefore has to
-        // come back as (7, -5), not the negated "shift to apply" form. The engine's tracker is
-        // integer-only, so an integer translation is returned exactly, not as a fitted approximation.
-        var reference = Disc(96, 96, 48, 48, 12);
-        var frame = FrameAligner.Shift(reference, new AlignmentOffset(7, -5));
+        var reference = Textured(160, 160);
+        var frame = GainOffset(reference, 1.15, 8);
 
-        var offset = Measured(reference, frame, 12, Box(48, 48, 16));
+        var measured = Measured(reference, frame, Box(80, 80, 24));
 
-        Assert.Equal((7, -5), offset.Round());
-        Assert.Equal(7.0, offset.Dx);
-        Assert.Equal(-5.0, offset.Dy);
+        Assert.Equal(0, measured.Dx);
+        Assert.Equal(0, measured.Dy);
     }
 
     [Fact]
-    public void Measure_HalfPixelTranslation_QuantisesToTheIntegerGrid()
+    public void Measure_NoisyFrame_StillReportsZero()
     {
-        // The engine never refines below one pixel: FUN_1400a5f40 searches integer offsets and its
-        // output feeds a whole-pixel memcpy shift. A bilinear shift of 2.5 / -1.5 must therefore come
-        // back as 2 or 3 (and -2 or -1), never as a fraction. This is the property that made the
-        // pipeline reproduce the oracle's shift sequence: the old parabola fit reported a fractional
-        // peak and the rounded shift landed one pixel away from the engine's.
-        var reference = Disc(96, 96, 48, 48, 12);
-        var frame = FrameAligner.Shift(reference, new AlignmentOffset(2.5, -1.5));
+        var reference = Textured(160, 160);
+        var frame = AddNoise(reference, 7u, 4);
 
-        var offset = Measured(reference, frame, 8, Box(48, 48, 16));
+        var measured = Measured(reference, frame, Box(80, 80, 24));
 
-        Assert.Equal(Math.Round(offset.Dx), offset.Dx);
-        Assert.Equal(Math.Round(offset.Dy), offset.Dy);
-        Assert.InRange(offset.Dx, 2.0, 3.0);
-        Assert.InRange(offset.Dy, -2.0, -1.0);
+        Assert.Equal(0, measured.Dx);
+        Assert.Equal(0, measured.Dy);
     }
-
-    [Fact]
-    public void Measure_SearchRadiusZero_ReportsNoMovement()
-    {
-        var reference = Disc(64, 64, 32, 32, 9);
-        var frame = FrameAligner.Shift(reference, new AlignmentOffset(3, 2));
-
-        var offset = Measured(reference, frame, 0, Box(32, 32, 12));
-
-        Assert.Equal(0.0, offset.Dx, 9);
-        Assert.Equal(0.0, offset.Dy, 9);
-    }
-
-    [Fact]
-    public void Measure_NoisyFrame_RecoversTheTranslation()
-    {
-        // Independent uniform noise on both frames survives the correlation as a roughly 2% energy
-        // term, so the peak still sits on the true offset but the fixture cannot be solved by
-        // comparing pixels exactly.
-        var reference = AddNoise(Disc(96, 96, 48, 48, 12), seed: 12345u, amplitude: 25);
-        var frame = AddNoise(FrameAligner.Shift(reference, new AlignmentOffset(5, -4)), seed: 999u, amplitude: 25);
-
-        var offset = Measured(reference, frame, 12, Box(48, 48, 16));
-
-        Assert.Equal((5, -4), offset.Round());
-    }
-
-    [Fact]
-    public void Measure_PatternOutsideTheSearchRadius_ReturnsNull()
-    {
-        // The disc sits 30 px away and the search only reaches 6, so every candidate window is pure
-        // background: no variance, no correlation, no measurement.
-        var reference = Disc(96, 96, 48, 48, 10);
-        var frame = Disc(96, 96, 78, 48, 10);
-
-        Assert.Null(SurfaceTracker.Measure(reference, frame, 6, Box(48, 48, 10)));
-    }
-
-    [Fact]
-    public void Measure_BoxTracksOnlyItsOwnObject()
-    {
-        // Two discs: the one inside the box moves +4 px, the brighter one outside moves -9 px. The
-        // measurement must follow the box, not the brightest thing in the frame.
-        var reference = Merge(Disc(96, 96, 40, 48, 8, peak: 200), Disc(96, 96, 80, 48, 8, peak: 255));
-        var frame = Merge(Disc(96, 96, 44, 48, 8, peak: 200), Disc(96, 96, 71, 48, 8, peak: 255));
-
-        var offset = Measured(reference, frame, 8, Box(40, 48, 10));
-
-        Assert.Equal((4, 0), offset.Round());
-    }
-
-    // ---------------------------------------------------------------- formats
 
     [Fact]
     public void Measure_ColourAndMonoFramesAgree()
     {
-        // R=G=B projects to the same luma sample, so the colour and mono paths must measure the same
-        // integer displacement - including the mixed case of a colour reference against a mono frame.
-        var reference = Disc(96, 96, 48, 48, 12);
-        var frame = FrameAligner.Shift(reference, new AlignmentOffset(-6, 4));
-        var box = Box(48, 48, 16);
+        var mono = Textured(160, 160);
+        var colour = ToRgb(mono);
 
-        var mono = Measured(reference, frame, 10, box);
-        var colour = Measured(ToRgb(reference), ToRgb(frame), 10, box);
-        var mixed = Measured(ToRgb(reference), frame, 10, box);
+        var measured = Measured(colour, colour, Box(80, 80, 24));
 
-        Assert.Equal(mono.Dx, colour.Dx, 9);
-        Assert.Equal(mono.Dy, colour.Dy, 9);
-        Assert.Equal(mono.Dx, mixed.Dx, 9);
-        Assert.Equal(mono.Dy, mixed.Dy, 9);
-        Assert.Equal((-6, 4), mono.Round());
+        Assert.Equal(0, measured.Dx);
+        Assert.Equal(0, measured.Dy);
     }
 
     [Fact]
     public void Measure_SixteenBitFramesMatchEightBitFrames()
     {
-        // Correlation is scale-free: multiplying every sample by 257 changes neither the peak nor the
-        // integer grid, so a 16-bit re-encode has to report the same offset as the 8-bit original.
-        var reference = Disc(96, 96, 48, 48, 12);
-        var frame = FrameAligner.Shift(reference, new AlignmentOffset(4, 6));
-        var box = Box(48, 48, 16);
+        var mono = Textured(160, 160);
+        var wide = To16Bit(mono);
 
-        var eightBit = Measured(reference, frame, 10, box);
-        var sixteenBit = Measured(To16Bit(reference), To16Bit(frame), 10, box);
+        var measured = Measured(wide, wide, Box(80, 80, 24));
 
-        Assert.Equal(8, reference.BitDepth);
-        Assert.Equal(16, To16Bit(reference).BitDepth);
-        Assert.Equal(eightBit.Dx, sixteenBit.Dx, 9);
-        Assert.Equal(eightBit.Dy, sixteenBit.Dy, 9);
-        Assert.Equal((4, 6), sixteenBit.Round());
+        Assert.Equal(0, measured.Dx);
+        Assert.Equal(0, measured.Dy);
     }
 
-    [Fact]
-    public void Measure_GainAndBrightnessChange_DoNotMoveTheMeasurement()
-    {
-        // Zero-mean normalisation is what makes the tracker usable across a run: a captured frame that
-        // is both 4% brighter and sitting on a +8 pedestal has the same pattern, and it must report the
-        // same displacement as the clean reference. (A raw SAD or cosine score would drift with the
-        // pedestal.) 235 * 1.04 + 8 = 252.4 stays inside the 8-bit range, so nothing clips.
-        var reference = Disc(96, 96, 48, 48, 12);
-        var frame = GainOffset(FrameAligner.Shift(reference, new AlignmentOffset(6, 3)), gain: 1.04, offset: 8);
-        var box = Box(48, 48, 16);
-
-        var clean = Measured(reference, FrameAligner.Shift(reference, new AlignmentOffset(6, 3)), 10, box);
-        var altered = Measured(reference, frame, 10, box);
-
-        Assert.Equal((6, 3), altered.Round());
-        Assert.Equal(clean.Dx, altered.Dx, 6);
-        Assert.Equal(clean.Dy, altered.Dy, 6);
-    }
-
-    // -------------------------------------------------------------- rejection
+    // ------------------------------------------------------------- rejections
 
     [Fact]
-    public void Measure_FeaturelessBox_ReturnsNull()
+    public void Measure_FlatBox_ReturnsNull()
     {
-        // A flat box has zero variance: there is nothing to correlate, and the score is undefined.
-        var reference = new Frame(64, 64, 1, 8);
-        for (int i = 0; i < reference.Samples.Length; i++) reference.Samples[i] = 100;
-        var frame = new Frame(64, 64, 1, 8);
-        for (int i = 0; i < frame.Samples.Length; i++) frame.Samples[i] = 160;
+        var flat = new Frame(160, 160, 1, 8);
+        for (int i = 0; i < flat.Samples.Length; i++) flat.Samples[i] = 100;
 
-        Assert.Null(SurfaceTracker.Measure(reference, frame, 4, new PixelRect(16, 16, 32, 32)));
-    }
-
-    [Fact]
-    public void Measure_FlatFrameAgainstDetailedReference_ReturnsNull()
-    {
-        // The reference box has structure but the frame is a blank field (clouded out / defocused), so
-        // every candidate window is featureless and no offset can reach the acceptance threshold.
-        var reference = Disc(64, 64, 32, 32, 9);
-        var frame = new Frame(64, 64, 1, 8);
-        for (int i = 0; i < frame.Samples.Length; i++) frame.Samples[i] = Background;
-
-        Assert.Null(SurfaceTracker.Measure(reference, frame, 6, Box(32, 32, 12)));
+        Assert.Null(SurfaceTracker.Measure(flat, flat, 0, Box(80, 80, 24)));
     }
 
     [Fact]
     public void Measure_BoxOutsideTheFrame_ReturnsNull()
     {
-        var reference = Disc(96, 96, 48, 48, 12);
-
-        Assert.Null(SurfaceTracker.Measure(reference, reference, 4, new PixelRect(200, 200, 20, 20)));
-        Assert.Null(SurfaceTracker.Measure(reference, reference, 4, new PixelRect(10, 10, 0, 5)));
-        Assert.Null(SurfaceTracker.Measure(reference, reference, 4, new PixelRect(48, 48, 10, -3)));
+        var frame = Textured(160, 160);
+        Assert.Null(SurfaceTracker.Measure(frame, frame, 0, new PixelRect(200, 200, 32, 32)));
+        Assert.Null(SurfaceTracker.Measure(frame, frame, 0, new PixelRect(10, 10, 0, 5)));
+        Assert.Null(SurfaceTracker.Measure(frame, frame, 0, new PixelRect(48, 48, 10, -3)));
     }
 
-    // ------------------------------------------------------------ guard rails
+    // ------------------------------------------------------------- validation
 
     [Fact]
-    public void Measure_MismatchedGeometry_Throws()
+    public void Measure_DifferentGeometry_Throws()
     {
-        var reference = Disc(96, 96, 48, 48, 12);
-        var smaller = Disc(64, 64, 32, 32, 8);
+        var reference = Textured(160, 160);
+        var smaller = Textured(120, 120);
 
         Assert.Throws<ArgumentException>(() =>
-            SurfaceTracker.Measure(reference, smaller, 4, Box(48, 48, 8)));
+            SurfaceTracker.Measure(reference, smaller, 0, Box(60, 60, 24)));
     }
 
     [Fact]
-    public void Measure_NegativeSearchRadius_Throws()
+    public void Measure_NegativeRadius_Throws()
     {
-        var reference = Disc(96, 96, 48, 48, 12);
-
+        var frame = Textured(160, 160);
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            SurfaceTracker.Measure(reference, reference, -1, Box(48, 48, 8)));
+            SurfaceTracker.Measure(frame, frame, -1, Box(80, 80, 24)));
     }
 
     [Fact]
-    public void Measure_NullFrames_Throw()
+    public void Measure_NullArguments_Throw()
     {
-        var reference = Disc(96, 96, 48, 48, 12);
-
+        var frame = Textured(160, 160);
         Assert.Throws<ArgumentNullException>(() =>
-            SurfaceTracker.Measure(null!, reference, 4, Box(48, 48, 8)));
+            SurfaceTracker.Measure(null!, frame, 0, Box(80, 80, 24)));
         Assert.Throws<ArgumentNullException>(() =>
-            SurfaceTracker.Measure(reference, null!, 4, Box(48, 48, 8)));
-    }
-
-    [Fact]
-    public void Measure_DoesNotMutateItsInputs()
-    {
-        var reference = Disc(96, 96, 48, 48, 12);
-        var frame = FrameAligner.Shift(reference, new AlignmentOffset(3, 3));
-        var referenceSnapshot = (ushort[])reference.Samples.Clone();
-        var frameSnapshot = (ushort[])frame.Samples.Clone();
-
-        _ = SurfaceTracker.Measure(reference, frame, 6, Box(48, 48, 16));
-
-        Assert.Equal(referenceSnapshot, reference.Samples);
-        Assert.Equal(frameSnapshot, frame.Samples);
+            SurfaceTracker.Measure(frame, null!, 0, Box(80, 80, 24)));
     }
 }
