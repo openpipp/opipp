@@ -226,3 +226,29 @@ Corrected results (section parse fixed, prologue verified):
 So the quality score is a **mean squared neighbour difference**, scaled by 10 and then by the outer
 factor - not any of the global statistics ruled out in M7, which is consistent with the 1.31 vs ~1.0
 gap measured there.
+
+## M13 - Quality: metric implemented in a model, ranking still unexplained
+
+Modelled the recovered metric in Python (stride-average to a small image, normalise to 60000/mean,
+3x3 integer blur, crop 10%, mean squared 4-neighbour difference / 10) and compared frame 1 against
+frame 11 on the real capture:
+
+| region | stride 3 | stride 4 | stride 5 | engine |
+| --- | --- | --- | --- | --- |
+| whole frame | 0.9905 | 1.0089 | 0.9996 | 1.3102 |
+| object bbox | 0.9531 | 0.9577 | 0.9551 | 1.3102 |
+
+So the metric as modelled does not produce the engine's 31% advantage for frame 1, even restricted to
+the object box. The remaining difference must come from the parts of the driver not yet modelled:
+
+- the search box `image[0x374..0x377]` is **expanded by one pixel per iteration** and clamped
+  (pseudo-C 116959-116988), so later iterations measure a larger region;
+- `xmm6` accumulates across the whole stride loop (`-qmin`..`-qmax` by `-qinc`), and how the
+  per-stride values combine is not yet known;
+- the final scale is `FUN_1400b00b0(image, flag) / 3251250.0`, and `FUN_1400b00b0` is **not** a
+  getter - it allocates a 0x400-byte stack buffer and walks the pixels (a histogram/statistic), so the
+  factor is content-dependent and can differ per frame.
+
+That last point is the most likely explanation for frame 1 being special: its score may be scaled by a
+different content statistic than the others. Next: read `FUN_1400b00b0`'s tail (the return value) and
+the stride-loop accumulation, then re-fit the model.

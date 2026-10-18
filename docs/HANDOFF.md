@@ -82,7 +82,11 @@ Open, in the order I would take them:
    blurred subsampled image, return `sum / count / 10.0`, or -1.0 when nothing exceeds the threshold;
    the outer driver scales by `FUN_1400b00b0(...) / 3251250.0`. Constants all live in `.rdata`
    (10.0 at RVA 0x120fd0, -1.0 at 0x132950, 3251250.0 at 0x13a2b0, 60000.0 at 0x13a2a8, -0.1 at
-   0x13a2b8). Next: implement in `QualityMetrics` and calibrate against the 30-frame Saturn scores.
+   0x13a2b8). A Python model of that metric does **not** reproduce the engine's ranking (whole frame
+   and object bbox both give ~0.95-1.0 where the engine gives 1.3102), so two parts are still
+   missing: how `xmm6` accumulates across the `-qmin..-qmax` stride loop, and the content-dependent
+   final scale `FUN_1400b00b0(image, flag) / 3251250.0` (that function builds a 0x400-byte histogram,
+   it is not a getter). Read `FUN_1400b00b0`'s tail next.
 3. **Detection rejection reasons** (item 2) - `-chk` now logs the threshold; the object finder
    `FUN_140077560` returns -1 for "no object" and the per-reason counters are not reproduced.
 4. **Weighting and bounds** (item 3) - `-qw`, `-incqv`, `-freject`.
