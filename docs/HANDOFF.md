@@ -77,9 +77,10 @@ Open, in the order I would take them:
    Producer found: `FUN_1400af2d0` returns the score, inserted at 86600 via
    `FUN_1400b03e0(container, score, frameIndex)`. **Ghidra lost the return value** - it types the
    function `void` with three bare `return;` while the caller reads a `double`. Next step is
-   disassembly, not pseudo-C: dump the tails of `0x1400af2d0` (REA `analyze_function` or
-   `procedure_pseudo_code`) and read what is in `XMM0` at each `ret`. This blocks the Phase 4 exit
-   criterion "kept-frame set **and order**".
+   disassembly, not pseudo-C. Done (journal M11): one `ret`, returns `(xmm3 / xmm1) / K`, with
+   `xmm3 += (a-c)^2 + (b-c)^2`. Remaining: resolve `K` (0x1401813d0) and the branch constant
+   (0x140192d50) with a section-aware read - the current RVA mapping yields nonsense - then implement.
+   This blocks the Phase 4 exit criterion "kept-frame set **and order**".
 3. **Detection rejection reasons** (item 2) - `-chk` now logs the threshold; the object finder
    `FUN_140077560` returns -1 for "no object" and the per-reason counters are not reproduced.
 4. **Weighting and bounds** (item 3) - `-qw`, `-incqv`, `-freject`.

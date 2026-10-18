@@ -179,3 +179,24 @@ overexposed pixels (`FUN_1400aecf0`) and dispatches `param_2 == 3` to `FUN_1400a
 lost the returned expression. Do **not** keep reading the C for it - disassemble the function's tails
 (or run REA `analyze_function` / `procedure_pseudo_code` on `0x1400af2d0`) and read what lands in
 `XMM0` at each `ret`. That is the remaining unknown for the quality score.
+
+## M11 - Quality return path disassembled (capstone)
+
+Installed capstone in a scratch venv (`uv venv` + `uv pip install capstone`) and disassembled
+`0x1400af2d0` straight from `bin/pipp_core.exe` (RVA 0xaf2d0, 1727 bytes, 441 instructions; script at
+`%LOCALAPPDATA%\hermes\cache\scratch\dis_quality.py`).
+
+Facts recovered:
+
+- there is exactly **one `ret`** (0x1400af6c9), so the three bare `return;` in the pseudo-C are jumps
+  to a shared epilogue - the decompiler simply dropped the value;
+- the return value is **`xmm0 = (xmm3 / xmm1) / K`**, or on the alternate branch
+  `xmm0 = <constant at 0x140192d50>`;
+- the accumulator is built as `xmm3 += (a - c)^2 + (b - c)^2` (`subsd`/`mulsd` pairs at
+  0x1400af58b-0x1400af5ab, repeated at 0x1400af5d4 and 0x1400af644), i.e. **squared deviations from a
+  reference point**, not a gradient or variance of pixels.
+
+Open detail: the rip-relative divisor (`[rip+0x71d30]` at 0x1400af698 -> 0x1401813d0) and the alternate
+constant (0x140192d50) decode as nonsense doubles through the current RVA mapping, so either the mapping
+for those sections is wrong or the divisor is written at runtime. Verify with a section-aware read
+before trusting any formula: `K` and the branch constant are the last unknowns.
