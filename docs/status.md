@@ -17,7 +17,7 @@ inventory.
 
 ## Parity
 
-`dotnet run --project tools/Pipp.Parity` → **ALL CASES MATCH** (12 cases: 11 verified, 1 deliberate
+`dotnet run --project tools/Pipp.Parity` → **ALL CASES MATCH** (15 cases: 13 verified, 1 deliberate
 divergence, 1 known gap; pixel content, directory layout and log text compared).
 
 | Case | Switches | Compared |
@@ -36,6 +36,12 @@ divergence, 1 known gap; pixel content, directory layout and log text compared).
 | tif-16bit | `-tif` (16-bit input) | *deliberate divergence* |
 | tif-colour, png-colour | `-tif`, `-png` (RGB input) | pixels, layout, log |
 | gif-out | `-gif` | *known gap* |
+
+## Work in flight
+
+`-hs` (histogram stretch) matches on synthetic fixtures but **not on real data**: the original's gain
+is image-dependent (2.30 vs our 2.04 at `-hs=204` on the Saturn capture). The user chose exact parity
+(option A). See [`HANDOFF.md`](HANDOFF.md) for the trace target and next action.
 
 ## Behaviour verified against the original
 

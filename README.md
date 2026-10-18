@@ -34,7 +34,8 @@ decompiled/     ILSpy project for PIPP.exe (14,277 lines of C#, reference only, 
 ghidra/         4,229 decompiled native functions + CSV index + string-xref tooling (git-ignored)
 ```
 
-Progress and what comes next: [docs/roadmap.md](docs/roadmap.md) · current numbers:
+Resuming work: [docs/HANDOFF.md](docs/HANDOFF.md) · progress and what comes next:
+[docs/roadmap.md](docs/roadmap.md) · current numbers:
 [docs/status.md](docs/status.md) · switch-by-switch state: [docs/switch-matrix.csv](docs/switch-matrix.csv).
 
 
