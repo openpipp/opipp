@@ -87,6 +87,60 @@ public sealed class EndToEndTests
     }
 
     [Fact]
+    public void PippLayout_WritesNumberedSubfolderAndLogFile()
+    {
+        string dir = TempDir();
+        try
+        {
+            string input = WriteSyntheticSer(dir, 16, 16, 4, bitDepth: 8);
+            string output = Path.Combine(dir, "out");
+            var settings = new PipelineSettings { OutputDirectory = output, OutputExtension = ".tif" };
+
+            var report = new Processor(settings).Run([input]);
+
+            var names = report.OutputFiles.Select(Path.GetFileName).ToArray();
+            Assert.Equal(new[] { "1.tif", "2.tif", "3.tif", "4.tif" }, names);
+
+            string log = File.ReadAllText(Path.Combine(output, "logs", "capture_pipp_log.txt"));
+            Assert.Contains("PIPP (v2.5.9) Logfile", log);
+            Assert.Contains("Source image files:", log);
+            Assert.Contains("Total input frames: 4", log);
+            Assert.Contains("Total output frames: 4:", log);
+            Assert.Contains("Output Frame Type: Monochrome", log);
+            Assert.Contains("Output Frame Format: TIF", log);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void PippLayout_PadsFrameNumbersToTheFrameCount()
+    {
+        string dir = TempDir();
+        try
+        {
+            string input = WriteSyntheticSer(dir, 16, 16, 12, bitDepth: 8);
+            var settings = new PipelineSettings
+            {
+                OutputDirectory = Path.Combine(dir, "out"),
+                OutputExtension = ".tif",
+            };
+
+            var report = new Processor(settings).Run([input]);
+
+            // measured against the original: 4 frames -> 1.tif, 12 frames -> 01.tif
+            Assert.Equal("01.tif", Path.GetFileName(report.OutputFiles[0]));
+            Assert.Equal("12.tif", Path.GetFileName(report.OutputFiles[^1]));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void SerToTiff_QualityLimit_KeepsRequestedFrameCount()
     {
         string dir = TempDir();
@@ -106,10 +160,11 @@ public sealed class EndToEndTests
             Assert.Equal(3, report.OutputFrames);
             Assert.Equal(3, report.DiscardedByQuality);
 
-            // Still-image formats write one numbered file per kept frame, matching the engine.
+            // Still-image formats write one numbered file per kept frame in a per-input folder,
+            // numbered from 0 when quality selection ran (measured against the original engine).
             Assert.Equal(3, report.OutputFiles.Count);
-            Assert.EndsWith("_00000.tif", report.OutputFiles[0]);
-            Assert.EndsWith("_00002.tif", report.OutputFiles[2]);
+            Assert.EndsWith(Path.Combine("capture", "0.tif"), report.OutputFiles[0]);
+            Assert.EndsWith(Path.Combine("capture", "2.tif"), report.OutputFiles[2]);
 
             using var reader = new TiffReader(report.OutputFiles[0]);
             var first = reader.ReadFrame();

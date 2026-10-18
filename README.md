@@ -57,8 +57,8 @@ dotnet run --project src/Pipp.App
 ## Status
 
 Working end to end (verified by tests): SER → pipeline → FITS/TIFF/SER output, calibration
-subtract/divide, histogram stretch, quality selection, stacking. **289 tests pass** across seven
-projects (formats 127, processing 80, CLI 77, pipeline 7).
+subtract/divide, histogram stretch, quality selection, stacking. **291 tests pass** across seven
+projects (formats 127, processing 80, CLI 77, pipeline 9).
 
 The CLI is a drop-in engine: it accepts the GUI's stdin protocol (switches and file paths, one per
 line) as well as a normal command line, and emits the original `@PROGRESS/@PFILE/...` tokens with
@@ -90,13 +90,14 @@ same switches and compares the produced frames by SHA-256 of their sample data:
 dotnet run --project tools/Pipp.Parity
 ```
 
-Current result: **9 of 9 cases match** — plain TIFF, `-hs=204` stretch, `-flip_x`, `-fits`, `-png`,
-`-avi`, `-db=2` debayer, `-ctr` centring and `-q=2` quality selection all reproduce the original's
-frame content (quality selection is compared as a multiset because it may reorder frames).
+Current result: **9 of 9 cases match**, comparing pixel content, directory layout (`capture/1.tif`,
+`logs/capture_pipp_log.txt`) and log text as well as pixels — plain TIFF, `-hs=204` stretch,
+`-flip_x`, `-fits`, `-png`, `-avi`, `-db=2` debayer, `-ctr` centring and `-q=2` quality selection.
+Quality selection is compared as a multiset because it may reorder frames, and its score column is
+excluded until the quality algorithm is parity-proven.
 
-Two deliberate differences remain: this engine writes flat numbered files (`capture_00000.tif`) where
-the original creates a per-input subdirectory (`capture/1.tif`) plus a `logs/` directory, and it
-writes colour SER where the original's help text claims mono only.
+Remaining deliberate differences: colour SER output is a superset (the original's help claims mono
+only), and the `-gui` token stream does not yet match (tracked in Phase 6 of the roadmap).
 
 Details of what is observed versus reconstructed: [notes/algorithms.md](notes/algorithms.md).
 

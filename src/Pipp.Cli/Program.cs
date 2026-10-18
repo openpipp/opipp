@@ -43,7 +43,8 @@ internal static class Program
                 Console.Error.WriteLine($"Error: {error}");
             }
             Console.Error.WriteLine("Use '-help' to display help");
-            return 2;
+            // the original exits 127 on an unrecognised switch; keep that contract detectable
+            return parsed.Errors.Any(e => e.StartsWith("Unknown switch", StringComparison.Ordinal)) ? 127 : 2;
         }
 
         var options = parsed.Options;
@@ -65,6 +66,9 @@ internal static class Program
             Console.Error.WriteLine($"Error: {ex.Message}");
             return 2;
         }
+
+        // The log echoes the switch list only; input paths appear under "Source image files".
+        settings.LogArguments = effectiveArgs.Where(a => !inputs.Contains(a, StringComparer.Ordinal)).ToArray();
 
         var protocol = options.Gui ? new EngineProtocolWriter(Console.Out) : null;
         // Progress<T> posts callbacks to the thread pool, which reorders the percentage lines;
@@ -170,6 +174,7 @@ internal static class Program
 
             Centre = o.Centre,
             MinPixelValue = o.MinPixelValue,
+            KeepImageNames = o.KeepImageFilenames,
             SurfaceTracking = o.SurfaceFeatureTracking,
             AlignmentBox = o.AnchorFeatureX is int ax && o.AnchorFeatureY is int ay && o.AnchorFeatureWidth is int aw && o.AnchorFeatureHeight is int ah
                 ? new PixelRect(ax, ay, aw, ah)
@@ -223,7 +228,8 @@ internal static class Program
         // One container per run in this implementation; pick the most specific format requested.
         if (formats.HasFlag(PippOutputFormats.Ser)) return ".ser";
         if (formats.HasFlag(PippOutputFormats.Avi)) return ".avi";
-        if (formats.HasFlag(PippOutputFormats.Fits)) return ".fits";
+        // the original names FITS output .fit, not .fits
+        if (formats.HasFlag(PippOutputFormats.Fits)) return ".fit";
         if (formats.HasFlag(PippOutputFormats.Tiff)) return ".tif";
         if (formats.HasFlag(PippOutputFormats.Png)) return ".png";
         if (formats.HasFlag(PippOutputFormats.Bmp)) return ".bmp";

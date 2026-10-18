@@ -81,7 +81,7 @@ public sealed class SingleFrameSource : IFrameSource
 public static class FrameSinkFactory
 {
     /// <summary>Supported output extensions, lowercase, with the leading dot.</summary>
-    public static readonly string[] Extensions = [".ser", ".fits", ".avi", ".bmp", ".tif", ".tiff", ".png"];
+    public static readonly string[] Extensions = [".ser", ".fits", ".fit", ".avi", ".bmp", ".tif", ".tiff", ".png"];
 
     /// <summary>Creates a sink sized for <paramref name="template"/>'s geometry.</summary>
     /// <param name="path">Destination file.</param>
@@ -100,7 +100,7 @@ public static class FrameSinkFactory
         {
             ".ser" => new SerWriter(path, template.Width, template.Height, template.Channels, template.BitDepth,
                 frameCountHint, template.Bayer),
-            ".fits" => new FitsWriter(path),
+            ".fits" or ".fit" => new FitsWriter(path),
             ".avi" => new AviWriter(path, template.Width, template.Height, new AviWriterOptions
             {
                 // The writer defaults to mono; a colour frame must be stored as 24bpp BGR.

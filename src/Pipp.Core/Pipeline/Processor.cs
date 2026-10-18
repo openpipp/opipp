@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using Pipp.Core.Alignment;
 using Pipp.Core.Diagnostics;
 using Pipp.Core.Frames;
@@ -110,6 +111,21 @@ public sealed class PipelineSettings
     /// <summary>Explicit detection floor (-mp); when null the pipeline derives one per frame.</summary>
     public int? MinPixelValue { get; set; }
 
+    /// <summary>Write the engine's layout: frames in a per-input folder plus a logs folder.</summary>
+    public bool PippLayout { get; set; } = true;
+
+    /// <summary>Write <c>logs/&lt;name&gt;_pipp_log.txt</c> (and the quality log when selecting).</summary>
+    public bool WriteLogFile { get; set; } = true;
+
+    /// <summary>Name frames <c>&lt;name&gt;_f&lt;n&gt;</c> instead of bare numbers (-keepimgname).</summary>
+    public bool KeepImageNames { get; set; }
+
+    /// <summary>Arguments echoed in the log's "Command line arguments" section.</summary>
+    public IReadOnlyList<string>? LogArguments { get; set; }
+
+    /// <summary>Version string printed in logs, matching the original binary.</summary>
+    public string EngineVersion { get; set; } = "v2.5.9";
+
     /// <summary>Mirror horizontally.</summary>
     public bool FlipX { get; set; }
 
@@ -201,6 +217,7 @@ public sealed class Processor
         {
             cancellationToken.ThrowIfCancellationRequested();
             fileIndex++;
+            int objectDiscardsBefore = discardedObject;
             _protocol?.WriteFileLabel(fileIndex, files.Count);
             Report(0, file, 0, 0, $"Processing {Path.GetFileName(file)}");
 
@@ -339,22 +356,51 @@ public sealed class Processor
                 }
                 else
                 {
-                    // Still-image formats write one numbered file per frame, as the engine does
-                    // (renumbering is the default; -nr/-nlz change it).
-                    int number = 0;
+                    // Still-image formats write one numbered file per frame. The engine puts them in
+                    // a per-input folder, numbers them from 1 (0 when quality selection ran) and pads
+                    // only as far as the frame count requires: 4 frames -> 1.tif, 12 frames -> 01.tif.
+                    string frameDirectory = _settings.PippLayout
+                        ? Path.Combine(_settings.OutputDirectory, baseName)
+                        : _settings.OutputDirectory;
+                    if (_settings.PippLayout)
+                    {
+                        Directory.CreateDirectory(frameDirectory);
+                    }
+
+                    bool qualitySelection = _settings.KeepFrames is not null || _settings.KeepPercent is not null;
+                    int firstNumber = _settings.PippLayout ? (qualitySelection ? 0 : 1) : 0;
+                    int digits = Math.Max(1, (firstNumber + selected.Count - 1).ToString(CultureInfo.InvariantCulture).Length);
+                    string numberFormat = "D" + digits.ToString(CultureInfo.InvariantCulture);
+                    int number = firstNumber;
                     foreach (var (frame, _, offset) in selected)
                     {
                         var written = offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.Shift(frame, offset);
-                        string suffix = _settings.RenumberFrames
-                            ? (_settings.LeadingZeros ? number.ToString("D5", CultureInfo.InvariantCulture) : number.ToString(CultureInfo.InvariantCulture))
-                            : written.Index.ToString(_settings.LeadingZeros ? "D5" : "D", CultureInfo.InvariantCulture);
-                        string outputPath = Path.Combine(_settings.OutputDirectory, $"{baseName}_{suffix}{_settings.OutputExtension}");
+                        string stem = _settings.RenumberFrames
+                            ? number.ToString(numberFormat, CultureInfo.InvariantCulture)
+                            : written.Index.ToString(numberFormat, CultureInfo.InvariantCulture);
+                        string fileName = _settings.KeepImageNames
+                            ? $"{baseName}_f{stem}{_settings.OutputExtension}"
+                            : $"{stem}{_settings.OutputExtension}";
+                        string outputPath = Path.Combine(frameDirectory, fileName);
                         using var sink = FrameSinkFactory.Create(outputPath, written, 1, _settings.Fps);
                         sink.Write(written);
                         outputFrames++;
                         outputs.Add(outputPath);
                         number++;
                     }
+                }
+
+                if (_settings.WriteLogFile)
+                {
+                    WriteLogFiles(
+                        file,
+                        baseName,
+                        source.FrameCount,
+                        selected.Count,
+                        dropped,
+                        discardedObject - objectDiscardsBefore,
+                        selected[0].Frame,
+                        selected);
                 }
 
                 filesProcessed++;
@@ -373,6 +419,110 @@ public sealed class Processor
             OutputFiles = outputs,
         };
     }
+
+    /// <summary>
+    /// Writes the engine's two log files: <c>logs/&lt;name&gt;_pipp_log.txt</c> for every run and
+    /// <c>logs/&lt;name&gt;_pipp_quality.txt</c> when frames were selected by quality.
+    /// The layout and wording mirror the original's logs line for line; numeric values that come
+    /// from reconstructed algorithms (quality scores, detection threshold) differ until those
+    /// algorithms are proven in Phase 4.
+    /// </summary>
+    private void WriteLogFiles(
+        string sourceFile,
+        string baseName,
+        int inputFrameCount,
+        int outputFrameCount,
+        int droppedByQuality,
+        int droppedNoObject,
+        Frame sample,
+        List<(Frame Frame, double Score, AlignmentOffset Offset)> ranked)
+    {
+        string logDirectory = Path.Combine(_settings.OutputDirectory, "logs");
+        Directory.CreateDirectory(logDirectory);
+
+        string directory = _settings.OutputDirectory.Replace('\\', '/');
+        if (!directory.EndsWith('/')) directory += "/";
+
+        var text = new StringBuilder();
+        text.Append("PIPP (").Append(_settings.EngineVersion).Append(") Logfile\r\n\r\n");
+        text.Append("Command line arguments:\r\n");
+        foreach (string argument in _settings.LogArguments ?? [])
+        {
+            text.Append("  ").Append(argument).Append("\r\n");
+        }
+
+        text.Append("\r\nSource image files:\r\n  ").Append(sourceFile).Append("\r\n");
+
+        if (_settings.Centre || droppedNoObject > 0)
+        {
+            text.Append("\r\nProcessing Details:\r\n");
+            text.Append("  Calculated minpixel value: ")
+                .Append(FrameAligner.OtsuThreshold(sample).ToString(CultureInfo.InvariantCulture))
+                .Append("\r\n");
+        }
+
+        text.Append("\r\nSummary:\r\n");
+        text.Append("PIPP version: ").Append(_settings.EngineVersion).Append("\r\n");
+        text.Append("  Total input frames: ").Append(inputFrameCount.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+        if (droppedNoObject > 0)
+        {
+            text.Append("  Frames discarded with no planet detected: ").Append(droppedNoObject.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+        }
+        if (droppedByQuality > 0)
+        {
+            text.Append("  Frames discarded by quality: ").Append(droppedByQuality.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+        }
+        text.Append("  Total output frames: ").Append(outputFrameCount.ToString(CultureInfo.InvariantCulture)).Append(":\r\n");
+        if (_settings.KeepFrames is not null || _settings.KeepPercent is not null)
+        {
+            text.Append("  Quality Algorithm: ").Append(QualityAlgorithmLabel(_settings.QualityAlgorithm)).Append("\r\n");
+        }
+        text.Append("  Output Frame Type: ").Append(sample.Channels == 3 || _settings.ForceColour ? "Colour" : "Monochrome").Append("\r\n");
+        text.Append("  Output Frame Format: ").Append(FormatLabel(_settings.OutputExtension)).Append("\r\n");
+        text.Append("  Output Directory: ").Append(directory).Append("\r\n");
+
+        File.WriteAllText(Path.Combine(logDirectory, baseName + "_pipp_log.txt"), text.ToString());
+
+        if (ranked.Count > 0 && (_settings.KeepFrames is not null || _settings.KeepPercent is not null))
+        {
+            double best = ranked.Max(r => r.Score);
+            var quality = new StringBuilder();
+            quality.Append("PIPP (").Append(_settings.EngineVersion).Append(") Quality Log\r\n\r\n");
+            quality.Append("Pos\tSource\tOutput\tQuality\t% of Best\r\n");
+            quality.Append("   \tFrame \tFrame \tValue  \tQuality\r\n");
+            for (int position = 0; position < ranked.Count; position++)
+            {
+                var entry = ranked[position];
+                int percent = best > 0 ? (int)Math.Round(entry.Score / best * 100.0, MidpointRounding.AwayFromZero) : 100;
+                quality.Append((position + 1).ToString(CultureInfo.InvariantCulture)).Append('\t')
+                    .Append((entry.Frame.Index + 1).ToString(CultureInfo.InvariantCulture)).Append('\t')
+                    .Append((position + 1).ToString(CultureInfo.InvariantCulture)).Append('\t')
+                    .Append(entry.Score.ToString("0.000000", CultureInfo.InvariantCulture)).Append('\t')
+                    .Append(percent.ToString(CultureInfo.InvariantCulture)).Append("%\r\n");
+            }
+
+            File.WriteAllText(Path.Combine(logDirectory, baseName + "_pipp_quality.txt"), quality.ToString());
+        }
+    }
+
+    private static string QualityAlgorithmLabel(QualityAlgorithm algorithm) => algorithm switch
+    {
+        QualityAlgorithm.Histogram => "PIPP Histogram",
+        QualityAlgorithm.Ninox => "PIPP Old",
+        _ => "PIPP Default",
+    };
+
+    private static string FormatLabel(string extension) => extension.ToLowerInvariant() switch
+    {
+        ".tif" or ".tiff" => "TIF",
+        ".fits" or ".fit" => "FITS",
+        ".png" => "PNG",
+        ".avi" => "AVI",
+        ".ser" => "SER",
+        ".bmp" => "BMP",
+        ".gif" => "GIF",
+        _ => extension.TrimStart('.').ToUpperInvariant(),
+    };
 
     private static bool IsMultiFrameContainer(string extension) =>
         extension.Equals(".ser", StringComparison.OrdinalIgnoreCase) ||

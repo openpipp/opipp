@@ -148,6 +148,9 @@ internal static class Program
             }
         }
 
+        bool layoutMatch = CompareTrees(oracleOut, managedOut);
+        allMatch &= layoutMatch;
+
         if (c.Mode == CompareMode.SetEquality)
         {
             // Quality selection may legitimately keep the same frames in a different order,
@@ -337,6 +340,145 @@ internal static class Program
 
     private static int[]? ToInts(ushort[]? samples) =>
         samples?.Select(v => (int)v).ToArray();
+
+    /// <summary>
+    /// Compares the produced directory trees (relative paths) and the engine log text, so layout,
+    /// numbering and log content are held to the same standard as pixel output.
+    /// </summary>
+    private static bool CompareTrees(string oracleDir, string managedDir)
+    {
+        bool ok = true;
+
+        static List<string> RelativeFiles(string root) =>
+            Directory.Exists(root)
+                ? Directory.GetFiles(root, "*", SearchOption.AllDirectories)
+                    .Select(f => Path.GetRelativePath(root, f).Replace('\\', '/'))
+                    .OrderBy(f => f, StringComparer.Ordinal)
+                    .ToList()
+                : [];
+
+        var oracleFiles = RelativeFiles(oracleDir);
+        var managedFiles = RelativeFiles(managedDir);
+        bool namesMatch = oracleFiles.SequenceEqual(managedFiles, StringComparer.Ordinal);
+        Console.WriteLine($"  layout: {(namesMatch ? "MATCH" : "DIVERGENCE")} ({oracleFiles.Count} vs {managedFiles.Count} files)");
+        if (!namesMatch)
+        {
+            ok = false;
+            foreach (string missing in oracleFiles.Except(managedFiles).Take(4)) Console.WriteLine($"    missing: {missing}");
+            foreach (string extra in managedFiles.Except(oracleFiles).Take(4)) Console.WriteLine($"    extra:   {extra}");
+        }
+
+        string? oracleLog = oracleFiles.FirstOrDefault(f => f.StartsWith("logs/", StringComparison.Ordinal) && f.EndsWith("_pipp_log.txt", StringComparison.Ordinal));
+        string? managedLog = managedFiles.FirstOrDefault(f => f.StartsWith("logs/", StringComparison.Ordinal) && f.EndsWith("_pipp_log.txt", StringComparison.Ordinal));
+        if (oracleLog is null || managedLog is null)
+        {
+            Console.WriteLine($"  log: {(oracleLog is null && managedLog is null ? "MATCH (none)" : "DIVERGENCE")}");
+            return ok && oracleLog is null && managedLog is null;
+        }
+
+        string left = NormaliseLog(File.ReadAllText(Path.Combine(oracleDir, oracleLog)), oracleDir);
+        string right = NormaliseLog(File.ReadAllText(Path.Combine(managedDir, managedLog)), managedDir);
+        bool logMatch = left == right;
+        Console.WriteLine($"  log: {(logMatch ? "MATCH" : "DIVERGENCE")}");
+        if (!logMatch)
+        {
+            ok = false;
+            var a = left.Split('\n');
+            var b = right.Split('\n');
+            for (int i = 0; i < Math.Max(a.Length, b.Length); i++)
+            {
+                string la = i < a.Length ? a[i] : "<missing>";
+                string lb = i < b.Length ? b[i] : "<missing>";
+                if (la != lb)
+                {
+                    Console.WriteLine($"    oracle : {la}");
+                    Console.WriteLine($"    managed: {lb}");
+                    break;
+                }
+            }
+        }
+
+        string? oracleQuality = oracleFiles.FirstOrDefault(f => f.StartsWith("logs/", StringComparison.Ordinal) && f.EndsWith("_pipp_quality.txt", StringComparison.Ordinal));
+        string? managedQuality = managedFiles.FirstOrDefault(f => f.StartsWith("logs/", StringComparison.Ordinal) && f.EndsWith("_pipp_quality.txt", StringComparison.Ordinal));
+        if (oracleQuality is not null || managedQuality is not null)
+        {
+            string qa = oracleQuality is null ? "<none>" : NormaliseQualityLog(File.ReadAllText(Path.Combine(oracleDir, oracleQuality)));
+            string qb = managedQuality is null ? "<none>" : NormaliseQualityLog(File.ReadAllText(Path.Combine(managedDir, managedQuality)));
+            bool qualityMatch = qa == qb;
+            Console.WriteLine($"  quality log: {(qualityMatch ? "MATCH (structure; scores are Phase 4)" : "DIVERGENCE")}");
+            if (!qualityMatch)
+            {
+                ok = false;
+                Console.WriteLine("    oracle : " + qa.Replace("\n", " | "));
+                Console.WriteLine("    managed: " + qb.Replace("\n", " | "));
+            }
+        }
+
+        return ok;
+    }
+
+    /// <summary>
+    /// Keeps the quality log's structure (position, source frame, output frame) and blanks the score
+    /// columns, which come from a quality algorithm that is not parity-proven until Phase 4.
+    /// </summary>
+    private static string NormaliseQualityLog(string text)
+    {
+        var lines = text.Replace("\r\n", "\n").Split('\n');
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var columns = lines[i].Split('\t');
+            if (columns.Length == 5 && int.TryParse(columns[0], out _))
+            {
+                columns[3] = "<Q>";
+                columns[4] = "<P>";
+                lines[i] = string.Join("\t", columns);
+            }
+        }
+
+        return string.Join("\n", lines).TrimEnd();
+    }
+
+    /// <summary>
+    /// Normalises the differences that are properties of the harness rather than of the engine:
+    /// duplicated argument lists (we pass switches on argv and stdin), absolute output paths, and
+    /// numbers produced by algorithms that are not parity-proven yet.
+    /// </summary>
+    private static string NormaliseLog(string text, string directory)
+    {
+        var lines = text.Replace("\r\n", "\n").Split('\n').ToList();
+
+        // collapse a repeated "Command line arguments" block into one
+        int first = lines.FindIndex(l => l.StartsWith("Command line arguments:", StringComparison.Ordinal));
+        if (first >= 0)
+        {
+            int end = lines.FindIndex(first + 1, l => l.Trim().Length == 0);
+            if (end > first)
+            {
+                var block = lines.GetRange(first + 1, end - first - 1);
+                var deduped = new List<string>();
+                foreach (string line in block) if (!deduped.Contains(line)) deduped.Add(line);
+                if (deduped.Count != block.Count)
+                {
+                    // remove the second copy: the harness passes the same switches twice
+                    lines.RemoveRange(first + 1, block.Count);
+                    lines.InsertRange(first + 1, deduped);
+                }
+            }
+        }
+
+        for (int i = 0; i < lines.Count; i++)
+        {
+            string line = lines[i];
+            line = line.Replace(directory.Replace('\\', '/'), "<OUT>").Replace(directory, "<OUT>");
+            if (line.StartsWith("  Calculated minpixel value:", StringComparison.Ordinal))
+            {
+                line = "  Calculated minpixel value: <N>";
+            }
+            lines[i] = line;
+        }
+
+        return string.Join("\n", lines).TrimEnd();
+    }
 
     private static bool IsFrameFile(string path) =>
         Path.GetExtension(path).ToLowerInvariant() is ".tif" or ".tiff" or ".fits" or ".fit" or ".png" or ".bmp" or ".ser" or ".avi";

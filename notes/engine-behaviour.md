@@ -93,3 +93,30 @@ Engine prints a summary block ("Processing Details:", "Summary:", counts of file
 format, total input frames, frames discarded per reason, total/unique/duplicated output frames, quality
 algorithm, frame type/format, output directory) and writes a log file and quality log file when
 `-gui`/`-sdp` is not used, using the documented headers.
+
+## GUI stdout protocol (observed with -gui, single input, 4 frames)
+
+The original emits these on stdout in this order. Tokens are `@NAME=value`; the plain text between
+them is not suppressed in `-gui` mode.
+
+```
+@PFILE=0
+@PFILELAB=File 0 of 1
+@FNAMELAB=none
+@ANIM=0
+@QSORT=0
+Processing: (Batch mode)
+  Input file:
+    <path>
+  Estimating input frames:
+    Total input frames: 4
+@FNAMELAB=capture.ser
+@PFILE=100
+```
+
+Notes:
+- `@PFILELAB` counts from **0** (`File 0 of 1`), while our engine emits `File 1 of 1`.
+- `@FNAMELAB=none` precedes processing and is replaced by the actual file name later.
+- `@ANIM` and `@QSORT` are emitted up front with `0`.
+- Our engine currently emits `@PROGRESS`, `@FNUM`, `@FCNT` and orders the tokens differently.
+  Matching this stream is a prerequisite for dropping the `EngineLocator` fallback in the GUI.

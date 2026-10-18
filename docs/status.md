@@ -11,13 +11,14 @@ inventory.
 | SDK | .NET 10.0.402, local only (`~/.dotnet-sdk`) |
 | Solution | `PIPP.slnx` (note: `.slnx`, not `.sln`) |
 | Build | `dotnet build PIPP.slnx` - clean |
-| Tests | **289 passing, 0 failing** (7 projects) |
+| Tests | **291 passing, 0 failing** (7 projects) |
 | Managed code | `Pipp.Core` 11.5k lines, `Pipp.Cli` 0.3k, `Pipp.App` 14.5k, tests 5.5k |
 | Reference artefacts | `decompiled/` 14,277 lines C#, `ghidra/out/` 4,229 functions |
 
 ## Parity
 
-`dotnet run --project tools/Pipp.Parity` → **ALL CASES MATCH** (9 cases).
+`dotnet run --project tools/Pipp.Parity` → **ALL CASES MATCH** (9 cases, comparing pixel content,
+directory layout and log text).
 
 | Case | Switches | Compared |
 | --- | --- | --- |
@@ -45,8 +46,8 @@ inventory.
 
 | Divergence | Reason / next step |
 | --- | --- |
-| Output layout: flat `name_00000.tif` vs `name/1.tif` + `logs/` | Phase 1 of the roadmap |
-| No log file | Phase 1 |
+| `-gui` token stream differs (`@PFILELAB` 0- vs 1-based, `@ANIM`/`@QSORT`/`@FNAMELAB`, ordering) | Phase 6, blocks dropping the native fallback |
+| Quality log scores differ (structure matches) | Phase 4, quality algorithm not parity-proven |
 | Colour SER output | Superset: the original's help claims mono only |
 | Detection threshold uses Otsu, not the engine's "Calculated minpixel value" | Phase 4 |
 | GIF, Y8, RAW/dcraw, animation, AOI, master saving, quality weighting | Parsed, not executed — Phases 2–5 |

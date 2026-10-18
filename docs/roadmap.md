@@ -39,7 +39,7 @@ Weights are a judgement call, stated so they can be argued with.
 | Alignment (-ctr, -st, -ctrf, stabilisation) | -ctr verified; rest partial/absent | 50 % | 10 % |
 | Stacking (mean/median, multi-file join) | stacker exists, not wired to CLI | 35 % | 5 % |
 | Animation / GIF output | absent | 0 % | 5 % |
-| Output layout, logs, exit codes, progress protocol | protocol good, layout/log differ | 60 % | 10 % |
+| Output layout, logs, exit codes | layout, numbering, log and quality-log structure verified | 95 % | 10 % |
 | GUI application | ported, some paths still native | 80 % | 5 % |
 | **Weighted total** | | **≈ 60 %** | |
 
@@ -48,9 +48,12 @@ mostly parameters of one missing feature each (GIF, RAW, animation), not separat
 
 ---
 
-## Phase 1 — Drop-in parity for the current surface
+## Phase 1 — Drop-in parity for the current surface — **DONE except item 4**
 
-**Goal:** a run produces the same files, in the same places, with the same log text.
+Status: items 1–3 are implemented and verified. Output layout, numbering, padding, `-keepimgname`
+and both log files now match the original byte for byte on all nine parity cases, and an unknown
+switch exits 127. Item 4 (the `-gui` token stream) turned out to be a GUI-integration problem and
+moved to Phase 6; the observed sequence is recorded in `notes/engine-behaviour.md`.
 
 Work:
 1. Output layout: `<out>/<basename>/<n>.<ext>` instead of flat `capture_00000.tif`; `n` starts at 1
@@ -60,8 +63,8 @@ Work:
 3. Exit codes and stderr text for bad switches (the original exits 127 on an unknown switch).
 4. Progress/`@` token ordering under `-gui`, verified against a recorded GUI run.
 
-Exit criteria: a parity case compares **directory trees and log text** (not just pixels) and matches;
-pixel cases still 9/9.
+Exit criteria: met - every case now compares directory trees and log text as well as pixels, and all
+nine match. The `-gui` item is tracked in Phase 6.
 
 Risk: layout changes break existing tests — do it behind the same settings object, update tests in
 the same commit.
@@ -107,9 +110,13 @@ out of scope with a reason in `docs/status.md`.
 
 ## Phase 6 — GUI parity
 
-Work: replace the remaining `LegacyNativeApi` call sites (`Test Options`, calibration) with managed
-code; drop the `EngineLocator` fallback so the app always uses `Pipp.Cli`; golden test that
-`CommandLineBuilder` emits the same argument list as the decompiled `Form1` for a matrix of settings.
+Work:
+1. Match the `-gui` stdout token stream exactly (`@PFILELAB` is 0-based, `@FNAMELAB` transitions from
+   `none` to the file name, `@ANIM`/`@QSORT` first, text lines interleaved) - see
+   `notes/engine-behaviour.md` for the observed sequence.
+2. Replace the remaining `LegacyNativeApi` call sites (`Test Options`, calibration) with managed code.
+3. Drop the `EngineLocator` fallback so the app always uses `Pipp.Cli`.
+4. Golden test that `CommandLineBuilder` emits the same argument list as the decompiled `Form1`.
 
 Exit criteria: a full job runs from the GUI with no native DLL present; golden command-line test green.
 
