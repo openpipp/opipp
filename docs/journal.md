@@ -159,3 +159,23 @@ Why 8: unknown. It is not the detection threshold (18) and not half of it (9 pre
 not frame 1's). Next: sweep the threshold on clean frames only, and check whether the mask is built
 on the 3x3-blurred 1/3-scale image (which would move the centroid in 1/3-pixel steps and explain the
 one-unit misses).
+
+## M10 - Quality producer identified: `FUN_1400af2d0`, return value lost by the decompiler
+
+The container mystery is solved. `FUN_1400b03e0(container, double score, int frameIndex)` is the
+insert (a sorted insert into `(double, index)` records); its only call site is 86600:
+
+```
+uVar14 = FUN_1400af2d0(lVar23, local_2650, local_2bfc);   // image, algorithm, flag
+uVar10 = FUN_1400b03e0(local_2a90, uVar14, local_2c30 + 1);
+```
+
+So the quality score *is* the return value of `FUN_1400af2d0` - the 1727-byte search driver that
+subsamples, contrast-normalises by the mean of three accumulators, blurs 3x3 (`FUN_1400afc90`), marks
+overexposed pixels (`FUN_1400aecf0`) and dispatches `param_2 == 3` to `FUN_1400afda0`.
+
+**Blocking detail:** Ghidra types that function `void` and shows three bare `return;` statements
+(lines 58, 62 and 268 of its body), while the caller clearly reads a `double` from it. The pseudo-C has
+lost the returned expression. Do **not** keep reading the C for it - disassemble the function's tails
+(or run REA `analyze_function` / `procedure_pseudo_code` on `0x1400af2d0`) and read what lands in
+`XMM0` at each `ret`. That is the remaining unknown for the quality score.
