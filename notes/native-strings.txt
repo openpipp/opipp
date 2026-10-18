@@ -1,0 +1,1446 @@
+0000004d	!This program cannot be run in DOS mode.
+000002a7	@_RDATA
+000002f7	@.reloc
+00000a3c	t$ WATAUAVAWH
+00000c02	 A_A^A]A\_
+000032d0	@USVWATAVAWH
+0000376b	\$ UVAWH
+000042c0	@SUVWAVH
+00004ca2	\$ UVWH
+0000520e	|$ #u-A
+00009982	\$ WATAWH
+0000a7ac	|$ UATAUAVAWH
+0000b827	t$ ATAVAWH
+0000ba10	 A_A^A\
+0000bd79	|$ D;\$$
+0000bddc	t$ WATAUAVAWH
+0000d6cc	t$ WATAUAVAWD
+0000f030	@UVATAVAW
+000135ca	 A_A]A\_^
+00013820	@SVWATAUAVH
+00014c80	@UWATAUAVAWH
+00014d88	sXD8 tS
+00017030	@SUVAWH
+00017699	 Lc\$PI
+00018c5b	l$ VWAVH
+0001938b	l$ VAUAWH
+0001aa3c	t$ WATAUAVAWH
+0001af97	l$ VWAUAVAWH
+0001b245	u]9k tXI
+0001c2c9	 A_A^A]_^][
+0001c367	 A_A^A]_^][
+0001db61	 A_A]_^]
+0001e760	@SATAWH
+0001e990	@SUWATAWH
+0001ec91	@A_A\_][
+0001f531	|$ AUAVAWH
+0001f726	 A_A^A]
+0001fcd0	@SUVWAVH
+0001ff82	\$ UVWH
+00020070	@SUVAVH
+00020550	@SUVWAVH
+00020617	t$ UWATAVAWH
+00021e90	@SATAUAVH
+000224d9	 A_A]A\_^
+000228ea	 A_A]A\_^
+00023910	@SUWAVAWH
+00023960	 A_A^_][
+00023972	K H9K0u
+00023b4f	 A_A^_][
+00023b88	 A_A^_][
+000241c0	@SATAVH
+000243f0	@WATAUAWH
+00024b41	|$ ATAUAVAW
+00024ed7	t$ ATAVAWH
+00025148	 A_A^A\
+00025851	|$ ATAVAWH
+00025a10	 A_A^A\
+00025f90	@VAVAWH
+00027d88	q L9q0u
+00029e33	i H9i0u
+0002a510	@USVWATAUAWH
+0002b121	|$ ATAVAWH
+0002b352	 A_A^A\
+0002ce37	l$ VWAVH
+0002feb0	@USWATH
+000313c0	@UVWATAUH
+0003202c	D$ vrucD
+00036060	@VAVAWH
+00036e62	 A_A^A]_^
+00039d71	 ffffff
+0003a9f0	@SWATAWH
+0003b5d0	@SUVWAWH
+00043540	@SUVWAVAWH
+00043912	\$ UVWAVAWH
+00045b70	@VATAWH
+00046200	@VWATAUAVH
+000463eb	 A^A]A\_^
+0004693d	x UATAUAVAWH
+00047505	@A_A]_^]
+00047530	@UVWATH
+00048010	@SVWATAVH
+0004810f	 A^A\_^[
+00049530	@UVATAUH
+0004a0f8	t$ fD;%
+0004a230	@SUVWATAVAWH
+0004a690	@UATAUH
+0004a6e0	|$ fffff
+0004af18	f;D$ uBH
+0004b610	@UVATAVH
+0004c364	HcD$ H;
+0004cb30	@UWAUAWH
+0004ee1d	t$(;t$ 
+0004ee7b	t$(;t$ v
+0004f110	@SWATAUH
+00050d50	@UVATAWH
+000537f7	|$ ATAVAW
+00053c30	@USATAUH
+00055030	@SVATAWH
+0005545b	L$ D;L$4
+00055650	@SUVAUH
+00055d20	@UWATAVH
+0005696a	 A_A]A\_^
+000584d1	|$ ATAVAWH
+00058860	@UAUAWH
+00058b00	@VAVAWH
+0005a911	|$ ATAUAVAWD
+0005ad22	\$ UVATAUAWH
+0005bb47	l$ VWATH
+0005d4d1	@A_A^A]A\_^]
+0005d710	@USAVAWH
+0005df70	@SUVAVH
+0005ebfc	u\D9%_K
+0006155d	D$0;@8w,u L
+000615d0	@UVWATAUAVAWH
+00062920	@VWATAUH
+000637a0	@UVAVAW
+00063962	\$ UATAV
+00063b02	l$ WATAV
+000644a1	|$ ATAVAWA
+00067fed	B A_A^A]A\_
+0006b822	\$ UVWATAUAVAWH
+0006bab1	 A_A^A]A\_^]
+0006c2c0	@SUVWATAVAW
+0006d1d1	|$ ATAVAWD
+0006d3a1	|$ ATAVAWD
+0006d581	|$ ATAVAWD
+0006d771	|$ ATAVAWD
+0006d981	|$ ATAUAVAWD
+0006dda1	|$ ATAVAW
+0006def1	|$ ATAVAW
+0006e051	|$ ATAVAW
+0006e1c1	|$ ATAVAW
+0006e341	|$ ATAUAVAWD
+0006fbb0	@SUVATAVH
+000719e7	t$ UWATAVAWH
+00072b11	|$ ATAVAWD
+00072d11	|$ ATAUAVAWD
+00073160	@SUVWAVH
+00073e71	|$ ATAVAWH
+00074089	 A_A^A\
+00074ea7	l$ WAVAWH
+000758f0	@VWATAVAWH
+00079dd0	@UVWATAUAVAWH
+0007a23b	F@H98t%H
+0007a4a7	C@H90t%H
+0007adf0	@UVWATAUAVAWH
+0007b09b	C@H98t%H
+0007b2e7	C@H90t%H
+0007c620	@USVWATAUAVAWH
+0007ce90	@VWATAVAWH
+0007dce0	@WATAUAVAW
+00089e1b	D$ =AVI tH=AVIXtA=movit:
+0008a3d2	=YUY2w9tU=BY8 t'=Y800t
+0008a411	.=IYUVt =YUYVt
+0008a860	@UVWATAUAVAWH
+0008bd50	@SUVWATAUAVAWH
+0008c390	@UVWATAUAVAWH
+0008c9e0	@UVWATAUAVAWH
+0008d2c0	@UAVAWH
+0008dcc0	@VWATAVAWH
+000900d0	@USVWATAUAVAWH
+00090630	@USVWATAUAVAWH
+00090db0	@USVWATAUAVAWH
+00091320	@UVWAVAWH
+000915e0	@USVWAVH
+00091ee0	@SUVATAWH
+0009225d	 A_A\^][
+00092292	\$ VATAWH
+00094340	@USVWATAUAVAWH
+000952bc	t$ WATAUAVAWH
+00095770	@SUVWATAUAVAWH
+00095a60	@SUVWATAUAVAWH
+00095d65	H SAVAWH
+000962c5	H SAVAWH
+00096830	@UVWATAUAVAWH
+00096b9d	@A_A^A]A\_^]
+0009fe6d	@A_A^A]A\_^]
+000a06fd	s WATAUAVAWH
+000a3687	l$ VWAV
+000a3837	l$ VWAV
+000a5347	l$ WATAUAVAWH
+000a574e	t$ D;t$0
+000a7623	D9I<~%E
+000a76aa	@8{0t;9{<
+000a7743	@8{0t49{<~xL
+000a77f0	@UVWAVAW
+000a79f0	@UVWATAUAVAWH
+000a8090	@UVWATAUAVAWH
+000a9480	@UVWATAUAVAWH
+000a98b0	@UVWATAUAVAWH
+000ae0fc	t$ WATAUAVAWH
+000ae6bf	 A_A^A]A\_
+000aeda1	|$ ATAVAWH
+000af061	 A_A^A\
+000b121c	L$ VWAVH
+000b164c	 A_A^_^]
+000b1660	@UATAVH
+000b21e9	@A_A^A]A\_
+000b240c	 A_A^A]A\_^]
+000b26a7	G D9g r
+000b2770	@UVWATAUAVAWH
+000b2cd0	@UVWATAUAVAWH
+000b30c0	@UVWATAUAVAWH
+000b3e15	x ATAVAWH
+000b3fdc	 A_A^A\
+000b5c06	D$H9D$ s"
+000b5f29	H SVWAVH
+000b68b3	L$ UVWATAUAVAWH
+000b6902	 A_A^A]A\_^]
+000b6df0	 A_A^A]A\_
+000b7377	L$ USVWH
+000b7486	\$ UVWATAUAVAWH
+000b79a1	 A_A^A\_^
+000b8812	 A_A^A\
+000b8b50	@SVWAVAWH
+000b95c1	x ATAVAWH
+000b976d	@A_A^A\
+000b9789	H ATAUAVH
+000b992c	@A^A]A\
+000b9dcc	L$ USWH
+000bb9ef	~`HcE H
+000bbf37	t$ UWAVH
+000bc427	 A_A^A\_^
+000bc445	x ATAVAWH
+000bc558	 A_A^A\
+000bc845	x UAVAWH
+000be734	t$ WATAUAVAW
+000bf0a2	@A_A^A]A\_
+000bf6ac	t$ WATAUAVAW
+000bfd15	D$@!\$(H!\$ 
+000c0010	@UATAVH
+000c030b	l$ VAVAWH
+000c09bc	t$ WATAUAVAWH
+000c09f0	<\t$</t <:t!H
+000c136f	l$ VWATAVAWH
+000c39dd	x AUAVAWH
+000c3f28	@SUVWAVH
+000c548e	 A_A^A\
+000c64fe	!\$0!\$(!\$ L
+000c663c	|$ UATAUAVAWH
+000c6978	|$ UATAUAVAWH
+000c7f1c	t$ WAVAWH
+000c89ef	 A_A^A]A\_
+000c940d	 A_A^A\_^
+000c941a	\$ UVWATAUAVAWH
+000ca5ad	x AUAVAWH
+000ca642	 A_A^A]
+000caa6c	@SUVWATAVAWH
+000caad9	zu|D!t$ E3
+000cad6d	 A_A^A\_^
+000caf4c	|$ ATAVAWH
+000cafdf	 A_A^A\
+000ce3e1	p WATAUAVAWH
+000cf700	@USVWATAUAVAWH
+000cfd18	L$ SUVWH
+000cfd80	|$ ATAVAWH
+000d00e6	\$ UVWATAUAVAWH
+000d0352	\$ UVWATAUAVAWH
+000d0d65	p WAVAWH
+000d21e5	 A_A^A]A\_
+000d2650	@SVWATAUAVAWH
+000d28a8	|$ ATAVAWH
+000d5415	@A_A^A\
+000d5815	x ATAVAWH
+000d5e3d	@A_A^A\
+000d5ff0	@UVWATAUAVAWH
+000d64ed	x ATAVAWH
+000d666d	x ATAVAWH
+000d67e9	p WATAUAVAWH
+000d7418	@UATAUAVAWH
+000d7565	!t$(H!t$ I
+000d77a8	t$ WATAUAVAWH
+000d7ebf	H3E H3E
+000d8464	@UATAUAVAWH
+000db700	|$ UATAUAVAWH
+000dbcb0	|$ UATAUAVAWH
+000dc3cd	x AUAVAWH
+000de208	@SUVWATAVAWH
+000de9c8	@UATAUAVAWH
+000dfb3d	s WATAUAVAWH
+000e0855	x ATAVAWH
+000e08d5	 A_A^A\
+000e08e0	@SUVWATAVAWH
+000e1355	x ATAVAWH
+000e13d5	 A_A^A\
+000e13e0	@USVWATAVAWH
+000e148c	tyfD9 tsH
+000e150d	tHfD9 tB
+000e166a	@A_A^A\_^[]
+000e50da	<1~-<3~ <4t5<5t
+000e6a78	(D$@L9t$ t0H
+000e7824	|$ UATAUAVAWH
+000e8ae1	x ATAVAWH
+000e8dd4	@A_A^A\
+000e9f2c	@USVWATAUAVAWH
+000ea983	 A_A^A]A\_^]
+000eac10	@A_A^A]A\_^]
+000eba77	l$ VWAVH
+000f00ac	@USVWATAUAVAWH
+000f01d8	@USVWATAUAVAWH
+000f02fc	@SUVWATAVAWH
+000f0414	@SUVWATAVAWH
+000f07d8	@SUVWAVAWH
+000f08e8	@SUVWATAVAWH
+000f0a00	@SUVWATAVAWH
+000f0b18	@USVWATAUAVAWH
+000f1954	@USVWAWH
+000f1a44	@USVWAWH
+000f1ac8	@A__^[]
+000f1bf9	x ATAVAWH
+000f1d19	 A_A^A\
+000f1d4d	x ATAVAWH
+000fd3d0	|<@ u&@
+000fe388	|<@ u&@
+00103fa4	@USVWATAVAWH
+001041f4	@USVWATAVAWH
+0010434c	@USVWATAUAVAWH
+00104478	@USVWATAUAVAWH
+0010459c	@SUVWATAVAWH
+001046b4	@SUVWATAVAWH
+00104a78	@SUVWAVAWH
+00104b88	@SUVWATAVAWH
+00104ca0	@SUVWATAVAWH
+00104db8	@USVWATAUAVAWH
+00105008	@USVWATAUAVAWH
+00105134	@USVWATAUAVAWH
+00105258	@SUVWATAVAWH
+00105370	@SUVWATAVAWH
+00105734	@SUVWAVAWH
+00105844	@SUVWATAVAWH
+0010595c	@SUVWATAVAWH
+00105a74	@USVWATAUAVAWH
+001082fb	t$ WAVAWH
+0010839f	t$ WAVAWH
+001084a7	l$ VWAVH
+00108593	l$ VWAVH
+00108805	@A_A^A]A\_^]
+00108935	@A_A^A]A\_^]
+001098e0	@USVWATAUAVAWH
+0010a1a0	@USVWATAUAVAWH
+0010a3ac	@USVWATAVAWH
+0010a4fc	@USVWATAVAWH
+0010bfd5	 A_A^A]A\_
+0010c65d	 A_A^A]A\_
+0010f633	|<8 u!@
+00110e7c	@USVWATAVAWH
+00112570	@USVWATAVAWH
+00112a04	@USVWATAUAVAWH
+00112c40	@USVWATAVAWH
+00112e74	@USVWATAVAWH
+001130ad	p WAVAWH
+001132ef	H+L$ x<H
+0011336d	p WAVAWH
+00113585	l$pH9\$ u
+00113ce5	x ATAVAWH
+00114ad1	x ATAVAWH
+00114c01	@A_A^A\
+00114f7f	 A_A^A]A\_
+001150d1	x ATAVAWH
+00115ad9	x ATAVAWH
+00115c0a	@A_A^A\
+00115f86	 A_A^A]A\_
+001160d9	x ATAVAWH
+00116865	x ATAVAWH
+00116996	@A_A^A\
+00116d12	 A_A^A]A\_
+00116e65	x ATAVAWH
+00117abd	x ATAUAWH
+00117d17	@A_A]A\
+0011ee6b	4i5U6B738%9
+0011f374	qdZRMHD@=;86421/.-+*)(''&%$$#""!!  
+00121c90	 deflate 1.2.8 Copyright 1995-2013 Jean-loup Gailly and Mark Adler 
+00122e40	 inflate 1.2.8 Copyright 1995-2013 Mark Adler 
+00123a40	Reading metadata from %s ...
+00123a60	Failed to read metadata from %s
+00123a88	Stretching the image...
+00123b08	%d %d %d
+00123b38	Fixed dead pixels at:
+00123b90	%s is not a valid PGM file!
+00123bb0	%s has the wrong dimensions!
+00123be0	%s: decoder table overflow
+00123d58	dcraw v9.27
+00123d78	%04d:%02d:%02d %02d:%02d:%02d
+00123d98	Phase One
+00123dd0	%d.%d.%d
+00123df0	%d:%d:%d
+00123e98	N Digital
+00123ef8	Fotoman Pixtura
+00123f70	%d.%d.%d
+00123fa8	ftypqt   
+00123fb8	%d:%d:%d %d:%d:%d
+00124000	 camera
+00124010	Phase One
+00124060	%d-pass X-Trans interpolation...
+001240f0	%s has unknown CAMF type %d.
+00124131	Raw photo decoder "dcraw" v%s
+00124151	by Dave Coffin, dcoffin a cybercom o net
+00124181	Usage:  %s [OPTION]... [FILE]...
+001241a8	-v        Print verbose messages
+001241d8	-c        Write image data to standard output
+00124208	-e        Extract embedded thumbnail image
+00124238	 DIGITAL CAMERA
+00124248	-i        Identify files without decoding them
+00124278	FILE VERSION
+00124288	-i -v     Identify files and show metadata
+001242b8	-z        Change file dates to camera timestamp
+001242e8	-w        Use camera white balance, if possible
+00124318	-a        Average the whole image for white balance
+00124350	-A <x y w h> Average a grey box for white balance
+00124388	-r <r g b g> Set custom white balance
+001243b0	+M/-M     Use/don't use an embedded color matrix
+001243f8	-C <r b>  Correct chromatic aberration
+00124420	-P <file> Fix the dead pixels listed in this file
+00124460	-K <file> Subtract dark frame (16-bit raw PGM)
+00124490	-k <num>  Set the darkness level
+001244c8	-S <num>  Set the saturation level
+00124510	-n <num>  Set threshold for wavelet denoising
+00124540	-H [0-9]  Highlight mode (0=clip, 1=unclip, 2=blend, 3+=rebuild)
+00124598	Digital Camera 
+001245a8	-t [0-7]  Flip image (0=none, 3=180, 5=90CCW, 6=90CW)
+001245e0	-o [0-6]  Output colorspace (raw,sRGB,Adobe,Wide,ProPhoto,XYZ,ACES)
+00124628	-d        Document mode (no color, no interpolation)
+00124660	-D        Document mode without scaling (totally raw)
+00124698	-j        Don't stretch or rotate raw pixels
+001246c8	-W        Don't automatically brighten the image
+00124710	-b <num>  Adjust brightness (default = 1.0)
+00124758	-g <p ts> Set custom gamma curve (default = 2.222 4.5)
+00124798	-q [0-3]  Set the interpolation quality
+001247c8	-h        Half-size color image (twice as fast as "-q 0")
+00124810	-f        Interpolate RGGB as four colors
+00124850	-m <num>  Apply a 3x3 median filter to R-G and B-G
+00124888	-s [0..N-1] Select one raw image or "all" from each file
+001248e0	-6        Write 16-bit instead of 8-bit
+00124930	-4        Linear 16-bit, same as "-6 -W -g 1 1"
+00124980	-T        Write TIFF instead of PPM
+00124ab8	%*s %s %d %d:%d:%d %d
+00124af8	AFi-II 7
+00124b10	Non-numeric argument to "-%c"
+00124bb8	AFi-II 12
+00124c08	v%d %dx%d
+00124ce8	Wavelet denoising...
+00124d18	Unknown option "-%c".
+00124d40	No files to process.
+00124e28	%s: Tail is missing, parsing from head...
+00124e68	%s has no timestamp.
+00124e80	%10ld%10d %s
+00124eb8	%s time set to %d.
+00124ed0	%s has no thumbnail.
+00124f09	Filename: %s
+00124f18	Timestamp: %s
+00124f28	Camera: %s %s
+00124f38	Owner: %s
+00124f50	DNG Version: 
+00124f68	ISO speed: %d
+00124f78	Shutter: 
+00124f88	%0.1f sec
+00124f98	Aperture: f/%0.1f
+00124fb0	Focal length: %0.1f mm
+00124fd8	Embedded ICC profile: %s
+00124ff8	Number of raw images: %d
+00125018	Foveon interpolation...
+00125050	Pixel Aspect Ratio: %0.6f
+00125098	Thumb size:  %4d x %d
+001250c0	Full size:   %4d x %d
+00125110	Cannot decode file %s
+001251c0	Image size:  %4d x %d
+001251d8	Output size: %4d x %d
+00125200	Raw colors: %d
+00125261	Filter pattern: 
+00125299	Daylight multipliers:
+001252c8	%s: Invalid white balance "%s"
+00125301	Camera multipliers:
+00125340	Apple QuickTake
+001253e7	?Canon EOS 5D Mark III
+00125438	Loading %s %s image from %s ...
+00125498	AHD interpolation...
+001254b0	%sRGBNeutral
+001254c0	%s: "-s %d" requests a nonexistent image!
+00125780	Scaling with darkness %d, saturation %d, and
+00125a38	Correcting chromatic aberration...
+00125bc0	standard output
+00125cd0	Writing data to %s ...
+00125e00	%s: Out of memory in %s
+00125e78	CINE 650
+00125e88	CINE 660
+00125eb8	Unexpected end of file
+00125f10	DXO ONE
+00125f18	Digital Photo Professional
+00125f48	Corrupt data near 0x%llx
+00125fa8	Median filter pass %d...
+001260a8	STV680 VGA
+001263a8	Blending highlights...
+00126428	Imacon Ixpress
+001266e8	Micron 2010
+001268a8	N Digital
+00126980	Rebuilding highlights...
+00126a70	Neutral 
+00126a90	%f %f %f
+001271d0	Bilinear interpolation...
+001271f0	Fotoman Pixtura
+00127500	%s: You must link dcraw with %s!!
+001275a0	%s: You must link dcraw with %s!!
+001276b0	PENTAX 
+00127870	VNG interpolation...
+001279d8	Adobe RGB (1998)
+00127a08	WideGamut D65
+00127a38	ProPhoto D65
+00127d48	Red One
+00127d80	DEBUG RAW
+00127db0	auto-generated by dcraw
+00127e90	Building histograms...
+00127eb8	Converting to %s colorspace...
+00128030	PPG interpolation...
+00128228	Rotating image 45 degrees...
+001286c0	unknown error
+00128718	iostream stream error
+001289db	3%A4B5Q678)y&
+00128b40	$21%3874569yWXY(Vx'A)w&Bv
+00128bfd	%,3:;4-&
+0012fc5a	IXUS 160
+0013007a	PC-CAM 600
+00130820	ST Micro
+0013082a	STV680 VGA
+00130bdc	rtnm BGR ZYX
+00130c30	invalid string position
+00130c48	string too long
+00130fe8	Created by PIPP
+00131000	 for writing
+00131520	av_frame_alloc() returned NULL
+00131610	Could not alloc stream
+00131628	codec not found (line %d)
+00131648	pCodec->pix_fmts[%d]: %d
+00131688	could not open codec %d (file: %s, line %d)
+001316b8	Could not open '%s'
+001316d0	Could not write header for output file #%d (incorrect codec paramters ?)
+00131750	codec not found (line %d)
+00131790	could not open codec %d (file: %s, line %d)
+001317c0	Could not open '%s'
+001317e0	Could not write header for output file #%d (incorrect codec paramters ?)
+00131918	Source image files:
+00131940	Processing Details:
+00131958	  Calculated minpixel value: %d
+00131980	Summary:
+001319c8	%s version: %s
+001319d8	  Files not found: %d
+001319f0	  Files with unexpected format: %d
+00131a18	  Total input frames: %d
+00131a38	    Frames discarded for Start Frame option: %d
+00131a70	    Frames discarded for Input Frame Dropping option: %d
+00131ab0	  Frames discarded with no planet detected: %d
+00131ae8	  Frames discarded with partial planet detected: %d
+00131b20	  Frames discarded with no AFB found: %d
+00131b50	  Frames discarded with no AOI found: %d
+00131b80	  Frames discarded with planet diameter below minimum: %d
+00131bc0	  Frames discarded with overexposed pixels: %d
+00131bf0	  Frames discarded by quality: %d
+00131c18	  Frames discarded by output frame drop option: %d
+00131c50	  Total output frames: %d:
+00131c78	  Total unique output frames: %d:
+00131ca0	@MAX_PIXEL=%d
+00131cb0	  Total duplicated output frames: %d:
+00131cd8	  Total output frames: %d:
+00131d10	  Quality Algorithm: PIPP Default
+00131d38	  Quality Algorithm: Old (As taken from Ninox)
+00131d68	  Quality Algorithm: Histogram
+00131d88	  Quality Algorithm: Unknown
+00131da8	  Output Frame Type: 
+00131dc0	Colour split into R, G and B channels
+00131e28	  Output Frame Format: 
+00131e88	  Output Directory: %s
+00131ea0	*** Debug AVI mode ***
+00131eb8	  Processing Details: 
+00131ee0	    Calculated '-minpixel' value: 
+00131f08	@MAX_B_PIXEL=%d
+00131f30	@MAX_G_PIXEL=%d
+00131f50	@MAX_R_PIXEL=%d
+00131f88	  Summary:
+00132008	 version: 
+00132018	@PROGRESS=100
+00132040	    Files not found: 
+00132060	    Files with unexpected format: 
+00132098	    Total input frames: 
+001320d0	    Frames discarded for Start Frame option: %d
+00132110	    Frames discarded for Input Frame Dropping option: %d
+00132160	FATAL ERROR: memory allocation (
+00132198	) failed in main()
+001321b8	    Frames discarded with no planet detected: 
+001321f0	    Frames discarded with partial planet detected: 
+00132228	FATAL ERROR: memory allocation (
+00132250	) failed in main()
+00132268	    Frames discarded with planet diameter below minimum: 
+001322a8	    Total input frames: %d
+001322c8	 (limited by -frames option)
+001322e8	    Frames discarded with no AFB found: 
+00132318	    Frames discarded with no AOI found: 
+00132348	    Frames discarded with overexposed pixels: 
+00132378	    Frames discarded by quality: 
+001323d0	    Frames discarded by output frame drop option: 
+00132408	    Total output frames: 
+00132428	    Total unique output frames: 
+00132488	    Total duplicated output frames: 
+001324b8	@ANIM=%0d
+001324c8	    Total output frames: 
+001324f8	@ANIM=%0d
+00132528	    Quality Algorithm: PIPP Default
+00132558	@ANIM=%0d
+001325a0	@ANIM=%0d
+001325b8	    Quality Algorithm: Old (As taken from Ninox)
+001325f8	@ANIM=%0d
+00132608	    Quality Algorithm: Histogram
+00132630	@QSFRAMESLAB=%d
+00132648	    Quality Algorithm: Unknown
+00132668	  Quality processing:
+00132680	@QSORT=0
+00132690	    Output Frame Type: 
+001326a8	Colour split into R, G and B channels
+001326e0	    Output Frame Format: 
+00132750	    Output Directory: 
+001327a8	Warning: DCRAW could not decode raw image file: 
+001327e0	  %d frames discarded with no object detected
+00132810	  %d frames discarded with object only partially in frame
+00132850	  %d frames discarded with object diameter below minimum
+00132890	@QSORT=%0d
+001328a0	  %d frames discarded with no AFB feature found
+001328d8	  %d frames discarded with no AOI found
+00132908	  %d frames discarded with overexposed pixels
+0013293a	Check the following options have suitable values:
+00132970	  Processing Options->Object Detection Threshold
+001329a8	  Processing Options->Minimunm Object Size
+001329e0	@FNAMELAB=%s
+001329f0	@PFILE=%d
+00132a00	@PFILELAB=File %d of %d
+00132a20	@QSORT=%0d
+00132a30	 frames:
+00132a40	  Processing 
+00132a50	@PROGRESS=0
+00132a68	@PFRAMELAB=%d
+00132a78	@QSFRAMESLAB=0
+00132a88	@QSORT=0
+00132aa0	@ANIM=0
+00132ab0	@PROGRESS=%0d
+00132ad0	 frames:
+00132ae0	  Processing 
+00132af0	Use 'pipp -help' to display help
+00132b18	    00%
+00132b28	Dark frame subtraction cancelled
+00132bb8	Use 'pipp -help' to display help
+00132c88	Flat frame correction cancelled
+00132cb0	@PFILE=0
+00132cc0	@PFILELAB=File 0 of %d
+00132cd8	@FNAMELAB=none
+00132ce8	@ANIM=0
+00132cf8	@QSORT=0
+00132d20	@MAX_B_PIXEL=%d
+00132d38	@MAX_G_PIXEL=%d
+00132d50	@MAX_R_PIXEL=%d
+00132d68	@MAX_PIXEL=%d
+00132d80	FATAL ERROR: memory allocation (
+00132db8	@DETECT_THRESHOLD=%d
+00132e28	@XPOS=%0d
+00132e38	@YPOS=%0d
+00132e48	@FNUM=%0d
+00132e58	@FCNT=%0d
+00132e70	) failed in main()
+00132e90	FATAL ERROR: memory allocation (
+00132eb8	) failed in main()
+00132ed0	    Using %d RAM buffers for quality selection
+00132f08	%s (%s) Quality Log
+00132f3a	%% of Best
+00132f49	Time Offset
+00132f6a	Value  
+00132f80	Processing: (Test Run)
+00132f98	  Input files:
+00133010	Consider enabling frame cropping to make all frames the same size
+001330a0	Processing: (Batch mode)
+001330c0	  Input file:
+001330d8	 images
+001330e0	    Reordered 
+001330f0	Processing: (Join mode)
+00133110	  Input files:
+00133128	 duplicate images for quality weighting
+00133150	    Created 
+00133168	%s (%s) Logfile
+00133180	Command line arguments:
+001331a0	  Estimating input frames:
+00133940	bad locale name
+00133a60	ios_base::badbit set
+00133a78	ios_base::failbit set
+00133a90	ios_base::eofbit set
+00133b68	bad cast
+00133b78	list<T> too long
+00133bd8	FATAL ERROR: memory allocation (
+00133c00	) failed in c_pipp_avi::create_temp_buffer()
+00133c50	Filename: '
+00133d20	%s_%02d%s
+00133e50	frame_count: %d
+00133f88	main_avih_header.micro_sec_per_frame: %d
+00133fb8	main_avih_header.max_bytes_per_sec: %d
+00133fe0	main_avih_header.padding_granularity: %d
+00134010	main_avih_header.flags: 0x%x
+00134030	main_avih_header.total_frames: %d
+00134058	main_avih_header.initial_frames: %d
+00134080	main_avih_header.streams: %d
+001340a0	main_avih_header.suggested_buffer_size: 0x%x
+001340d0	main_avih_header.width: %d
+001340f0	main_avih_header.height: %d
+00134480	bitmap_info_header.size: %d
+001344a0	bitmap_info_header.width: %d
+001344c0	bitmap_info_header.height: %d
+001344e0	bitmap_info_header.planes: %d
+00134500	bitmap_info_header.bit_count: %d
+00134528	bitmap_info_header.compression.u32: 0x%x
+00134558	bitmap_info_header.size_image: %d
+00134580	bitmap_info_header.x_pels_per_meter: %d
+001345b0	bitmap_info_header.y_pels_per_meter: %d
+001345e0	bitmap_info_header.clr_used: %d
+00134608	bitmap_info_header.clr_important: %d
+001348c0	 bpp seen in file: 
+00134948	FATAL ERROR: memory allocation (
+00134970	) failed in c_pipp_bmp::save_mono_file()
+00134b00	FATAL ERROR: memory allocation (
+00134b28	) failed in c_pipp_buffer::get_buffer()
+00134b88	%Y-%m-%d-%H%M_t-
+00134ba0	%d-%b-%Y %H:%M %S
+00134d88	WinJUPOS friendly filename: Cannot be formed
+00134ed0	Remove exception: %d
+00134ee8	Remove exception: %s
+00135428	SIMPLE  
+00135438	 not supported.  Skipping file.
+001354b8	BITPIX  
+00135518	NAXIS   
+00135580	NAXIS1  
+001355d8	NAXIS2  
+00135638	NAXIS3  
+00135698	BZERO   
+001356a8	BSCALE  
+001356b8	END     
+00135750	'%04d-%02d-%02dT%02d:%02d:%02d.%06d'
+00135798	'%s %s'
+00135950	FATAL ERROR: memory allocation (%d) failed in c_pipp_reverse_ordered_list::c_pipp_reverse_ordered_list()
+001359c0	FATAL ERROR: memory allocation (%d) failed in c_pipp_ordered_list::c_pipp_ordered_list()
+00135a20	FATAL ERROR: memory allocation (%d) failed in c_pipp_ordered_list::c_pipp_ordered_list()
+00135a80	FATAL ERROR: memory allocation (%d) failed in c_pipp_ordered_list::c_pipp_ordered_list()
+00135ae0	FATAL ERROR: memory allocation (%d) failed in c_pipp_reverse_ordered_list::c_pipp_reverse_ordered_list()
+00135dd8	%d %d 0
+00135e20	codec not found (line %d)
+00135e60	could not open codec %d (file: %s, line %d)
+00135e90	Could not open '%s'
+00135eb0	Could not write header for output file #%d (incorrect codec paramters ?)
+001363c0	  -colour | -mono
+00136430	    Override colour/monochrome input image autodetection
+00136488	  -rgbsplit | -rgb
+001364b0	    Split colour image into individual R, G, and B files.
+00136538	  -truey800 | -y8
+00136580	    Use true Y800 decoding rather than Imaging Source compatible Y800 decoding.
+001365d0	Quality Options:
+00136618	  -quality | -q
+00136650	    Sort and rename/reorder generated frames by quality.
+001366a8	  -quality=xxxx | -q=xxxx
+00136730	    Sort and rename/reorder generated frames by quality and only keep the bext xxxx frames.
+001367b8	  -qmin=xxxx
+00136838	  -qmax=xxxx
+00136870	    Minimum downsample value for quality estimation.  Default value is 3.
+001368f0	    Maximum downsample value for quality estimation.  Default value is 5.
+00136970	  -qinc=xxxx
+00136a00	    Downsample increment value for quality estimation.  Default value is 1.
+00136a78	  -qweight | -qw
+00136b10	    Enable quality weighting of final frames (experimental).
+00136b90	    This option duplicates each of the top 25% quality frames twice and duplicates each of
+00136bf0	    the next 25% quality frames once.
+00136c78	  -norenumber | -nr
+00136c90	    Therefore a stack with -quality=100 and -qweight will actually generate 1750 output frames.
+00136d28	    Do not renumber/reorder frames in quality order.
+00136d90	  -qold
+00136df8	    Use the original quality algorithm from Ninox.
+00136ec8	  -qhisto
+00136f18	    Use simple histogram based quality algorithm.
+00136f78	File Output Options:
+00136f90	  -drop=x
+00136fa0	    Only output 1 in x frames, drop all other frames.
+00137008	  -outprefix=prefix | -op=prefix
+00137050	    Prefix for the output filename.
+00137098	  -op=suffix
+001370c8	    Suffix for the output filename.
+00137100	  -outdir=directory_path | -od=directory_path
+00137198	    Output directory for generated image frames.
+001371f0	    (If not specified the output directory will be named based on the current
+00137248	    date and time)
+00137278	    Output generated image frames in BMP format.
+001372d8	    Output generated image frames in AVI format.
+001373a0	    Output generated image frames in LuCam recorder SER format.
+001373f8	    (SER file format only supports mono images.)
+00137430	    Speed in frames per second for generated AVI or SER file.
+00137518	Misc Options:
+00137568	  -ini=filename
+001375a0	    Specify an ini file containing command line options.
+00137638	Debug Options:
+00137670	  -debugfind
+00137710	    Debug planet detection algorithm by drawing box around planet.
+001377c8	  -debugavi
+00137810	    Output debug details of AVI files.
+00137980	  pipp [options] input_file(s)
+001379a0	Frame Rejection Options:
+00137a18	  -check | -chk
+00137a28	    Enable checking for planet in image.
+00137a90	  -saverejected | -sr
+00137af0	    Save rejected frames in a rejected directory instead of discarding.
+00137b38	  -minsize=xxxx | -ms=xxxx
+00137b88	    Specify the minimum planet size for planet detection.
+00137c38	  -minpixel=xxxx | -mp=xxxx
+00137c80	    Specify the minimum pixel value for planet detection.
+00137cd0	  -overexposed=xxxx | -oe=xxxx
+00137d30	    Specify the maximum number of overexposed pixels in an image before rejection.
+00137dd8	Processing Options:
+00137df8	histo_wp: %d
+00137e60	  -join | -j
+00137f00	    Join all input files and treat as a single input file (Join mode).
+00137f90	    This disables PIPP's default operation where a processed output file is generated
+00138008	    for each input file (Batch mode).
+00138030	  -frames=xxxx | -f=xxxx
+00138050	    Only process the first xxxx frames.
+00138120	  -centre | -ctr
+00138168	    Enable image centring.
+001381b0	  -crop=xxxx | -c=xxxx
+001381c8	    Specify the x size (width) of the cropped image.
+00138200	    Specify the x and y sizes (width and height) of the cropped image.
+00138248	  -cropx=xxxx | -cx=xxxx
+001382a8	  -cropy=xxxx | -cy=xxxx
+00138318	    Specify the y size (height) of the cropped image.
+00138350	  -offsetx=xxxx | -ox=xxxx
+00138370	    Specify the x offset for the cropped image.
+001383a0	  -offsety=xxxx | -oy=xxxx
+001383e0	    Specify the y offset for the cropped image.
+00138448	  -debayer=x | -db=x
+00138460	    Debayer image using debayer pattern:
+00138490	      0: GBRG  1: BGGR  2: RGGB  3: GRBG
+001384e8	  -smoothhue | -sh
+00138558	  -histostretch | -hs
+00138570	    Use smooth hue debayering algorithm. (slower than the default bi-linear algorithm)
+00138600	    Stretch histogram to maximum pixel value 204 (80% of 255).
+00138640	    This equalises R, G an B histograms on colour images.
+00138680	  -histostretch=xxxx | -hs=xxxx
+00138708	    Stretch histogram to maximum pixel value xxxx (1 to 255).
+00138758	    This equalises R, G an B histograms on colour images.
+00138798	  -histostretch=xx% | -hs=xx%
+001387c0	    Stretch histogram to maximum pixel percentage xx% (1% to 100%).
+00138808	    This equalises R, G an B histograms on colour images.
+0013887f	?SubSample: Unsupported depth %d
+001388d0	FATAL ERROR: memory allocation (
+001388f8	) failed in c_pipp_quality_sort::c_pipp_quality_sort()
+00138970	' is too short to contain SER header
+001389a8	' has a frame count of 0
+001389e0	' is too short to hold all the frames
+00138a20	' has an unsupported bpp value (
+00138a97	@Error: could not open file '
+00138ab8	' for writing
+00138af8	' for writing
+00138b18	Error writing to SER file
+00138b38	Error writing header to SER index file
+00138b60	Error writing header to SER file
+00138d98	%04d-%02d-%02d-%02d%02d_%01d-
+00138e98	Remove temp file exception: %s
+0013a370	Visual C++ CRT: Not enough memory to complete call to strerror.
+0013a3f8	bad allocation
+0013b790	Unknown exception
+0013d188	dddd, MMMM dd, yyyy
+0013e118	No such file or directory
+0013e138	No such process
+0013e148	Interrupted function call
+0013e168	Input/output error
+0013e180	No such device or address
+0013e1a0	Arg list too long
+0013e1b8	Exec format error
+0013e1d0	Bad file descriptor
+0013e1e8	No child processes
+0013e200	Resource temporarily unavailable
+0013e228	Not enough space
+0013e240	Permission denied
+0013e258	Bad address
+0013e268	Unknown error
+0013e278	Resource device
+0013e288	File exists
+0013e298	Improper link
+0013e2a8	No such device
+0013e2b8	Not a directory
+0013e2c8	Is a directory
+0013e2d8	Invalid argument
+0013e2f0	Too many open files in system
+0013e310	Too many open files
+0013e328	Inappropriate I/O control operation
+0013e350	File too large
+0013e360	No space left on device
+0013e378	Invalid seek
+0013e388	Read-only file system
+0013e3a0	Too many links
+0013e3b0	Broken pipe
+0013e3c0	Domain error
+0013e3d0	Result too large
+0013e3e8	Resource deadlock avoided
+0013e408	Filename too long
+0013e420	No locks available
+0013e438	Function not implemented
+0013e458	Directory not empty
+0013e470	Illegal byte sequence
+0013e5df	 !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
+0013e6d0	bad exception
+0013f9a0	 !"#$%&'()*+,-./0123456789:;<=>?@abcdefghijklmnopqrstuvwxyz[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
+0013fb20	 !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`ABCDEFGHIJKLMNOPQRSTUVWXYZ{|}~
+00144300	 delete
+00144600	 delete[]
+001447f8	 Type Descriptor'
+00144810	 Base Class Descriptor at (
+00144830	 Base Class Array'
+00144848	 Class Hierarchy Descriptor'
+00144868	 Complete Object Locator'
+001449f0	static 
+001449f8	virtual 
+00144a08	private: 
+00144a18	protected: 
+00144a28	public: 
+00144a38	[thunk]:
+00144a48	extern "C" 
+00144a78	unsigned 
+00144ae0	 throw(
+00144b80	signed 
+00144b90	 volatile
+00144bb8	struct 
+00144bc8	coclass 
+00144bd8	cointerface 
+00144bf0	volatile 
+00145100	bad function call
+00146050	permission denied
+00146068	file exists
+00146078	no such device
+00146088	filename too long
+001460a0	device or resource busy
+001460b8	io error
+001460c8	directory not empty
+001460e0	invalid argument
+001460f8	no space on device
+00146110	no such file or directory
+00146130	function not supported
+00146148	no lock available
+00146160	not enough memory
+00146178	resource unavailable try again
+00146198	cross device link
+001461b0	operation canceled
+001461c8	too many files open
+00146490	address family not supported
+001464b0	address in use
+001464c0	address not available
+001464d8	already connected
+001464f0	argument list too long
+00146508	argument out of domain
+00146520	bad address
+00146530	bad file descriptor
+00146548	bad message
+00146558	broken pipe
+00146568	connection aborted
+00146580	connection already in progress
+001465a0	connection refused
+001465b8	connection reset
+001465d0	destination address required
+001465f0	executable format error
+00146608	file too large
+00146618	host unreachable
+00146630	identifier removed
+00146648	illegal byte sequence
+00146660	inappropriate io control operation
+00146688	invalid seek
+00146698	is a directory
+001466a8	message size
+001466b8	network down
+001466c8	network reset
+001466d8	network unreachable
+001466f0	no buffer space
+00146700	no child process
+00146718	no link
+00146720	no message available
+00146738	no message
+00146748	no protocol option
+00146760	no stream resources
+00146778	no such device or address
+00146798	no such process
+001467a8	not a directory
+001467b8	not a socket
+001467c8	not a stream
+001467d8	not connected
+001467e8	not supported
+001467f8	operation in progress
+00146810	operation not permitted
+00146828	operation not supported
+00146840	operation would block
+00146858	owner dead
+00146868	protocol error
+00146878	protocol not supported
+00146890	read only file system
+001468a8	resource deadlock would occur
+001468c8	result out of range
+001468e0	state not recoverable
+001468f8	stream timeout
+00146908	text file busy
+00146918	timed out
+00146928	too many files open in system
+00146948	too many links
+00146958	too many symbolic link levels
+00146978	value too large
+00146988	wrong protocol type
+00149148	%b %d %H : %M : %S %Y
+00149160	%m / %d / %y
+00149180	%I : %M : %S %p
+00149190	%H : %M
+00149198	%H : %M : S
+001491a8	%d / %m / %y
+001492c0	+v$x+v$xv$+xv+$xv$+x+$vx+$vx$v+x+$vx$+vx+v $+v $v $+v +$v $++$ v+$ v$ v++$ v$+ v+xv$+ v$v$ +v+ $v$ ++x$v+ $v$v ++ $v$ +v
+00167800	inconsistent chromaticities
+00167820	invalid chromaticities
+00167838	internal error checking chromaticities
+00167860	invalid end points
+00167878	internal error checking chromaticities
+001678a0	profile '
+001678b8	invalid sRGB rendering intent
+001678e0	inconsistent rendering intents
+00167908	duplicate sRGB information ignored
+00167950	too short
+00167960	length does not match profile
+00167980	invalid length
+00167990	tag count too large
+001679a8	invalid rendering intent
+001679c8	intent outside defined range
+001679e8	invalid signature
+00167a00	PCS illuminant is not D50
+00167a20	RGB color space not permitted on grayscale PNG
+00167a50	Gray color space not permitted on RGB PNG
+00167a80	invalid ICC profile color space
+00167aa0	invalid embedded Abstract ICC profile
+00167ac8	unexpected DeviceLink ICC profile class
+00167af0	unexpected NamedColor ICC profile class
+00167b18	unrecognized ICC profile class
+00167b38	unexpected ICC PCS encoding
+00167ba8	known incorrect sRGB profile
+00167bc8	out-of-date sRGB profile with no signature
+00167bf8	Not recognizing known sRGB profile that has been edited
+00167c30	internal error handling cHRM coefficients
+00167c60	internal error handling cHRM->XYZ
+00167c88	Image width is zero in IHDR
+00167ca8	Invalid image width in IHDR
+00167cc8	Image width is too large for this architecture
+00167cf8	Image width exceeds user limit in IHDR
+00167d20	Image height is zero in IHDR
+00167d40	Invalid image height in IHDR
+00167d60	Too many bytes for PNG signature
+00167d88	Image height exceeds user limit in IHDR
+00167db0	Invalid bit depth in IHDR
+00167dd0	Invalid color type in IHDR
+00167df0	Invalid color type/bit depth combination in IHDR
+00167e28	Unknown interlace method in IHDR
+00167e50	Unknown compression method in IHDR
+00167e78	MNG features are not allowed in a PNG datastream
+00167eb0	Unknown filter method in IHDR
+00167ed0	Invalid filter method in IHDR
+00167ef0	Invalid IHDR data
+00167f08	Potential overflow in png_zalloc()
+00167f38	Application built with libpng-
+00167f58	 but running with 
+00167f78	Unknown freer parameter in png_data_freer
+00167fa8	ASCII conversion buffer too small
+00167fd0	ASCII conversion buffer too small
+00167ff8	fixed point overflow ignored
+00168020	Ignoring invalid time value
+00168040	libpng version 1.6.21 - January 15, 2016      Copyright (c) 1998-2002,2004,2006-2016 Glenn Randers-Pehrson      Copyright (c) 1996-1997 Andreas Dilger      Copyright (c) 1995-1996 Guy Eric Schalnat, Group 42, Inc.
+00168120	 libpng version 1.6.21 - January 15, 2016
+00168150	unexpected zlib return code
+00168170	unexpected end of LZ stream
+00168190	missing LZ dictionary
+001681b8	bad parameters to zlib
+001681d0	damaged LZ stream
+001681e8	insufficient memory
+00168210	unsupported zlib version
+00168230	unexpected zlib return
+00168248	gamma value does not match sRGB
+00168268	gamma value does not match libpng estimate
+00168298	gamma value out of range
+001682c8	gamma table being rebuilt
+001682e8	fixed point overflow in 
+00168308	Libpng jmp_buf still allocated
+00168328	Application jmp_buf size changed
+00168360	libpng error: %s
+00168378	libpng warning: %s
+00168390	bad longjmp: 
+001683c0	internal error: array alloc
+001683e0	internal error: array realloc
+00168400	Out of memory
+00168410	Out of Memory
+00168420	Out of memory
+00168480	Not a PNG file
+00168490	PNG file corrupted by ASCII conversion
+001684b8	Missing IHDR before IDAT
+001684d8	Missing PLTE before IDAT
+001684f8	Too many IDATs found
+00168510	Invalid IHDR length
+00168528	Potential overflow of save_buffer
+00168550	Insufficient memory for save_buffer
+00168578	Not enough compressed data
+00168598	No IDAT data (internal error)
+001685b8	Truncated compressed data in IDAT
+001685e0	Decompression error in IDAT
+00168600	Extra compressed data in IDAT
+00168620	Extra compression data in IDAT
+00168640	bad adaptive filter value
+00168660	progressive row overflow
+00168680	internal progressive row size calculation error
+00168708	unexpected alpha swap transformation
+00168758	Image is too high to process with png_read_png()
+00168960	read beyond end of data
+00168978	invalid memory read
+00168a08	color-map index out of range
+00168a28	bad encoding (internal error)
+00168a50	a background color must be supplied to remove alpha/transparency
+00168a98	gray[8] color-map: too few entries
+00168ac0	gray[16] color-map: too few entries
+00168ae8	gray+alpha color-map: too few entries
+00168b10	Missing IHDR before IDAT
+00168b30	gray-alpha color-map: too few entries
+00168b58	Missing PLTE before IDAT
+00168b78	Too many IDATs found
+00168b90	ga-alpha color-map: too few entries
+00168bb8	rgb[ga] color-map: too few entries
+00168be0	rgb[gray] color-map: too few entries
+00168c08	rgb+alpha color-map: too few entries
+00168c30	rgb-alpha color-map: too few entries
+00168c58	rgb color-map: too few entries
+00168c78	palette color-map: too few entries
+00168ca0	invalid PNG color type
+00168cb8	color map overflow (BAD internal error)
+00168ce0	bad processing option (internal error)
+00168d08	bad background index (internal error)
+00168db0	unknown interlace type
+00168dc8	Invalid attempt to read row data
+00168df0	bad adaptive filter value
+00168e10	sequential row overflow
+00168e28	internal sequential row size calculation error
+00168e58	bad color-map processing (internal error)
+00168e88	unknown interlace type
+00168ea0	Interlace handling should be turned on when using png_read_image
+00168ee8	lost rgb to gray
+00168f00	unexpected compose
+00168f18	lost/gained channels
+00168f30	unexpected 8-bit transformation
+00168f50	Read palette index exceeding num_palette
+00168f80	unknown interlace type
+00168f98	Too many IDATs found
+00168fb0	Too many IDATs found
+00168fd0	Call to NULL read function
+00168ff0	Read Error
+00169000	Can't set both read_data_fn and write_data_fn in the same structure
+00169048	rgb to gray green coefficient
+00169068	rgb to gray red coefficient
+00169088	libpng does not support gamma+background+rgb_to_gray
+001690c0	invalid background gamma type
+001690e0	Palette is NULL in indexed image
+00169130	Can't discard critical data on CRC error
+00169160	invalid after png_start_read_image or png_read_update_info
+001691a0	invalid before the PNG header has been read
+001691d0	Application must supply a known background gamma
+00169220	gamma value
+00169230	output gamma out of expected range
+00169258	invalid alpha mode
+00169270	NULL row buffer
+00169280	Uninitialized row
+00169298	conflicting calls to set alpha mode and background
+00169348	invalid file gamma in png_set_gamma
+00169370	invalid screen gamma in png_set_gamma
+00169398	invalid error action to rgb_to_gray
+001693c0	ignoring out of range rgb_to_gray coefficients
+001693f0	invalid values
+00169410	missing IHDR
+00169420	out of place
+00169438	too many profiles
+00169450	missing IHDR
+00169460	out of place
+00169470	too short
+00169480	extra compressed data
+00169498	extra compressed data
+001694b0	out of memory
+001694d0	out of memory
+001694e0	bad compression method
+001694f8	bad keyword
+00169508	too many profiles
+00169520	No space in chunk cache for sPLT
+00169550	missing IHDR
+00169560	out of place
+00169570	out of memory
+00169580	malformed sPLT chunk
+001695f8	missing IHDR
+00169608	out of place
+00169638	out of place
+00169650	invalid with alpha channel
+00169670	missing IHDR
+00169680	out of place
+00169690	Not enough image data
+001696c0	invalid index
+001696d0	Extra compressed data
+001696e8	Not enough image data
+00169700	Too much image data
+00169718	missing IHDR
+00169728	out of place
+00169750	missing IHDR
+00169760	out of place
+00169788	missing IHDR
+00169798	out of place
+001697c0	Row has too many bytes to allocate in memory
+001697f0	missing IHDR
+00169800	out of place
+00169820	out of memory
+00169838	invalid parameter count
+00169850	unrecognized equation type
+00169870	out of memory
+00169880	invalid data
+00169890	missing IHDR
+001698a0	out of place
+001698c8	out of memory
+001698d8	invalid unit
+001698e8	bad width format
+00169900	PNG unsigned integer out of range
+00169928	non-positive width
+00169940	bad height format
+00169958	non-positive height
+00169970	PNG fixed point integer out of range
+00169998	missing IHDR
+001699c0	Not a PNG file
+001699d0	no space in chunk cache
+001699e8	PNG file corrupted by ASCII conversion
+00169a10	missing IHDR
+00169a20	out of memory
+00169a30	Insufficient memory to process text chunk
+00169a60	no space in chunk cache
+00169a78	missing IHDR
+00169a88	CRC error
+00169a98	CRC error
+00169aa8	out of memory
+00169ab8	bad keyword
+00169ad8	unknown compression type
+00169af8	insufficient memory
+00169b10	insufficient memory to read chunk
+00169b38	insufficient memory to read chunk
+00169b60	no space in chunk cache
+00169b78	missing IHDR
+00169b88	out of memory
+00169b98	bad keyword
+00169bb8	 using zstream
+00169bd8	insufficient memory
+00169bf0	bad compression info
+00169c08	zstream unclaimed
+00169c20	unknown chunk exceeds memory limits
+00169c48	error in user chunk
+00169c60	Saving unknown chunk:
+00169c78	extra compressed data
+00169c90	forcing save of an unhandled chunk; please call png_set_keep_unknown_chunks
+00169ce0	no space in chunk cache
+00169cf8	unhandled critical chunk
+00169d18	invalid chunk type
+00169d30	zstream unclaimed
+00169d48	internal row logic error
+00169d68	out of place
+00169d80	internal row size calculation error
+00169da8	internal row width error
+00169dc8	invalid user transform pixel depth
+00169df0	missing IHDR
+00169e10	out of place
+00169e20	ignored in grayscale PNG
+00169e98	out of place
+00169eb0	missing IHDR
+00169ec0	out of place
+00169ed8	missing IHDR
+00169ee8	out of place
+00169f18	missing IHDR
+00169f28	out of place
+00169f40	Invalid iCCP compression method
+00169f60	Insufficient memory to process iCCP chunk
+00169f90	Insufficient memory to process iCCP profile
+00169fc0	Insufficient memory to store text
+00169fe8	too many text chunks
+0016a000	text compression mode is out of range
+0016a028	text chunk: out of memory
+0016a048	Ignoring invalid time value
+0016a0a0	too many sPLT chunks
+0016a128	invalid location in png_set_unknown_chunks
+0016a158	too many unknown chunks
+0016a170	unknown chunk: out of memory
+0016a190	invalid unknown chunk location
+0016a240	invalid compression buffer size
+0016a260	Compression buffer size cannot be changed because it is in use
+0016a2a0	Compression buffer size limited to system maximum
+0016a2d8	Compression buffer size cannot be reduced below 6
+0016a310	keyword truncated
+0016a328	keyword "@1": bad character '0x@2'
+0016a470	Invalid palette size, hIST allocation skipped
+0016a4a0	Insufficient memory for hIST chunk data
+0016a4c8	Invalid pCAL equation type
+0016a4e8	Invalid pCAL parameter count
+0016a508	Invalid format for pCAL parameter
+0016a530	Insufficient memory for pCAL purpose
+0016a558	Insufficient memory for pCAL units
+0016a580	Insufficient memory for pCAL params
+0016a5a8	Insufficient memory for pCAL parameter
+0016a5d0	Invalid sCAL unit
+0016a5e8	Invalid sCAL width
+0016a600	Invalid sCAL height
+0016a618	Memory allocation failed while processing sCAL
+0016a648	Memory allocation failed while processing sCAL
+0016a678	Invalid sCAL width ignored
+0016a698	Invalid sCAL height ignored
+0016a6b8	Invalid sCAL width ignored
+0016a6d8	Invalid sCAL height ignored
+0016a6f8	Invalid palette length
+0016a710	Invalid palette length
+0016a728	Invalid palette
+0016a7a0	info change after png_start_read_image or png_read_update_info
+0016a7e0	Call to NULL write function
+0016a800	Write Error
+0016a810	Can't set both read_data_fn and write_data_fn in the same structure
+0016a858	Only compression windows <= 32k supported by PNG
+0016a890	Only compression windows >= 256 supported by PNG
+0016a8d0	Only compression method 8 is supported by PNG
+0016a900	no rows for png_write_image to write
+0016a928	PNG_TRANSFORM_STRIP_FILLER: BEFORE+AFTER not supported
+0016a9a8	no color-map for color-mapped image
+0016aad0	Writing zero-length unknown chunk
+0016aaf8	MNG features are not allowed in a PNG datastream
+0016ab30	profile matches sRGB but writing iCCP instead
+0016ab60	Valid palette required for paletted images
+0016ab90	No IDATs written into file
+0016abb0	Wrote palette index exceeding num_palette
+0016ac18	internal write transform logic error
+0016ac40	Unknown row filter for method 0
+0016aca0	Unknown custom filter method
+0016acc0	Only compression windows <= 32k supported by PNG
+0016acf8	Only compression windows >= 256 supported by PNG
+0016ad30	Only compression method 8 is supported by PNG
+0016ad60	Invalid sRGB rendering intent specified
+0016ad88	No profile for iCCP chunk
+0016ae00	Profile length does not match profile
+0016ae58	Invalid sBIT depth specified
+0016ae78	Invalid sBIT depth specified
+0016ae98	Invalid sBIT depth specified
+0016aeb8	Invalid number of transparent colors specified
+0016aee8	Can't write tRNS with an alpha channel
+0016af10	Ignoring attempt to write tRNS chunk out-of-range for bit_depth
+0016af50	Ignoring attempt to write 16-bit tRNS chunk when bit_depth is 8
+0016af90	Invalid background palette index
+0016afb8	Invalid number of histogram entries specified
+0016b000	Ignoring attempt to write 16-bit bKGD chunk when bit_depth is 8
+0016b040	Ignoring attempt to write bKGD chunk out-of-range for bit_depth
+0016b130	Unrecognized unit type for oFFs chunk
+0016b158	Unrecognized equation type for pCAL chunk
+0016b1a0	Can't write sCAL (buffer too small)
+0016b1c8	Unrecognized unit type for pHYs chunk
+0016b1f0	Invalid time specified for tIME chunk
+0016b218	length exceeds PNG maximum
+0016b238	 using zstream
+0016b248	in use by IDAT
+0016b278	compressed data too long
+0016b298	error writing ancillary chunked compressed data
+0016b2c8	Invalid bit depth for grayscale image
+0016b2f0	Invalid bit depth for RGB image
+0016b310	Invalid bit depth for paletted image
+0016b338	Invalid bit depth for grayscale+alpha image
+0016b368	Invalid bit depth for RGBA image
+0016b390	Invalid image color type specified
+0016b3b8	Invalid compression type specified
+0016b3e0	Invalid filter type specified
+0016b400	Invalid interlace type specified
+0016b428	Invalid number of colors in palette
+0016b450	Invalid number of colors in palette
+0016b478	Ignoring request to write a PLTE chunk in grayscale PNG
+0016b4b0	Z_OK on Z_FINISH with output space
+0016b4e0	out of memory
+0016b500	<fd:%d>
+0016b508	out of room to push characters
+0016b528	out of memory
+0016b540	out of memory
+0016b550	unexpected end of file
+0016b568	internal error: inflate stream corrupt
+0016b590	out of memory
+0016b5a0	compressed data error
+0016b5b8	requested length does not fit in int
+0016b5e0	out of memory
+0016b5f0	out of memory
+0016b608	out of memory
+0016b618	internal error: deflate stream corrupt
+0016b640	requested length does not fit in int
+0016b668	invalid block type
+0016b680	invalid stored block lengths
+0016b6a0	too many length or distance symbols
+0016b6c8	invalid code lengths set
+0016b6f0	invalid bit length repeat
+0016b710	invalid bit length repeat
+0016b730	invalid code -- missing end-of-block
+0016b758	invalid literal/lengths set
+0016b778	invalid distances set
+0016b790	invalid literal/length code
+0016b7b0	invalid distance code
+0016b7c8	invalid distance too far back
+0016b7e8	invalid distance code
+0016b800	invalid literal/length code
+0016b820	invalid distance too far back
+0016b840	incorrect header check
+0016b858	unknown compression method
+0016b878	invalid window size
+0016b890	unknown compression method
+0016b8b0	unknown header flags set
+0016b8d8	header crc mismatch
+0016b8f0	invalid block type
+0016b908	invalid stored block lengths
+0016b928	too many length or distance symbols
+0016b950	invalid code lengths set
+0016b970	invalid bit length repeat
+0016b990	invalid bit length repeat
+0016b9b0	invalid code -- missing end-of-block
+0016b9d8	invalid literal/lengths set
+0016b9f8	invalid distances set
+0016ba10	invalid literal/length code
+0016ba30	invalid distance code
+0016ba48	invalid distance too far back
+0016ba68	incorrect data check
+0016ba80	incorrect length check
+0016bb00	need dictionary
+0016bb10	stream end
+0016bb20	file error
+0016bb30	stream error
+0016bb40	data error
+0016bb50	insufficient memory
+0016bb68	buffer error
+0016bb78	incompatible version
+0016cf02	                          
+0016d12a	                          
+0017ca60	<?xml version='1.0' encoding='UTF-8' standalone='yes'?>
+0017ca99	<assembly xmlns='urn:schemas-microsoft-com:asm.v1' manifestVersion='1.0'>
+0017cae4	  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+0017cb1c	    <security>
+0017cb2c	      <requestedPrivileges>
+0017cb49	        <requestedExecutionLevel level='asInvoker' uiAccess='false' />
+0017cb91	      </requestedPrivileges>
+0017cbaf	    </security>
+0017cbc0	  </trustInfo>

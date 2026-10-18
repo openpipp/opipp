@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Pipp.App/Pipp.App.csproj" />
+    <Project Path="src/Pipp.Cli/Pipp.Cli.csproj" />
+    <Project Path="src/Pipp.Core/Pipp.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Pipp.Avi.Tests/Pipp.Avi.Tests.csproj" />
+    <Project Path="tests/Pipp.Cli.Tests/Pipp.Cli.Tests.csproj" />
+    <Project Path="tests/Pipp.Core.Tests/Pipp.Core.Tests.csproj" />
+    <Project Path="tests/Pipp.Fits.Tests/Pipp.Fits.Tests.csproj" />
+    <Project Path="tests/Pipp.Image.Tests/Pipp.Image.Tests.csproj" />
+    <Project Path="tests/Pipp.Images.Tests/Pipp.Images.Tests.csproj" />
+    <Project Path="tests/Pipp.Ser.Tests/Pipp.Ser.Tests.csproj" />
+  </Folder>
+</Solution>

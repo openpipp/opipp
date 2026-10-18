@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Pipp.Core\Pipp.Core.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- Ported from the decompiled PIPP 2.5 UI: the original PIPP_Application namespace is kept so the
+         designer files and ComponentResourceManager(typeof(...)) resource lookups stay unchanged. -->
+    <RootNamespace>PIPP_Application</RootNamespace>
+    <AssemblyName>Pipp.App</AssemblyName>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- The decompiled code predates nullable reference types; keep the original semantics. -->
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <PlatformTarget>x64</PlatformTarget>
+    <NoWarn>$(NoWarn);SYSLIB0014</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Strongly typed resources (PIPP_Application.Properties.Resources). -->
+    <EmbeddedResource Update="Properties\Resources.resx" LogicalName="PIPP_Application.Properties.Resources.resources" />
+    <!-- Ruler bitmap, embedded with the same logical name the original PIPP.csproj used. -->
+    <EmbeddedResource Include="h_ruler_x1.png" LogicalName="PIPP_Application.Resources.h_ruler_x1.png" />
+  </ItemGroup>
+
+</Project>

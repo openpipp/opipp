@@ -1,0 +1,339 @@
+Error: Illegal input gain value (
+-gamma=
+Error: Illegal gamma value (
+-median
+  -colour | -mono
+-check
+-ser_bpp=
+Error: Illegal ser_bpp value
+-truey800
+-chk
+-crop=
+    Override colour/monochrome input image autodetection
+-shdw=
+-saverejected
+  -rgbsplit | -rgb
+-no_ram_buff
+    Split colour image into individual R, G, and B files.
+-qmin=
+-db_type=
+-qmax=
+Error: Illegal debayer_type value
+  -truey800 | -y8
+-qinc=
+-centre
+-center
+-ctr
+-convmono=
+    Use true Y800 decoding rather than Imaging Source compatible Y800 decoding.
+Quality Options:
+-ini=
+  -bmp
+Error: Illegal conv_mono value
+  -quality | -q
+-rgbsplit
+-rgb
+-fits
+  -avi
+    Sort and rename/reorder generated frames by quality.
+  -ser
+-flip_x
+-flip_y
+  -quality=xxxx | -q=xxxx
+  -fps
+-rotate90
+Usage:
+-rotate180
+-rotate270
+-cropx=
+Error: Illegal crop x value
+    Sort and rename/reorder generated frames by quality and only keep the bext xxxx frames.
+-cx=
+Error: Illegal crop x value
+  -qmin=xxxx
+-cropy=
+Error: Illegal crop y value
+-cy=
+Error: Illegal crop y value
+Error: Illegal crop value
+  -qmax=xxxx
+Error: Illegal offet x value
+-ox=
+    Minimum downsample value for quality estimation.  Default value is 3.
+Error: Illegal crop value
+-offsetx=
+    Maximum downsample value for quality estimation.  Default value is 5.
+Error: Illegal offet x value
+-offsety=
+  -qinc=xxxx
+Error: Illegal offet y value
+-oy=
+Error: Illegal offet y value
+Error: Illegal edge in shadow value
+-minsize=
+    Downsample increment value for quality estimation.  Default value is 1.
+Error: Illegal minsize value
+-ms=
+  -qweight | -qw
+Error: Illegal minsize value
+-minpixel=
+Error: Illegal minpixel value
+-sdp
+-mp=
+Error: Illegal minpixel value
+    Enable quality weighting of final frames (experimental).
+-dark_tmp=
+Error: Illegal dark TMP file
+-dark_pgm=
+    This option duplicates each of the top 25% quality frames twice and duplicates each of
+    the next 25% quality frames once.
+Error: Illegal dark PGM file
+-flat_tmp=
+Error: Illegal flat TMP file
+-flat_dark_tmp=
+  -norenumber | -nr
+    Therefore a stack with -quality=100 and -qweight will actually generate 1750 output frames.
+Error: Illegal flat dark TMP file
+-outdir=
+    Do not renumber/reorder frames in quality order.
+Error: Illegal output directory
+-od=
+  -qold
+Error: Illegal output directory
+-osubdir=
+Error: Illegal output subdirectory
+    Use the original quality algorithm from Ninox.
+-outprefix=
+Error: Illegal output filename prefix
+-op=
+Error: Illegal output filename prefix
+-os=
+Error: Illegal output filename suffix
+  -qhisto
+-quality
+-quality=
+Error: Illegal quality value
+    Use simple histogram based quality algorithm.
+Error: Illegal quality value
+-qpcnt=
+File Output Options:
+  -drop=x
+    Only output 1 in x frames, drop all other frames.
+Error: Illegal quality percentage value
+  -outprefix=prefix | -op=prefix
+Error: Illegal qmin value
+    Prefix for the output filename.
+Error: Illegal qmax value
+  -op=suffix
+Error: Illegal qinc value
+    Suffix for the output filename.
+-qweight
+  -outdir=directory_path | -od=directory_path
+-overexposed=
+Error: Illegal overexposed value
+-oe=
+Error: Illegal overexposed value
+    Output directory for generated image frames.
+Error: -ini value
+-bmp
+    (If not specified the output directory will be named based on the current
+-tif
+    date and time)
+-png
+-gif
+-avi
+    Output generated image frames in BMP format.
+-ser
+-auto_fps
+-fps_rate=
+    Output generated image frames in AVI format.
+Error: Illegal fps_rate value
+-fps_scale=
+Error: Illegal fps_scale value
+-avi_old
+-avi_old4
+-avi_safe_width
+-anim_fwd
+    Output generated image frames in LuCam recorder SER format.
+-anim_fwd_lf_rep=
+    (SER file format only supports mono images.)
+    Speed in frames per second for generated AVI or SER file.
+Error: Illegal anim_fwd_lf_rep value
+-anim_rev
+-anim_rev_lf_rep=
+Error: Illegal anim_rev_lf_rep value
+-anim_all_rep_always
+-gif_quant_type=
+Misc Options:
+Error: Illegal gif_quant_type value
+-gif_border_tol=
+  -ini=filename
+Error: Illegal gif_border_tol value
+    Specify an ini file containing command line options.
+-gif_trns_pxl_tol=
+Error: Illegal gif_trns_pxl_tol value
+-gif_col_tbl_depth=
+Debug Options:
+Error: Illegal gif_col_tbl_depth value
+  -debugfind
+-gif_lossy_comp=
+Error: Illegal gif_lossy_comp value
+-anim_all_rep=
+Error: Illegal anim_all_rep value
+-no_anim_rev_last_rep
+    Debug planet detection algorithm by drawing box around planet.
+-avi_codec=
+Error: Illegal avi_codec value
+-avi_quality=
+Error: Illegal avi_quality value
+-test
+  -debugavi
+Error: could not open ini file '
+-debugavi
+    Output debug details of AVI files.
+-wjpos_time=
+Error: Illegal WinJUPOS time value
+-wjpos_dtmask=
+Error: Illegal WinJUPOS data/time mask
+-wjpos_lt2ut
+-wjpos_ipfps=
+Error: Illegal WinJUPOS input fps value
+Error: unknown argument '
+Error: qmax must be greater or equal to qmin
+-help
+-test_run
+-gui
+-join
+-debayer=
+  pipp [options] input_file(s)
+Frame Rejection Options:
+Error: Illegal debayer value
+-db=
+Error: Illegal debayer value
+-ctrf
+-sf=
+  -check | -chk
+    Enable checking for planet in image.
+Error: Illegal start frame value
+-frames=
+  -saverejected | -sr
+Error: Illegal frames value
+Error: Illegal frames value
+-ifd=
+    Save rejected frames in a rejected directory instead of discarding.
+  -minsize=xxxx | -ms=xxxx
+Error: Illegal input frame drop value
+-drop=
+    Specify the minimum planet size for planet detection.
+Error: Illegal drop value
+-bin=
+Error: Illegal binning value
+-bin_sum
+-bin_average
+-mono
+  -minpixel=xxxx | -mp=xxxx
+-keepimgname
+-norenumber
+-qold
+    Specify the minimum pixel value for planet detection.
+-qhisto
+-qtotal
+  -overexposed=xxxx | -oe=xxxx
+-nlz
+-incqv
+-colour
+-color
+-histostretch
+-histostretch=
+    Specify the maximum number of overexposed pixels in an image before rejection.
+Error: Illegal histostretch value
+Error: Illegal histostretch value
+Processing Options:
+-hs=
+histo_wp: %d
+Error: Illegal histostretch value
+Error: Illegal histostretch value
+-hsrgb
+  -join | -j
+-hs_bp
+-raw_hpf
+-raw_db=
+Error: Illegal Raw Image File Debayer value
+Error: Illegal Raw Output Colour Space value
+-dark
+    Join all input files and treat as a single input file (Join mode).
+-raw_ocs=
+-save_dark
+-flat
+-save_flat
+-flat_dark
+    This disables PIPP's default operation where a processed output file is generated
+-save_flat_dark
+-hot_pixel=
+    for each input file (Batch mode).
+  -frames=xxxx | -f=xxxx
+    Only process the first xxxx frames.
+Error: Illegal hot pixel threshold value
+-dark_bayer
+-flat_bayer
+-en_surface_feature_tracking
+-en_ss
+-afb_x=
+Error: AFB X position value
+-afb_y=
+  -centre | -ctr
+Error: AFB Y position value
+-afb_width=
+    Enable image centring.
+Error: AFB width value
+-afb_height=
+  -crop=xxxx | -c=xxxx
+    Specify the x size (width) of the cropped image.
+    Specify the x and y sizes (width and height) of the cropped image.
+  -cropx=xxxx | -cx=xxxx
+Error: AFB height value
+-freject
+-temp_dir=
+  -cropy=xxxx | -cy=xxxx
+Error: Illegal temp directory
+-aoi
+-aoi_reject
+-aoi_crop
+-aoi_x=
+    Specify the y size (height) of the cropped image.
+  -offsetx=xxxx | -ox=xxxx
+    Specify the x offset for the cropped image.
+  -offsety=xxxx | -oy=xxxx
+Error: Invalid aoi_x value: 
+    Specify the y offset for the cropped image.
+-aoi_y=
+Error: Invalid aoi_y value: 
+-aoi_width=
+  -debayer=x | -db=x
+    Debayer image using debayer pattern:
+      0: GBRG  1: BGGR  2: RGGB  3: GRBG
+Error: Invalid aoi_width value: 
+  -smoothhue | -sh
+-aoi_height=
+Error: Invalid aoi_height value: 
+-resize_en
+-resize_width=
+  -histostretch | -hs
+    Use smooth hue debayering algorithm. (slower than the default bi-linear algorithm)
+Error: Invalid resize_width value: 
+-resize_height=
+    Stretch histogram to maximum pixel value 204 (80% of 255).
+    This equalises R, G an B histograms on colour images.
+  -histostretch=xxxx | -hs=xxxx
+Error: Invalid resize_height value: 
+-raw_hl=
+Error: Illegal raw higlight recovery value
+    Stretch histogram to maximum pixel value xxxx (1 to 255).
+-input_gain=
+    This equalises R, G an B histograms on colour images.
+  -histostretch=xx% | -hs=xx%
+    Stretch histogram to maximum pixel percentage xx% (1% to 100%).
+    This equalises R, G an B histograms on colour images.
+?SubSample: Unsupported depth %d
+FATAL ERROR: memory allocation (
+) failed in c_pipp_quality_sort::c_pipp_quality_sort()

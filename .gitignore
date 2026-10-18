@@ -1,0 +1,21 @@
+# Build output
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.suo
+.vs/
+
+# Reference artefacts: original binaries and reversed source. Never commit or publish these.
+/PIPP-RE/bin/
+/bin/
+/decompiled/
+/ghidra/
+
+# Parity harness scratch and outputs
+/parity/
+*.raw
+
+# Local tooling
+.dotnet-sdk/

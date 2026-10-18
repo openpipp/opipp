@@ -1,0 +1,127 @@
+switch,status,evidence
+-afb_height,parsed-only,"parsed, no effect yet"
+-afb_width,parsed-only,"parsed, no effect yet"
+-afb_x,parsed-only,"parsed, no effect yet"
+-afb_y,parsed-only,"parsed, no effect yet"
+-anim_all_rep,parsed-only,"parsed, no effect yet"
+-anim_all_rep_always,parsed-only,"parsed, no effect yet"
+-anim_fwd,parsed-only,"parsed, no effect yet"
+-anim_fwd_lf_rep,parsed-only,"parsed, no effect yet"
+-anim_rev,parsed-only,"parsed, no effect yet"
+-anim_rev_lf_rep,parsed-only,"parsed, no effect yet"
+-aoi,parsed-only,"parsed, no effect yet"
+-aoi_crop,parsed-only,"parsed, no effect yet"
+-aoi_height,parsed-only,"parsed, no effect yet"
+-aoi_reject,parsed-only,"parsed, no effect yet"
+-aoi_width,parsed-only,"parsed, no effect yet"
+-aoi_x,parsed-only,"parsed, no effect yet"
+-aoi_y,parsed-only,"parsed, no effect yet"
+-auto_fps,parsed-only,"parsed, no effect yet"
+-avi,verified,oracle parity case
+-avi_codec,parsed-only,"parsed, no effect yet"
+-avi_old,parsed-only,"parsed, no effect yet"
+-avi_old4,parsed-only,"parsed, no effect yet"
+-avi_quality,parsed-only,"parsed, no effect yet"
+-avi_safe_width,parsed-only,"parsed, no effect yet"
+-bin,executed,mapped into PipelineSettings / Program
+-bin_sum,executed,mapped into PipelineSettings / Program
+-bmp,executed,mapped into PipelineSettings / Program
+-chk,parsed-only,"parsed, no effect yet"
+-colour,executed,mapped into PipelineSettings / Program
+-convmono,parsed-only,"parsed, no effect yet"
+-ctr,verified,oracle parity case
+-ctrf,parsed-only,"parsed, no effect yet"
+-cx,parsed-only,"parsed, no effect yet"
+-cy,parsed-only,"parsed, no effect yet"
+-dark,executed,mapped into PipelineSettings / Program
+-dark_bayer,parsed-only,"parsed, no effect yet"
+-dark_pgm,parsed-only,"parsed, no effect yet"
+-dark_tmp,parsed-only,"parsed, no effect yet"
+-db,verified,oracle parity case
+-db_type,verified,oracle parity case
+-drop,parsed-only,"parsed, no effect yet"
+-en_ss,parsed-only,"parsed, no effect yet"
+-en_surface_feature_tracking,executed,mapped into PipelineSettings / Program
+-f,parsed-only,"parsed, no effect yet"
+-fits,verified,oracle parity case
+-flat,executed,mapped into PipelineSettings / Program
+-flat_bayer,parsed-only,"parsed, no effect yet"
+-flat_dark,parsed-only,"parsed, no effect yet"
+-flat_dark_tmp,parsed-only,"parsed, no effect yet"
+-flat_tmp,parsed-only,"parsed, no effect yet"
+-flip_x,verified,oracle parity case
+-flip_y,executed,mapped into PipelineSettings / Program
+-fps_rate,executed,mapped into PipelineSettings / Program
+-fps_scale,executed,mapped into PipelineSettings / Program
+-freject,parsed-only,"parsed, no effect yet"
+-gamma,executed,mapped into PipelineSettings / Program
+-gif,parsed-only,"parsed, no effect yet"
+-gif_border_tol,parsed-only,"parsed, no effect yet"
+-gif_col_tbl_depth,parsed-only,"parsed, no effect yet"
+-gif_lossy_comp,parsed-only,"parsed, no effect yet"
+-gif_quant_type,parsed-only,"parsed, no effect yet"
+-gif_trns_pxl_tol,parsed-only,"parsed, no effect yet"
+-gui,executed,mapped into PipelineSettings / Program
+-hot_pixel,parsed-only,"parsed, no effect yet"
+-hs,verified,oracle parity case
+-hs_bp,parsed-only,"parsed, no effect yet"
+-hsrgb,executed,mapped into PipelineSettings / Program
+-ifd,parsed-only,"parsed, no effect yet"
+-incqv,parsed-only,"parsed, no effect yet"
+-input_gain,parsed-only,"parsed, no effect yet"
+-join,parsed-only,"parsed, no effect yet"
+-keepimgname,parsed-only,"parsed, no effect yet"
+-median,executed,mapped into PipelineSettings / Program
+-mono,executed,mapped into PipelineSettings / Program
+-mp,parsed-only,"parsed, no effect yet"
+-ms,verified,oracle parity case
+-nlz,executed,mapped into PipelineSettings / Program
+-no_anim_rev_last_rep,parsed-only,"parsed, no effect yet"
+-no_ram_buff,parsed-only,"parsed, no effect yet"
+-nr,executed,mapped into PipelineSettings / Program
+-od,executed,mapped into PipelineSettings / Program
+-oe,executed,mapped into PipelineSettings / Program
+-op,executed,mapped into PipelineSettings / Program
+-os,executed,mapped into PipelineSettings / Program
+-osubdir,parsed-only,"parsed, no effect yet"
+-ox,parsed-only,"parsed, no effect yet"
+-oy,parsed-only,"parsed, no effect yet"
+-pb,parsed-only,"parsed, no effect yet"
+-png,verified,oracle parity case
+-q,verified,oracle parity case
+-qhisto,executed,mapped into PipelineSettings / Program
+-qinc,parsed-only,"parsed, no effect yet"
+-qmax,parsed-only,"parsed, no effect yet"
+-qmin,parsed-only,"parsed, no effect yet"
+-qold,executed,mapped into PipelineSettings / Program
+-qpcnt,parsed-only,"parsed, no effect yet"
+-qtotal,executed,mapped into PipelineSettings / Program
+-qw,parsed-only,"parsed, no effect yet"
+-raw_db,parsed-only,"parsed, no effect yet"
+-raw_hl,parsed-only,"parsed, no effect yet"
+-raw_hpf,parsed-only,"parsed, no effect yet"
+-raw_ocs,parsed-only,"parsed, no effect yet"
+-resize_en,executed,mapped into PipelineSettings / Program
+-resize_height,parsed-only,"parsed, no effect yet"
+-resize_width,parsed-only,"parsed, no effect yet"
+-rgb,parsed-only,"parsed, no effect yet"
+-rotate180,executed,mapped into PipelineSettings / Program
+-rotate270,executed,mapped into PipelineSettings / Program
+-rotate90,executed,mapped into PipelineSettings / Program
+-save_dark,parsed-only,"parsed, no effect yet"
+-save_flat,parsed-only,"parsed, no effect yet"
+-save_flat_dark,parsed-only,"parsed, no effect yet"
+-sdp,parsed-only,"parsed, no effect yet"
+-ser,executed,mapped into PipelineSettings / Program
+-ser_bpp,parsed-only,"parsed, no effect yet"
+-sf,parsed-only,"parsed, no effect yet"
+-shdw,parsed-only,"parsed, no effect yet"
+-sr,parsed-only,"parsed, no effect yet"
+-temp_dir,parsed-only,"parsed, no effect yet"
+-test_run,parsed-only,"parsed, no effect yet"
+-tif,verified,oracle parity case
+-wjpos_dtmask,parsed-only,"parsed, no effect yet"
+-wjpos_ipfps,parsed-only,"parsed, no effect yet"
+-wjpos_lt2ut,parsed-only,"parsed, no effect yet"
+-wjpos_time,parsed-only,"parsed, no effect yet"
+-y8,parsed-only,"parsed, no effect yet"
