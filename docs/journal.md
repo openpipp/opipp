@@ -299,3 +299,53 @@ writer (`GifWriter`, commit 8b6578a) verified against ffmpeg, so the sensible re
 
 Naming to match if we integrate it: one animated file at `<out>/<name>.gif` (no subfolder), 256-colour
 GCT, NETSCAPE2.0 loop extension, no per-frame graphic control extension.
+
+## M16 - Centring solved and implemented (`86112c6`)
+
+`-ctr` is **not** a centroid. The engine run-detects an object box (`FUN_140076ae0` for the 8-bit
+path, `FUN_140077560` for 16-bit) and centres the box origin:
+
+```
+xpos = left + (right - left) / 2      // bottom-up buffer rows
+ypos = top  + (bottom - top) / 2
+dx = W/2 - xpos;  dy = ypos - H/2
+```
+
+The detector is a scanline tracker: a 4-sample moving sum `>= 4 * threshold`, runs longer than 9
+pixels, a best-row scan followed by extent scans in both directions, with the binary's own trims
+(`left = minX - 1`, `right = maxX - 3`). The box is `(left-1, top+1, right+1, bottom+1)`, so its
+width is the true width plus one and its height one less. Threshold 18 (the logged minpixel value) is
+essential: 17 or 19 gives only 8/16 correct shifts.
+
+Implemented as `PlanetCentring` (ported from `notes/centring.md`), with `FrameAligner.CentreOffset`
+delegating to it and a new `ShiftWithBackground` that translates by whole pixels and fills vacated
+area with the frame median - the old `Shift` resampled sub-pixel and clamped edges, which is right for
+stacking but wrong here.
+
+Verified: **30/30 frames of the real capture pixel-identical**, plus a new `real-centre` parity case.
+This also retires the earlier "centring is a pure translation with fill 3" note: 3 was the median, and
+the offset was never a centroid.
+
+## M17 - Delegation round: detection, quality, audit, JPEG, tracking
+
+Six parallel subagents produced (all verified, written up in `notes/`):
+
+- **`notes/detection.md`** (369 lines) - `FUN_140077560` decoded: seed scan (rows 1..H-6, runs >= 10),
+  interval-overlap growth, the `x1 -= 1 / x2 -= 3` trims, and the rejection codes `-1` no planet,
+  `-2` partial, `-3` diameter below minimum, each mapped to its log counter. Corrects the earlier
+  assumption that the 16-bit path compares `threshold << 8 <= sample`: it projects BGR to 8-bit luma
+  and tests a 4-tap horizontal sum against `4 * threshold`. 19/19 fixtures agree with the binary.
+- **`notes/quality-loop.md`** (456 lines) - the score is
+  `sqrt(sum_s w(s) * m(s)) * bright50/3251250` with `w(s) = (qmin*qmin)/(s*s)` in **integer**
+  division, so only the `qmin` stride contributes (verified: qmax=qmin and qmax>qmin give identical
+  scores). The first-frame 1.3255x boost is a **bug**: the mask buffer at `image+0xc48` is allocated
+  with the non-clearing allocator and reused across frames, so stale marks from earlier strides
+  dilute the mean. Reproduced to 0.006-0.2% (clean) and 0.2-0.8% (polluted).
+- **`notes/switch-wiring.md`** (414 lines) - 57 wired (27 full, 30 partial), 68 parsed-only, 1 property
+  with no consumer, 5 inert. Sharpest: `-chk` never rejects a frame, `-ms` is not wired at all,
+  `-nlz`/`-debayer_pattern` are dead, and `docs/switch-matrix.csv` was stale (22 wrong statuses).
+- **`JpegBaselineDecoder.cs`** (~1.2k lines) + 15 tests - baseline SOF0 with 4:4:4/4:2:2/4:2:0,
+  restart markers, 16-bit DQT; cross-checked against libjpeg (mean error <= 0.15, max <= 3/255).
+- **`SurfaceTracker.cs`** + 16 tests - zero-mean normalised cross-correlation with parabolic
+  sub-pixel refinement, gain/pedestal invariant, returns null below 0.5 correlation.
+- **`notes/centring.md`** (459 lines) - the rule implemented in M16.
