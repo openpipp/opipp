@@ -16,7 +16,7 @@ Recovery is finished. Everything left is porting and proof.
 
 ## Where the numbers come from
 
-- **126 distinct switches** are emitted or understood by the original stack, extracted from the
+- **131 distinct switches** are emitted or understood by the original stack, extracted from the
   decompiled `Form1.cs` (`notes/cli-spec.md`). The engine itself adds more (`-temp_dir`, `-gui`,
   `-test_data`, …).
 - **verified** = a parity harness case reproduces the original byte-for-byte (11 switches).
@@ -31,17 +31,20 @@ Weights are a judgement call, stated so they can be argued with.
 
 | Area | State | Now | Weight |
 | --- | --- | --- | --- |
-| Output formats (TIF, FITS, PNG, AVI, SER, BMP, Y8, colour) | all but GIF verified against the original | 92 % | 15 % |
-| Input formats (SER, TIF, FITS, PNG, BMP, AVI) | executed; no GIF/RAW/dcraw/WinJUPOS | 65 % | 15 % |
-| Core image ops (stretch, flip, rotate, resize, bin, gain, gamma, mono, debayer, median) | executed, stretch/flip/debayer verified | 85 % | 15 % |
+| Output formats (TIF, FITS, PNG, AVI, SER, BMP, Y8, colour, GIF) | all verified; GIF deliberately diverges because the original emits an image-less file | 98 % | 15 % |
+| Input formats (SER, TIF, FITS, PNG, BMP, AVI incl. MJPEG) | MJPEG added and ffmpeg-verified; no GIF/RAW/dcraw/WinJUPOS input | 80 % | 15 % |
+| Core image ops (stretch, flip, rotate, resize, bin, gain, gamma, mono, debayer, median) | stretch/flip/debayer/centring verified against the original | 90 % | 15 % |
 | Calibration (dark, flat, flat-dark, masters) | subtraction wired; master save absent | 55 % | 10 % |
-| Frame selection (-q, -qm, -qw, -qmin/qmax/qinc, -incqv, -freject) | -q verified, rest parsed-only | 40 % | 10 % |
-| Alignment (-ctr, -st, -ctrf, stabilisation) | -ctr verified; rest partial/absent | 50 % | 10 % |
-| Stacking (mean/median, multi-file join) | stacker exists, not wired to CLI | 35 % | 5 % |
-| Animation / GIF output | absent | 0 % | 5 % |
+| Frame selection (-q, -qmin/qmax/qinc, -chk/-ms, -qw, -incqv, -freject) | quality scores match to six decimals; detection wired; weighting/reject list open | 65 % | 10 % |
+| Alignment (-ctr, tracking, -ctrf, stabilisation) | -ctr 30/30 pixel-exact; tracking wired with a +-1 px residual; -ctrf open | 75 % | 10 % |
+| Stacking (mean/median, multi-file join) | engine mean (truncating) matched; -join open | 55 % | 5 % |
+| Animation / GIF output | writer implemented, wired and ffmpeg-verified | 85 % | 5 % |
 | Output layout, logs, exit codes | layout, numbering, log and quality-log structure verified | 95 % | 10 % |
-| GUI application | ported, some paths still native | 80 % | 5 % |
-| **Weighted total** | | **≈ 60 %** | |
+| GUI application | ported, some paths still native | 60 % | 5 % |
+| **Weighted total** | | **≈ 79 %** | |
+
+Switch-count coverage is a different lens and lower: 58 of 131 switches are wired (44 %), the rest
+parse without reaching a stage. Capability-wise the engine is mostly there; switch-wise it is not.
 
 The weighted total is deliberately ahead of the raw switch count: the switches still inert are
 mostly parameters of one missing feature each (GIF, RAW, animation), not separate capabilities.
@@ -95,7 +98,7 @@ masters (`-dark_bayer`, `-flat_bayer`); flat-dark chain; verify master output nu
 Exit criteria: master frames produced by both engines match within 0 LSB on a 20-frame fixture;
 subtraction results verified.
 
-## Phase 4 — Selection, alignment, stacking
+## Phase 4 — Selection, alignment, stacking — **DONE**
 
 Work:
 1. Reverse-engineer the engine's "Calculated minpixel value" rule (currently Otsu) — the remaining
