@@ -94,3 +94,33 @@ Our port currently seeds at the box and skips these gates, so it tracks content 
 and can land elsewhere on content the original accepts. Porting the gates (and reading those four
 constants from `.rdata` rather than guessing them) is the next step; it is also the likely reason the
 Saturn fixture differs on 8 of 30 frames, because the gated seed moves the fine window.
+
+## Coarse-gate constants, read from .rdata (2026-10-18)
+
+Extracted from `bin/pipp_core.exe` (VA base 0x140000000; all four live in `.rdata`):
+
+| Address | File offset | Value | Role in the gate |
+|---|---|---|---|
+| `DAT_140120fb0` | 0x11f5b0 | **0.5** | minimum candidate/reference brightness ratio |
+| `DAT_140137930` | 0x135f30 | **1.5** | maximum brightness ratio |
+| `DAT_140137938` | 0x135f38 | **-0.8** | scales the mean into the lower percentile bound |
+| `DAT_140137940` | 0x135f40 | **-1.2** | scales (refLow+1)*ratio into the upper bound |
+
+With those, the acceptance test in `FUN_1400a6e40` becomes, for a candidate block:
+
+```
+ratio   = candidateSum / referenceSum            // must be 0.5 .. 1.5
+mean    = refLow * ratio
+lowMin  = max(0, -10 - mean * (-0.8))            = max(0, 0.8*mean - 10)
+lowMax  = 10 - (refLow + 1) * ratio * (-1.2)     = 10 + 1.2*(refLow+1)*ratio
+accept  = lowPct in [lowMin, lowMax]  and  highPct - lowPct > 24
+```
+
+For a planetary frame `refLow` is 2-3, so the low percentile must sit at roughly 0-15: **the candidate
+must have a near-black background and more than 24 levels of contrast**. That is why the arrow probe
+(a 30-level background, low percentile ~30) is rejected outright while Saturn's limb against space is
+accepted. It also means the gate is what stops the tracker locking onto texture in a bright sky.
+
+Not yet ported: `CoarseSeed` still runs without these gates and is disabled in favour of seeding at
+the box. Porting the gate is the step that should make the probe match the original (no shift) and
+may move the gated seed enough to close the 8 Saturn frames.
