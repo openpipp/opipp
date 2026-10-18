@@ -171,9 +171,35 @@ work   : C:\Users\ilanp\Projects\PIPP-RE\parity
   (KnownDivergence: 16-bit TIFF: original byte-swaps samples; we write spec-correct files)
 
 === tif-colour: -tif ===
-  (KnownGap: colour SER: original reads ColorID 16 as mono/BAYER_CYYM)
+  oracle  exit=0 files=5
+  managed exit=0 files=5
+  oracle names : colour\1.tif, colour\2.tif, colour\3.tif, colour\4.tif
+  managed names: colour\1.tif, colour\2.tif, colour\3.tif, colour\4.tif
+  [0] oracle  1.tif                    .tif 32x24x3@8 sha256=9de43f59d933285a
+      managed 1.tif                    .tif 32x24x3@8 sha256=9de43f59d933285a
+  [1] oracle  2.tif                    .tif 32x24x3@8 sha256=127b224be66eb932
+      managed 2.tif                    .tif 32x24x3@8 sha256=127b224be66eb932
+  [2] oracle  3.tif                    .tif 32x24x3@8 sha256=ef3d6c8a8cb8cfcb
+      managed 3.tif                    .tif 32x24x3@8 sha256=ef3d6c8a8cb8cfcb
+  [3] oracle  4.tif                    .tif 32x24x3@8 sha256=75045a0acf42edd6
+      managed 4.tif                    .tif 32x24x3@8 sha256=75045a0acf42edd6
+  layout: MATCH (5 vs 5 files)
+  log: MATCH
 
 === png-colour: -png ===
-  (KnownGap: colour SER: original reads ColorID 16 as mono/BAYER_CYYM)
+  oracle  exit=0 files=5
+  managed exit=0 files=5
+  oracle names : colour\1.png, colour\2.png, colour\3.png, colour\4.png
+  managed names: colour\1.png, colour\2.png, colour\3.png, colour\4.png
+  [0] oracle  1.png                    .png 32x24x3@8 sha256=9de43f59d933285a
+      managed 1.png                    .png 32x24x3@8 sha256=9de43f59d933285a
+  [1] oracle  2.png                    .png 32x24x3@8 sha256=127b224be66eb932
+      managed 2.png                    .png 32x24x3@8 sha256=127b224be66eb932
+  [2] oracle  3.png                    .png 32x24x3@8 sha256=ef3d6c8a8cb8cfcb
+      managed 3.png                    .png 32x24x3@8 sha256=ef3d6c8a8cb8cfcb
+  [3] oracle  4.png                    .png 32x24x3@8 sha256=75045a0acf42edd6
+      managed 4.png                    .png 32x24x3@8 sha256=75045a0acf42edd6
+  layout: MATCH (5 vs 5 files)
+  log: MATCH
 
 ALL CASES MATCH

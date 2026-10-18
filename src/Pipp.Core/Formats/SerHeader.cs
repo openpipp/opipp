@@ -26,10 +26,10 @@ public enum SerColorId
     BayerBggr = 11,
 
     /// <summary>Three interleaved planes in R, G, B order.</summary>
-    Rgb = 16,
+    Rgb = 100,
 
     /// <summary>Three interleaved planes in B, G, R order (readers convert to RGB).</summary>
-    Bgr = 17,
+    Bgr = 101,
 }
 
 /// <summary>
@@ -233,6 +233,8 @@ public sealed class SerHeader
             or (int)SerColorId.BayerGrbg
             or (int)SerColorId.BayerGbrg
             or (int)SerColorId.BayerBggr
+            or 16 // legacy RGB id written by earlier builds of this engine
+            or 17 // legacy BGR id
             or (int)SerColorId.Rgb
             or (int)SerColorId.Bgr;
 
@@ -259,7 +261,7 @@ public sealed class SerHeader
 
     /// <summary>Number of interleaved channels implied by a raw SER ColorID.</summary>
     public static int ChannelsForColorId(int colorId) =>
-        colorId is (int)SerColorId.Rgb or (int)SerColorId.Bgr ? 3 : 1;
+        colorId is 16 or 17 or (int)SerColorId.Rgb or (int)SerColorId.Bgr ? 3 : 1;
 
     /// <summary>Serializes this header into a new 178-byte array.</summary>
     public byte[] ToBytes()

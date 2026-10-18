@@ -96,10 +96,8 @@ internal static class Program
                 Note: "16-bit TIFF: original byte-swaps samples; we write spec-correct files"),
             // The original's SER probe maps ColorID 16 to BAYER_CYYM rather than RGB, so it reads a
             // spec-correct colour SER as a mono mosaic. Resolve the colour dialect before comparing.
-            new ParityCase("tif-colour", ["-tif"], Input: "colour", Mode: CompareMode.KnownGap,
-                Note: "colour SER: original reads ColorID 16 as mono/BAYER_CYYM"),
-            new ParityCase("png-colour", ["-png"], Input: "colour", Mode: CompareMode.KnownGap,
-                Note: "colour SER: original reads ColorID 16 as mono/BAYER_CYYM"),
+            new ParityCase("tif-colour", ["-tif"], Input: "colour"),
+            new ParityCase("png-colour", ["-png"], Input: "colour"),
         };
 
         int failures = 0;

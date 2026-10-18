@@ -31,7 +31,7 @@ Weights are a judgement call, stated so they can be argued with.
 
 | Area | State | Now | Weight |
 | --- | --- | --- | --- |
-| Output formats (TIF, FITS, PNG, AVI, SER, BMP, Y8) | all but GIF verified against the original | 88 % | 15 % |
+| Output formats (TIF, FITS, PNG, AVI, SER, BMP, Y8, colour) | all but GIF verified against the original | 92 % | 15 % |
 | Input formats (SER, TIF, FITS, PNG, BMP, AVI) | executed; no GIF/RAW/dcraw/WinJUPOS | 65 % | 15 % |
 | Core image ops (stretch, flip, rotate, resize, bin, gain, gamma, mono, debayer, median) | executed, stretch/flip/debayer verified | 85 % | 15 % |
 | Calibration (dark, flat, flat-dark, masters) | subtraction wired; master save absent | 55 % | 10 % |
@@ -77,8 +77,8 @@ now exist.
 
 Outstanding:
 1. **GIF writer** — needs LZW compression plus the palette quantiser; nothing exists yet.
-2. **Colour SER interop** — the original's probe maps ColorID 16 to BAYER_CYYM and reads a
-   spec-correct RGB SER as mono, so colour parity needs the dialect resolved first.
+2. ~~Colour SER interop~~ — **done**: the original uses ColorID 100 (RGB) / 101 (BGR), not 16/17.
+   Our writer was non-conformant; it now writes 100 and both colour cases (TIFF and PNG) match.
 3. **AVI input with multiple codecs** and a writer × depth × channels matrix.
 
 Recorded decision: the original writes 16-bit TIFF samples byte-swapped under an `II` header, which

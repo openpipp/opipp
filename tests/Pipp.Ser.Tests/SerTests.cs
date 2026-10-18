@@ -38,7 +38,7 @@ public class SerTests
         Assert.Equal(178, bytes.Length);
         Assert.Equal("LUCAM-RECORDER", Encoding.ASCII.GetString(bytes, 0, 14));
         Assert.Equal(0x0A0B0C0D, BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(14)));
-        Assert.Equal(16, BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(18)));
+        Assert.Equal((int)SerColorId.Rgb, BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(18)));
         Assert.Equal(1, BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(22)));
         Assert.Equal(641, BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(26)));
         Assert.Equal(481, BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(30)));
@@ -475,7 +475,7 @@ public class SerTests
     // ---------- byte-exact colour 16-bit file ----------
 
     [Fact]
-    public void Colour16_ThreeFrames_MatchesHandComputedBytes()
+    public void ColourRgb_ThreeFrames_MatchesHandComputedBytes()
     {
         using var temp = new TempSer();
         var header = new SerHeader
@@ -504,7 +504,7 @@ public class SerTests
         Assert.Equal(1, BinaryPrimitives.ReadInt32LittleEndian(all.AsSpan(30)));
         Assert.Equal(16, BinaryPrimitives.ReadInt32LittleEndian(all.AsSpan(34)));
         Assert.Equal(3, BinaryPrimitives.ReadInt32LittleEndian(all.AsSpan(38)));
-        Assert.Equal(16, BinaryPrimitives.ReadInt32LittleEndian(all.AsSpan(18)));
+        Assert.Equal((int)SerColorId.Rgb, BinaryPrimitives.ReadInt32LittleEndian(all.AsSpan(18)));
         Assert.Equal(0x0A0B0C0D, BinaryPrimitives.ReadInt32LittleEndian(all.AsSpan(14)));
 
         // Hand computed little-endian samples, R G B per pixel:

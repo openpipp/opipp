@@ -17,8 +17,8 @@ inventory.
 
 ## Parity
 
-`dotnet run --project tools/Pipp.Parity` → **ALL CASES MATCH** (12 cases: 9 verified, 1 deliberate
-divergence, 2 known gaps; pixel content, directory layout and log text compared).
+`dotnet run --project tools/Pipp.Parity` → **ALL CASES MATCH** (12 cases: 11 verified, 1 deliberate
+divergence, 1 known gap; pixel content, directory layout and log text compared).
 
 | Case | Switches | Compared |
 | --- | --- | --- |
@@ -34,7 +34,7 @@ divergence, 2 known gaps; pixel content, directory layout and log text compared)
 | bmp-out | `-bmp` | pixels, layout, log |
 | y8-out | `-avi -y8` | AVI frames |
 | tif-16bit | `-tif` (16-bit input) | *deliberate divergence* |
-| tif-colour, png-colour | `-tif`, `-png` (RGB input) | *known gap* |
+| tif-colour, png-colour | `-tif`, `-png` (RGB input) | pixels, layout, log |
 | gif-out | `-gif` | *known gap* |
 
 ## Behaviour verified against the original
@@ -54,7 +54,7 @@ divergence, 2 known gaps; pixel content, directory layout and log text compared)
 | `-gui` token stream differs (`@PFILELAB` 0- vs 1-based, `@ANIM`/`@QSORT`/`@FNAMELAB`, ordering) | Phase 6, blocks dropping the native fallback |
 | Quality log scores differ (structure matches) | Phase 4, quality algorithm not parity-proven |
 | 16-bit TIFF samples are byte-swapped by the original under an `II` header (unreadable in ffmpeg) | We write spec-correct files; replicating a data-corrupting bug is not acceptable |
-| The original's SER probe maps ColorID 16 to BAYER_CYYM, so it reads a spec-correct RGB SER as mono | Resolve the colour dialect before claiming colour parity |
+| ~~Colour SER misread~~ | Fixed: PIPP uses ColorID **100 = RGB / 101 = BGR**, not 16/17. Writer now uses 100; reader still accepts the old ids |
 | GIF output | Not implemented: needs LZW + palette quantiser |
 | Detection threshold uses Otsu, not the engine's "Calculated minpixel value" | Phase 4 |
 | GIF, RAW/dcraw, animation, AOI, master saving, quality weighting | Parsed, not executed — Phases 2–5 |
