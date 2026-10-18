@@ -17,7 +17,10 @@ obj/
 /samples/
 
 # Parity harness scratch and outputs
-/parity/
+# Generated parity output is ignored, but the small synthetic SER fixtures the transcript
+# tests read are committed so a fresh clone can run the suite without first running the harness.
+/parity/*
+!/parity/*.ser
 *.raw
 
 # Local tooling
