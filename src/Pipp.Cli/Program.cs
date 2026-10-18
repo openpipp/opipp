@@ -59,6 +59,21 @@ internal static class Program
         PipelineSettings settings;
         try
         {
+            if (options.DebugAvi)
+            {
+                // -debugavi is a standalone diagnostic dump: the engine prints the banner and stops
+                // without writing any output (verified on SER and AVI inputs).
+                foreach (string input in inputs)
+                {
+                    Console.WriteLine("*** Debug AVI mode ***");
+                    Console.WriteLine();
+                    Console.WriteLine($"Filename: '{input}'");
+                    Console.WriteLine();
+                }
+
+                return 0;
+            }
+
             settings = Map(options);
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException or InvalidDataException)
@@ -134,6 +149,10 @@ internal static class Program
 
     private static PipelineSettings Map(PippOptions o)
     {
+        // The engine's parser accepts -shdw 1..8; 0 is rejected with this exact wording.
+        if (o.ShadowEdge is 0)
+            throw new ArgumentException("Illegal edge in shadow value");
+
         // The engine's parser accepts narrower ranges for the GIF options than this model's parser
         // does; enforce them here so a command line the original rejects fails with its wording.
         if (o.GifColorTableDepth is < 4 or > 8)
@@ -246,6 +265,29 @@ internal static class Program
             SplitRgb = o.SplitRgb,
             SaveMasterDark = o.SaveMasterDark,
             SaveMasterFlat = o.SaveMasterFlat,
+            SaveMasterFlatDark = o.SaveMasterFlatDark,
+
+            // Area of interest. The box is only a rectangle; -aoi itself does not gate processing
+            // (verified: without surface tracking the engine output is byte-identical with or without
+            // it), and -aoi_crop is the switch that changes the delivered frame size.
+            AreaOfInterest = BuildAoi(o),
+            AreaOfInterestCrop = o.AreaOfInterestCrop,
+
+            // Quality weighting triplicates the top quarter and duplicates the next quarter.
+            QualityWeighting = o.QualityWeighting,
+
+            // -test_run writes one input/output BMP pair at the output root.
+            TestRun = o.TestRun,
+
+            // -ser_bpp overrides the SER header's per-sample depth (verified: 8 on a 16-bit file
+            // produces 8-bit output; 16 on an 8-bit file fails with the engine's "too short" error).
+            SerBitDepth = o.SerBitDepth,
+
+            // -no_ram_buff delivers quality-selected frames in source order (verified with -q=3).
+            NoRamBuffers = o.NoRamBuffers,
+
+            // -sdp renders the threshold mask and detected box as a colour overlay.
+            ShowDetectedPixels = o.ShowDetectedPixels,
 
             // -avi_codec is carried into the writer, which only implements DIB. -avi_quality is
             // validated against the engine's real range (1..10, not the parser's 1..100) so a value
@@ -273,8 +315,25 @@ internal static class Program
         // A calibration master is only usable when the GUI/engine handed us a decodable PGM.
         settings.MasterDark = LoadMaster(o.MasterDarkTmpFile, o.MasterDarkPgmFile, "dark", o.DarkSubtraction);
         settings.MasterFlat = LoadMaster(o.MasterFlatTmpFile, null, "flat", o.FlatCalibration);
+        settings.MasterFlatDark = LoadMaster(o.MasterFlatDarkTmpFile, null, "flat dark", o.FlatDarkSubtraction);
 
         return settings;
+    }
+
+    /// <summary>
+    /// Builds the area-of-interest rectangle. The engine accepts the coordinates independently of
+    /// <c>-aoi</c> (a <c>-aoi_reject</c> run with only <c>-aoi_x/y/width/height</c> still checks the
+    /// box), so any complete box is honoured.
+    /// </summary>
+    private static PixelRect? BuildAoi(PippOptions o)
+    {
+        bool requested = o.AreaOfInterest || o.AreaOfInterestCrop ||
+                         o.AreaOfInterestX is not null || o.AreaOfInterestY is not null ||
+                         o.AreaOfInterestWidth is not null || o.AreaOfInterestHeight is not null;
+        if (!requested) return null;
+        if (o.AreaOfInterestWidth is not int width || o.AreaOfInterestHeight is not int height) return null;
+        if (width <= 0 || height <= 0) return null;
+        return new PixelRect(o.AreaOfInterestX ?? 0, o.AreaOfInterestY ?? 0, width, height);
     }
 
     private static Frame? LoadMaster(string? tmpFile, string? pgmFile, string kind, bool enabled)

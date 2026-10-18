@@ -477,3 +477,27 @@ Batch of option switches, each checked against the oracle first:
   `-convmono=3` on the colour fixture is 4/4 pixel-identical.
 - **`-qold` / `-qhisto`** - wired (algorithm choice and log label) but the metric values and selection do
   not match; recorded as a documentation gap, not claimed as parity.
+
+## M22 - AOI, quality weighting, masters and the runtime-option tail
+
+Batch verified against the oracle, 457 tests, 22/22 parity.
+
+- **`-qw`** triplicates the top `n/4` and duplicates the next `n/2-n/4`, naming them `0, 0a, 0b, 1, 1a...`
+  with a "Created N duplicate images" log line. At `-q=4` the oracle and our tree produce the **same
+  seven names and seven pixel-identical files**.
+- **`-test_run`** writes `pipp_input_frame.bmp` and `pipp_output_frame.bmp` at the output root - and both
+  contain **TIFF payloads under .bmp names**. Reproduced deliberately.
+- **`-ser_bpp`** overrides the SER header depth (reading a 16-bit file as 8-bit reproduces the engine).
+- **`-sdp`** draws the detection overlay: grey `(3v+255)/4`, red threshold mask, dashed dark-red box one
+  pixel outside the mask with a 5-on/5-off pattern; pixel-exact on two fixtures.
+- **`-no_ram_buff`** changes delivery order (source order instead of score order) rather than memory use.
+- **`-aoi_crop`** crops at `(x,y)`; the engine's *non-tracking* path ignores x/y and writes a
+  quarter-filled out-of-bounds buffer (an engine bug, documented as a deliberate divergence).
+- **Masters**: `-flat_dark` subtracts (clamped) before normalisation, `-save_flat_dark` writes
+  `logs/pipp_master_flat_dark.tif`.
+- **Inert with evidence** (accepted by the engine, no observable effect): `-dark_bayer`, `-hot_pixel`,
+  `-pb`, `-temp_dir`, `-avi_safe_width` and `-auto_fps` (the latter two differ only in the undefined
+  244-byte tail of the `dmlh` chunk, which is stack garbage).
+- **Skipped, not guessed**: `-aoi_reject` (the discard rule depends on tracker internals and could not be
+  pinned down), `-flat_bayer` (the engine's flat loader crashes on PGM/TIFF and only accepts its private
+  `.tmp` master), and `-avi_old`/`-avi_old4` (our writer implements the modern layout only).

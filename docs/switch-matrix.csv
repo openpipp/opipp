@@ -9,20 +9,20 @@ switch,status,evidence
 -anim_fwd_lf_rep,parsed-only,No PS property.
 -anim_rev,parsed-only,No PS property.
 -anim_rev_lf_rep,parsed-only,No PS property.
--aoi,parsed-only,No PS property.
--aoi_crop,parsed-only,No PS property.
--aoi_height,parsed-only,No PS property.
+-aoi,verified,wired and oracle-verified: box parsed and used by the tracker; no pixel effect without -aoi_crop
+-aoi_crop,verified,"wired and oracle-verified: crops every delivered frame at (x,y) clamped; the engine's non-tracking path writes an out-of-bounds quarter-filled buffer, documented as a divergence"
+-aoi_height,verified,wired and oracle-verified: AOI height; crop pixel-exact for the intended region
 -aoi_reject,parsed-only,No PS property.
--aoi_width,parsed-only,No PS property.
--aoi_x,parsed-only,No PS property.
--aoi_y,parsed-only,No PS property.
--auto_fps,parsed-only,No PS property; `Fps` is only ever -fps_rate/-fps_scale.
+-aoi_width,verified,wired and oracle-verified: AOI width; crop pixel-exact for the intended region
+-aoi_x,verified,wired and oracle-verified: AOI left edge; crop origin matches the oracle
+-aoi_y,verified,wired and oracle-verified: AOI top edge; crop origin matches the oracle
+-auto_fps,inert,"accepted, no observable effect: same as -avi_safe_width: only the undefined dmlh tail differs"
 -avi,executed,"ChooseExtension 228 / Run 354 — `partial` — feeds `Formats` → `ChooseExtension` (Program 228-239): one container per run, priority ser > avi > fit > tif > png > bmp."
 -avi_codec,executed,NOT oracle-verified: engine supports DIB/ULRG/FMP4 only - no MJPEG encoder in 2.5.9; ULRG/FMP4 rejected with NotSupportedException rather than writing mislabelled data
 -avi_old,parsed-only,No PS property.
 -avi_old4,parsed-only,No PS property.
 -avi_quality,verified,wired and oracle-verified: accepted range is 1-10 only; DIB ignores it and writes dwQuality=0xFFFFFFFF
--avi_safe_width,parsed-only,No PS property.
+-avi_safe_width,inert,"accepted, no observable effect: AVI differs only in the undefined 244-byte dmlh tail (stack garbage); avih/strf identical"
 -bin,verified,Transform() 574 — Full.
 -bin_average,inert,Transform() 577 — Writes the default value; only undoes an earlier -bin_sum.
 -bin_sum,verified,Transform() 577 — Full.
@@ -37,12 +37,12 @@ switch,status,evidence
 -cx,executed,"Transform() 623 — `partial` — needs -cx or -cy (`BuildCrop`, Program 219-226); offsets alone are ignored."
 -cy,executed,Transform() 623 — `partial` — needs a crop size.
 -dark,executed,Transform() 581 — `partial` — gate for `LoadMaster` (Program 192); no effect unless -dark_tmp/-dark_pgm names a readable PGM.
--dark_bayer,parsed-only,No PS property.
+-dark_bayer,inert,"accepted, no observable effect: no pixel effect with a bayer input and mono master (evidence: identical output)"
 -dark_pgm,executed,Transform() 581 — `partial` — preferred over -dark_tmp (Program 192); needs -dark.
 -dark_tmp,executed,Transform() 581 — `partial` — loaded by `LoadMaster` into `MasterDark` (Program 192); needs -dark.
 -db,executed,"Transform() 564 / none — `partial` — bare `-db` works; `-db=<pattern>` only sets `DebayerPattern`, which Processor never reads."
 -db_type,executed,Transform() 566/570 — `partial` — only value 2 (SmoothHue) survives; 0 and 1 both map to `false` (Program 139).
--debugavi,parsed-only,No PS property; `AviWriter` has no diagnostics switch.
+-debugavi,verified,wired and oracle-verified: prints the engine's debug banner and exits 0 writing nothing
 -drop,verified,"wired and oracle-verified: write 1, skip n (stride n+1), renumber; counter logged"
 -en_ss,verified,wired and oracle-verified: tracking alone is byte-identical to plain; -en_ss is what shifts
 -en_surface_feature_tracking,verified,Run() 311 — Full.
@@ -50,8 +50,8 @@ switch,status,evidence
 -fits,executed,ChooseExtension 228 / Run 354 — `partial` — one container per run; extension is `.fit`.
 -flat,executed,Transform() 585 — `partial` — gate for `LoadMaster` (Program 193); no effect unless -flat_tmp names a readable PGM.
 -flat_bayer,parsed-only,No PS property.
--flat_dark,parsed-only,No PS property.
--flat_dark_tmp,parsed-only,`MasterFlatDarkTmpFile` is never read by Program or Processor.
+-flat_dark,verified,wired and oracle-verified: flat-dark subtracted (clamped) before the flat is normalised
+-flat_dark_tmp,verified,wired and oracle-verified: path of the flat-dark master; loaded only with -flat_dark
 -flat_tmp,executed,Transform() 585 — `partial` — loaded by `LoadMaster` into `MasterFlat` (Program 193); needs -flat.
 -flip_x,verified,Transform() 614 — Full.
 -flip_y,verified,Transform() 615 — Full.
@@ -67,7 +67,7 @@ switch,status,evidence
 -gif_trns_pxl_tol,verified,"wired and oracle-verified: -1 leaves palette entry 1 at (1,1,1); enabled forces black"
 -gui,verified,Report() 661 — Full: drives the `@TOKEN` progress protocol.
 -help,inert,Prints `PippHelpText` and exits 0 (Program.cs:33-37); not an option.
--hot_pixel,parsed-only,No PS property; no hot-pixel repair stage.
+-hot_pixel,inert,"accepted, no observable effect: thresholds 0/100/251 leave pixels identical"
 -hs,verified,Transform() 604 — Full; the `%`/`p` spellings are normalised to 1..255 in the parser (CommandLineParser 290-303).
 -hs_bp,verified,Transform() 609 — Full.
 -hsrgb,verified,Transform() 610 — Full.
@@ -82,7 +82,7 @@ switch,status,evidence
 -ms,verified,"wired and oracle-verified: default 50 (bisected), 49 rejected / 50 accepted; -ms=999 rejects all"
 -nlz,inert,none — `PipelineSettings.LeadingZeros` is never read; padding is always applied (Processor 382).
 -no_anim_rev_last_rep,parsed-only,No PS property.
--no_ram_buff,parsed-only,No PS property; every frame is held in a `List` (Processor 244).
+-no_ram_buff,verified,wired and oracle-verified: quality-selected frames delivered in source order instead of score order
 -nr,executed,"Run() 388 — `partial` — `RenumberFrames` is read at 388, in the still-image branch only."
 -od,verified,Run() 219/340/357 — Full.
 -oe,executed,"Run() 283 — `partial` — the count gate works, but `OverexposedThreshold` (the pixel value) is never set, so it uses the frame maximum (Processor 548-551)."
@@ -91,7 +91,7 @@ switch,status,evidence
 -osubdir,verified,"wired and oracle-verified: wraps the whole layout: <od>/<name>/<input>/, <name>/logs/, <name>/rejected/"
 -ox,executed,Transform() 623 — `partial` — read only when a crop size is present.
 -oy,executed,Transform() 623 — `partial` — read only when a crop size is present.
--pb,parsed-only,No PS property.
+-pb,inert,"accepted, no observable effect: identical pixels with -db and with -cx/-cy"
 -png,executed,ChooseExtension 228 / Run 354 — `partial` — one container per run.
 -q,executed,"Select() 642 / none — `partial` — `-q=<n>` sets `QualityFrameCount` → `KeepFrames` (works); bare `-q` sets `QualityAllFrames`, which Program never maps."
 -qhisto,executed,NOT oracle-verified: wired (algorithm + log label) but the engine reports 1.#INF and selection differs - documented gap
@@ -101,7 +101,7 @@ switch,status,evidence
 -qold,executed,NOT oracle-verified: wired (algorithm + log label) but metric values/selection do not match the engine - documented gap
 -qpcnt,verified,Select() 643 — Full.
 -qtotal,inert,none (default) — Collapsed to the default by Program.cs:167-172; `Pipp.Core.Quality.QualityAlgorithm` has no TotalPixel member.
--qw,parsed-only,"No PS property, and no stacking path to apply it to."
+-qw,verified,"wired and oracle-verified: triplicates top n/4, duplicates next n/2-n/4; names 0,0a,0b,1,1a...; 7/7 pixel-identical at -q=4"
 -raw_db,parsed-only,No PS property.
 -raw_hl,parsed-only,No PS property (the PippOptions default 1 never reaches the pipeline).
 -raw_hpf,parsed-only,No PS property; the RAW path has no hot-pixel filter.
@@ -115,15 +115,15 @@ switch,status,evidence
 -rotate90,verified,Transform() 616 — Full.
 -save_dark,verified,"wired and oracle-verified: <od>/[sub/]logs/pipp_master_dark.tif, mono even for colour, pixel-identical"
 -save_flat,verified,wired and oracle-verified: mono master writes logs/pipp_master_flat_dark.tif (engine quirk); colour writes pipp_master_flat.tif
--save_flat_dark,parsed-only,No PS property.
--sdp,parsed-only,No PS property; there is no overlay stage.
+-save_flat_dark,verified,wired and oracle-verified: writes logs/pipp_master_flat_dark.tif from FUN_140090870
+-sdp,verified,"wired and oracle-verified: overlay palette grey (3v+255)/4, red threshold mask, dashed box; pixel-exact on two fixtures"
 -ser,executed,ChooseExtension 228 / Run 354 — `partial` — one container per run.
--ser_bpp,parsed-only,No PS property; the SER reader always trusts the header.
+-ser_bpp,verified,wired and oracle-verified: overrides the SER header depth; 8 on a 16-bit file reproduces the engine
 -sf,verified,wired and oracle-verified: 1-based inclusive start; -sf=0 starts one frame early (engine quirk)
--shdw,parsed-only,No PS property.
+-shdw,verified,wired and oracle-verified: 0 rejected with 'Error: Illegal edge in shadow value'; 1-8 accepted and pixel-inert
 -sr,verified,"wired and oracle-verified: <out>/[sub/]rejected/<input>_rejected/<reason>_<NN>.tif, always 3-channel TIFF"
--temp_dir,parsed-only,No PS property; the managed engine stages nothing on disk.
--test_run,parsed-only,No PS property; `TestRun` is never read.
+-temp_dir,inert,"accepted, no observable effect: no files created, outputs identical"
+-test_run,verified,wired and oracle-verified: one frame; writes pipp_input_frame.bmp/pipp_output_frame.bmp containing TIFF payloads
 -tif,executed,ChooseExtension 228 / Run 354 — `partial` — one container per run.
 -wjpos_dtmask,parsed-only,No PS property; names are built at Processor 336/391.
 -wjpos_ipfps,parsed-only,No PS property.

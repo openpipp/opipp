@@ -181,6 +181,15 @@ public sealed class PipelineSettings
     /// <summary>Master flat frame; frames are divided by it and rescaled by its mean.</summary>
     public Frame? MasterFlat { get; set; }
 
+    /// <summary>
+    /// Master flat-dark frame (<c>-flat_dark_tmp</c>). When set, it is subtracted from the master flat
+    /// (clamped at zero) before the flat is used, which is what <c>-flat_dark</c> asks the engine to do.
+    /// </summary>
+    public Frame? MasterFlatDark { get; set; }
+
+    /// <summary>Write <c>logs/pipp_master_flat_dark.tif</c> from the loaded flat-dark (<c>-save_flat_dark</c>).</summary>
+    public bool SaveMasterFlatDark { get; set; }
+
     /// <summary>Apply a 3x3 median filter.</summary>
     public bool MedianFilter { get; set; }
 
@@ -258,6 +267,19 @@ public sealed class PipelineSettings
     /// <summary>Crop rectangle applied after geometry changes.</summary>
     public PixelRect? Crop { get; set; }
 
+    /// <summary>
+    /// Area of interest (<c>-aoi</c> and <c>-aoi_x/y/width/height</c>). The box confines the tracking
+    /// region and, with <see cref="AreaOfInterestCrop"/>, becomes the delivered frame size.
+    /// </summary>
+    public PixelRect? AreaOfInterest { get; set; }
+
+    /// <summary>
+    /// Crop every delivered frame to <see cref="AreaOfInterest"/> (<c>-aoi_crop</c>). The engine only
+    /// crops inside its surface-tracking path; a plain run with <c>-aoi_crop</c> writes a quarter-filled
+    /// buffer (verified), so this implementation always performs the intended crop instead.
+    /// </summary>
+    public bool AreaOfInterestCrop { get; set; }
+
     /// <summary>Resize target; a dimension of -1 keeps the aspect ratio.</summary>
     public (int Width, int Height)? Resize { get; set; }
 
@@ -269,6 +291,34 @@ public sealed class PipelineSettings
 
     /// <summary>Keep only the best percentage of frames per input file.</summary>
     public double? KeepPercent { get; set; }
+
+    /// <summary>
+    /// Quality weighting (<c>-qw</c>): triplicate the top quarter of the selected frames and duplicate
+    /// the second quarter, appending <c>a</c>/<c>b</c> to the frame number. The engine's help text and
+    /// a 4/7/8/10-frame oracle sweep agree on the <c>n/4</c> and <c>n/2</c> boundaries.
+    /// </summary>
+    public bool QualityWeighting { get; set; }
+
+    /// <summary>
+    /// Process one frame into <c>pipp_input_frame.bmp</c> and <c>pipp_output_frame.bmp</c> at the output
+    /// root instead of writing the requested output format (<c>-test_run</c>).
+    /// </summary>
+    public bool TestRun { get; set; }
+
+    /// <summary>SER bit-depth override (<c>-ser_bpp</c>); null trusts the container header.</summary>
+    public int? SerBitDepth { get; set; }
+
+    /// <summary>
+    /// Do not hold selected frames in RAM (<c>-no_ram_buff</c>). The engine's only observable effect is
+    /// that quality selection is delivered in source order rather than score order; reproduced here.
+    /// </summary>
+    public bool NoRamBuffers { get; set; }
+
+    /// <summary>
+    /// Render the detection overlay instead of the frame (<c>-sdp</c>): mid-grey background, red pixels
+    /// at or above the detection threshold, and a dashed dark-red box around the detected object.
+    /// </summary>
+    public bool ShowDetectedPixels { get; set; }
 
     /// <summary>Enable image centring.</summary>
     public bool Centre { get; set; }
@@ -410,6 +460,11 @@ public sealed class Processor
                 // -sf / -f / -ctrf / -ifd: the engine builds a frame window per input file
                 // (pipp_core FUN_14007e8e0: start = sf-1 or (n-f)/2, end = min(f+start, n)).
                 var window = FrameWindow.Compute(source.FrameCount, _settings);
+                if (_settings.TestRun)
+                {
+                    // -test_run inspects exactly one frame (the engine still prints the full estimate).
+                    window = new FrameWindow(window.Start, window.Start + 1, window.InputDrop);
+                }
                 discardedStart += Math.Max(0, window.Start);
 
                 string baseName = _settings.Prefix + Path.GetFileNameWithoutExtension(unit.Name) + _settings.Suffix;
@@ -467,6 +522,15 @@ public sealed class Processor
                         SaveRejected(raw, "no_object", index, rejectedDirectory, rejectedDigits);
                         _protocol?.WriteLine($"  Frame {index} rejected: {ex.Message}");
                         continue;
+                    }
+
+                    if (_settings.TestRun)
+                    {
+                        // -test_run: one raw BMP and one processed BMP at the output root, no log-only
+                        // folder and no requested output format (verified against the oracle).
+                        WriteTestRunFrames(raw, frame, outputRoot);
+                        accepted.Add((frame, 0, AlignmentOffset.Zero));
+                        break;
                     }
 
                     if (_settings.MaxOverexposedPixels is int maxOver)
@@ -570,6 +634,35 @@ public sealed class Processor
                         $"Frame {index} of {window.Limit}");
                 }
 
+                if (_settings.TestRun)
+                {
+                    outputFrames++;
+                    if (_settings.WriteLogFile)
+                    {
+                        WriteLogFiles(
+                            unit.Sources,
+                            baseName,
+                            1,
+                            1,
+                            1,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            accepted.Count > 0 ? accepted[0].Frame : null,
+                            null,
+                            []);
+                    }
+
+                    filesProcessed++;
+                    continue;
+                }
+
                 if (accepted.Count == 0)
                 {
                     // The engine still writes both logs when every frame was rejected; the summary
@@ -580,6 +673,8 @@ public sealed class Processor
                             unit.Sources,
                             baseName,
                             window.Limit,
+                            0,
+                            0,
                             0,
                             0,
                             discardedNoObject - noObjectBefore,
@@ -623,28 +718,64 @@ public sealed class Processor
                 // -nr keeps the source order even when quality selection ran: the best N frames are
                 // chosen but written oldest-first (oracle: -q=10 -nr wrote source frames
                 // 1, 2, 4, 10, 11, 15, 17, 18, 19, 20 where -q=10 wrote them in score order).
+                // -no_ram_buff has the same observable effect: the engine cannot sort buffers it did
+                // not keep, so selected frames are delivered in source order (verified with -q=3).
                 bool qualitySelection = _settings.KeepFrames is not null || _settings.KeepPercent is not null;
-                if (!_settings.RenumberFrames && qualitySelection)
+                if (qualitySelection && (!_settings.RenumberFrames || _settings.NoRamBuffers))
                 {
                     written = written.OrderBy(entry => entry.Frame.Index).ToList();
+                }
+
+                // -qw duplicates the top quarter twice and the next quarter once, naming the copies
+                // with a/b suffixes (oracle: -q=10 -> 00,00a,00b for the top two, 02a,03a,04a for the
+                // next three, 05..09 single; "Created 7 duplicate images").
+                var queue = new List<(Frame Frame, double Score, AlignmentOffset Offset, string Suffix)>(written.Count);
+                int duplicated = 0;
+                if (_settings.QualityWeighting && qualitySelection && written.Count > 0)
+                {
+                    int top = written.Count / 4;
+                    int second = written.Count / 2;
+                    for (int i = 0; i < written.Count; i++)
+                    {
+                        var entry = written[i];
+                        queue.Add((entry.Frame, entry.Score, entry.Offset, string.Empty));
+                        if (i < top)
+                        {
+                            queue.Add((entry.Frame, entry.Score, entry.Offset, "a"));
+                            queue.Add((entry.Frame, entry.Score, entry.Offset, "b"));
+                            duplicated += 2;
+                        }
+                        else if (i < second)
+                        {
+                            queue.Add((entry.Frame, entry.Score, entry.Offset, "a"));
+                            duplicated++;
+                        }
+                    }
+                }
+                else
+                {
+                    foreach (var entry in written)
+                    {
+                        queue.Add((entry.Frame, entry.Score, entry.Offset, string.Empty));
+                    }
                 }
 
                 if (_settings.Stack is StackMethod method)
                 {
                     string masterPath = Path.Combine(outputRoot, baseName + _settings.OutputExtension);
-                    var first = selected[0].Frame;
+                    var first = ApplyGeometry(queue[0].Frame, queue[0].Offset, shiftFill);
                     var stacker = new FrameStacker(first.Width, first.Height, first.Channels, first.BitDepth, method);
-                    foreach (var (frame, _, offset) in selected)
+                    foreach (var (frame, _, offset, _) in queue)
                     {
-                        stacker.Add(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset, shiftFill));
+                        stacker.Add(ApplyGeometry(frame, offset, shiftFill));
                     }
-                    var master = stacker.Result();
+                    var master = ApplyOverlay(stacker.Result(), detectionThreshold);
                     using var sink = FrameSinkFactory.Create(masterPath, master, 1, _settings.Fps,
                         _settings.AviCodec, _settings.AviQuality);
                     sink.Write(master);
                     outputFrames++;
                     outputs.Add(masterPath);
-                    _protocol?.WriteLine($"  {selected.Count} frames stacked -> {Path.GetFileName(masterPath)}");
+                    _protocol?.WriteLine($"  {queue.Count} frames stacked -> {Path.GetFileName(masterPath)}");
                 }
                 else if (_settings.OutputExtension.Equals(".gif", StringComparison.OrdinalIgnoreCase))
                 {
@@ -654,10 +785,10 @@ public sealed class Processor
                     // -rgb has no effect on GIF in the engine (one file), and neither do -gif_border_tol
                     // or -gif_lossy_comp, which only ever shaped image blocks that were never written.
                     string gifPath = Path.Combine(outputRoot, baseName + ".gif");
-                    var gifFrames = new List<Frame>(written.Count);
-                    foreach (var (frame, _, offset) in written)
+                    var gifFrames = new List<Frame>(queue.Count);
+                    foreach (var (frame, _, offset, _) in queue)
                     {
-                        gifFrames.Add(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset, shiftFill));
+                        gifFrames.Add(ApplyOverlay(ApplyGeometry(frame, offset, shiftFill), detectionThreshold));
                         outputFrames++;
                     }
 
@@ -669,10 +800,11 @@ public sealed class Processor
                 {
                     // SER/AVI hold the whole run in one file; joining inputs of different geometry
                     // is exactly the case the engine refuses ("Frames of different sizes ...").
-                    var template = written[0].Frame;
-                    foreach (var (frame, _, _) in written)
+                    var template = ApplyGeometry(queue[0].Frame, queue[0].Offset, shiftFill);
+                    foreach (var (frame, _, offset, _) in queue)
                     {
-                        if (frame.Width != template.Width || frame.Height != template.Height)
+                        var check = ApplyGeometry(frame, offset, shiftFill);
+                        if (check.Width != template.Width || check.Height != template.Height)
                         {
                             throw new InvalidDataException(
                                 "Frames of different sizes cannot written to an AVI or SER file");
@@ -693,14 +825,14 @@ public sealed class Processor
                             {
                                 Frame part = ExtractChannel(template, channel);
                                 string path = Path.Combine(outputRoot, letter + "_" + splitBase);
-                                sinks.Add(FrameSinkFactory.Create(path, part, written.Count, _settings.Fps,
+                                sinks.Add(FrameSinkFactory.Create(path, part, queue.Count, _settings.Fps,
                                     _settings.AviCodec, _settings.AviQuality));
                                 outputs.Add(path);
                             }
 
-                            foreach (var (frame, _, offset) in written)
+                            foreach (var (frame, _, offset, _) in queue)
                             {
-                                var output = offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset, shiftFill);
+                                var output = ApplyOverlay(ApplyGeometry(frame, offset, shiftFill), detectionThreshold);
                                 for (int channel = 0; channel < sinks.Count; channel++)
                                 {
                                     sinks[channel].Write(ExtractChannel(output, channel));
@@ -717,11 +849,11 @@ public sealed class Processor
                     else
                     {
                         string outputPath = Path.Combine(outputRoot, baseName + _settings.OutputExtension);
-                        using var sink = FrameSinkFactory.Create(outputPath, template, written.Count, _settings.Fps,
+                        using var sink = FrameSinkFactory.Create(outputPath, template, queue.Count, _settings.Fps,
                             _settings.AviCodec, _settings.AviQuality);
-                        foreach (var (frame, _, offset) in written)
+                        foreach (var (frame, _, offset, _) in queue)
                         {
-                            sink.Write(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset, shiftFill));
+                            sink.Write(ApplyOverlay(ApplyGeometry(frame, offset, shiftFill), detectionThreshold));
                             outputFrames++;
                         }
                         outputs.Add(outputPath);
@@ -752,15 +884,17 @@ public sealed class Processor
                     int digits = Math.Max(1, basis.ToString(CultureInfo.InvariantCulture).Length);
                     string numberFormat = "D" + digits.ToString(CultureInfo.InvariantCulture);
                     int number = firstNumber;
-                    foreach (var (frame, score, offset) in written)
+                    for (int q = 0; q < queue.Count; q++)
                     {
-                        var output = offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset, shiftFill);
+                        var (frame, score, offset, suffix) = queue[q];
+                        if (q > 0 && suffix.Length == 0) number++;
+                        var output = ApplyOverlay(ApplyGeometry(frame, offset, shiftFill), detectionThreshold);
                         // -nr names a plain run's frames after their source number (1-based:
                         // -f=4 -nr wrote 01.tif..04.tif), but a quality run stays sequential because
                         // the engine has already reordered the stream itself.
                         string stem = _settings.RenumberFrames || qualitySelection
-                            ? number.ToString(numberFormat, CultureInfo.InvariantCulture)
-                            : (output.Index + 1).ToString(numberFormat, CultureInfo.InvariantCulture);
+                            ? number.ToString(numberFormat, CultureInfo.InvariantCulture) + suffix
+                            : (output.Index + 1).ToString(numberFormat, CultureInfo.InvariantCulture) + suffix;
 
                         // -incqv: the engine appends the frame's score as a percentage of the best,
                         // printed with four significant digits (oracle: "1_quality_76.32%.tif").
@@ -799,7 +933,6 @@ public sealed class Processor
                         }
 
                         outputFrames++;
-                        number++;
                     }
                 }
 
@@ -810,6 +943,8 @@ public sealed class Processor
                         baseName,
                         window.Limit,
                         outputFrames - outputBefore,
+                        written.Count,
+                        duplicated,
                         dropped,
                         discardedNoObject - noObjectBefore,
                         discardedPartial - partialBefore,
@@ -854,6 +989,8 @@ public sealed class Processor
         string baseName,
         int inputFrameCount,
         int outputFrameCount,
+        int uniqueOutputCount,
+        int duplicatedCount,
         int droppedByQuality,
         int droppedNoObject,
         int droppedPartial,
@@ -933,6 +1070,12 @@ public sealed class Processor
         if (_settings.OutputFrameDrop > 0)
         {
             text.Append("  Frames discarded by output frame drop option: ").Append(discardedByOutputDrop.ToString(CultureInfo.InvariantCulture)).Append((char)13).Append((char)10);
+        }
+        if (duplicatedCount > 0)
+        {
+            // -qw: the engine separates unique and duplicate counts (oracle: 7/4/11).
+            text.Append("  Total unique output frames: ").Append(uniqueOutputCount.ToString(CultureInfo.InvariantCulture)).Append(":\r\n");
+            text.Append("  Total duplicated output frames: ").Append(duplicatedCount.ToString(CultureInfo.InvariantCulture)).Append(":\r\n");
         }
         text.Append("  Total output frames: ").Append(outputFrameCount.ToString(CultureInfo.InvariantCulture)).Append(":\r\n");
         if (_settings.KeepFrames is not null || _settings.KeepPercent is not null)
@@ -1045,7 +1188,13 @@ public sealed class Processor
         }
         if (_settings.MasterFlat is not null)
         {
-            frame = Calibration.DivideFlat(frame, _settings.MasterFlat);
+            Frame flat = _settings.MasterFlat;
+            if (_settings.MasterFlatDark is not null)
+            {
+                // -flat_dark: the flat-dark is removed from the flat before normalisation.
+                flat = Calibration.SubtractDark(flat, _settings.MasterFlatDark);
+            }
+            frame = Calibration.DivideFlat(frame, flat);
         }
 
         // 4. linear processing
@@ -1139,10 +1288,10 @@ public sealed class Processor
     {
         if (_settings.JoinMode && files.Count > 1)
         {
-            return [new InputUnit(files[0], files, () => new JoinedFrameSource(files))];
+            return [new InputUnit(files[0], files, () => new JoinedFrameSource(files, _settings.SerBitDepth))];
         }
 
-        return files.Select(f => new InputUnit(f, [f], () => FrameSourceFactory.Open(f))).ToList();
+        return files.Select(f => new InputUnit(f, [f], () => FrameSourceFactory.Open(f, _settings.SerBitDepth))).ToList();
     }
 
     private sealed record InputUnit(string Name, IReadOnlyList<string> Sources, Func<IFrameSource> Open);
@@ -1246,7 +1395,7 @@ public sealed class Processor
     /// </remarks>
     private void SaveMasterFrames(string outputRoot)
     {
-        if (!_settings.SaveMasterDark && !_settings.SaveMasterFlat)
+        if (!_settings.SaveMasterDark && !_settings.SaveMasterFlat && !_settings.SaveMasterFlatDark)
         {
             return;
         }
@@ -1265,6 +1414,69 @@ public sealed class Processor
             string name = flat.Channels == 3 ? "pipp_master_flat.tif" : "pipp_master_flat_dark.tif";
             MasterFrameBuilder.WriteMaster(flat, Path.Combine(logDirectory, name));
         }
+
+        if (_settings.SaveMasterFlatDark && _settings.MasterFlatDark is { } flatDark)
+        {
+            // -save_flat_dark: the engine's name for the flat-dark master (FUN_140090870).
+            MasterFrameBuilder.WriteMaster(flatDark, Path.Combine(logDirectory, "pipp_master_flat_dark.tif"));
+        }
+    }
+
+    /// <summary>Writes the two BMPs <c>-test_run</c> produces at the output root.</summary>
+    /// <remarks>
+    /// The engine names the files <c>.bmp</c> but writes TIFF payloads into them (verified: both files
+    /// start with <c>II*</c> and are byte-identical to the run's TIFF output). The quirk is reproduced
+    /// rather than corrected.
+    /// </remarks>
+    private static void WriteTestRunFrames(Frame raw, Frame processed, string outputRoot)
+    {
+        Directory.CreateDirectory(outputRoot);
+        using (var input = new TiffWriter(
+            Path.Combine(outputRoot, "pipp_input_frame.bmp"), raw.Width, raw.Height, raw.Channels, raw.BitDepth))
+        {
+            input.Write(raw);
+        }
+
+        using var output = new TiffWriter(
+            Path.Combine(outputRoot, "pipp_output_frame.bmp"), processed.Width, processed.Height,
+            processed.Channels, processed.BitDepth);
+        output.Write(processed);
+    }
+
+    /// <summary>
+    /// Applies the alignment shift and the area-of-interest crop to one delivered frame. The engine
+    /// crops its stabilised frame at <c>(aoi_x - 1, aoi_y + 2)</c> (a constant offset verified over
+    /// four boxes); this implementation crops at the requested origin, because our alignment already
+    /// differs from the engine's and reproducing the offset would not make the pixels match.
+    /// </summary>
+    private Frame ApplyGeometry(Frame frame, AlignmentOffset offset, ushort? shiftFill)
+    {
+        Frame output = offset.Dx == 0 && offset.Dy == 0
+            ? frame
+            : FrameAligner.ShiftWithBackground(frame, offset, shiftFill);
+
+        if (_settings.AreaOfInterestCrop && _settings.AreaOfInterest is PixelRect aoi &&
+            aoi.Width > 0 && aoi.Height > 0)
+        {
+            int x = Math.Clamp(aoi.X, 0, Math.Max(0, output.Width - 1));
+            int y = Math.Clamp(aoi.Y, 0, Math.Max(0, output.Height - 1));
+            int width = Math.Min(aoi.Width, output.Width - x);
+            int height = Math.Min(aoi.Height, output.Height - y);
+            if (width > 0 && height > 0)
+            {
+                output = GeometricTransforms.Crop(output, x, y, width, height);
+            }
+        }
+
+        return output;
+    }
+
+    /// <summary>Renders the <c>-sdp</c> detection overlay when that switch is on.</summary>
+    private Frame ApplyOverlay(Frame frame, int? detectionThreshold)
+    {
+        if (!_settings.ShowDetectedPixels) return frame;
+        int threshold = detectionThreshold ?? _settings.MinPixelValue ?? DetectionThreshold.ComputeOrDefault(frame);
+        return DetectionOverlay.Render(frame, threshold, _settings.MinSize);
     }
 
     /// <summary>The channel order <c>-rgb</c> uses for its file prefixes: <c>r_</c>, <c>g_</c>, <c>b_</c>.</summary>
@@ -1321,12 +1533,14 @@ public sealed class JoinedFrameSource : IFrameSource
     private int _current;
 
     /// <summary>Opens every input and concatenates its frames.</summary>
-    public JoinedFrameSource(IEnumerable<string> files)
+    /// <param name="files">Input containers, in order.</param>
+    /// <param name="serBitDepthOverride">Optional SER bit-depth override (<c>-ser_bpp</c>).</param>
+    public JoinedFrameSource(IEnumerable<string> files, int? serBitDepthOverride = null)
     {
         ArgumentNullException.ThrowIfNull(files);
         try
         {
-            foreach (string file in files) _sources.Add(FrameSourceFactory.Open(file));
+            foreach (string file in files) _sources.Add(FrameSourceFactory.Open(file, serBitDepthOverride));
         }
         catch
         {
