@@ -11,10 +11,10 @@ order, and how each step is proven.
 | **Recovery** (read the original) | binaries decompiled | 100 % | 100 % |
 | **Parity** (behave like the original) | switches wired + oracle-verified | 131/131 addressed, 76 verified | all executable areas |
 | **Verification** (prove it) | parity cases matching | **29 cases, all matching** | one per executable area |
-| **Distribution** | installable build | **0.1.0-alpha built** | 1.0 once permission exists |
+| **Distribution** | installable build | **0.1.2-alpha published** | 1.0 |
 
-Recovery is finished. Parity is complete except one algorithm (surface tracking). The alpha is built
-and smoke-tested. Release is blocked on permission, not on code.
+Recovery is finished. Parity is complete except one algorithm (surface tracking). The alpha is built,
+smoke-tested and published on GitHub Releases.
 
 ## Status and community
 
@@ -81,8 +81,8 @@ Saturn fixture, with the remaining frames off by one pixel. Everything else is a
 
 | | |
 | --- | --- |
-| Artifact | `dist/OPIPP-0.1.1-alpha-win-x64.zip` (self-contained win-x64, 50.7 MB) |
-| Provenance | `Version=0.1.1-alpha` in `Directory.Build.props`; window title `OPIPP 0.1.1-alpha - Open PIPP` |
+| Artifact | `OPIPP-0.1.2-alpha-win-x64.zip` on [Releases](https://github.com/openpipp/opipp/releases) (self-contained win-x64, 50.7 MB) |
+| Provenance | `Version=0.1.2-alpha` in `Directory.Build.props`; window title `OPIPP 0.1.2-alpha - Open PIPP` |
 | Verified | 553 tests, 29/29 parity cases, CLI conversion of 30 real frames, GUI launch, no native DLL |
 | Notes | [`alpha.md`](alpha.md) |
 
@@ -100,8 +100,7 @@ Rebuild with the two `dotnet publish` commands in `alpha.md`. `dist/` is git-ign
 | 4. Selection, alignment, stacking | **done except tracking exactness** |
 | 5. Animation and long tail | **done** — `-anim_*`, WinJUPOS, legacy AVI, RAW switches |
 | 6. GUI parity | **done** — managed, `LegacyNativeApi` deleted, `-gui` verified |
-| 7. Open-source release | **blocked on Chris Garry's written permission** |
-| 8. Alpha build | **done** — 0.1.1-alpha, binaries renamed to Opipp.* |
+| 7. Alpha build | **done** — 0.1.2-alpha published on GitHub Releases |
 
 ### Phase 4 remainder — tracking exactness
 
@@ -129,13 +128,6 @@ window cannot recover, which is worse than seeding at the box.
 dimensions and downsample factors from the context rather than reusing `box/16`) and the engine's
 per-candidate histogram scoring, then re-enable the coarse seed. Success criterion: arrow probe still
 applies no shift, and Saturn reaches ≥28/30. Notes: [`../notes/tracking.md`](../notes/tracking.md).
-
-## Phase 7 — Release (blocked)
-
-Work: written permission from Chris Garry; then `LICENSE`, provenance statement, CI (build + tests;
-parity only where the original binaries may legally be used), packaging.
-
-**Until permission exists: no publication, no binaries, no vendored `decompiled/` or `ghidra/`.**
 
 ---
 

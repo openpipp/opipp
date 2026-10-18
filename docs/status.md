@@ -133,8 +133,9 @@ without `-hsrgb`. Next is the rest of Phase 4a: the quality metric's integer str
 ## Provenance
 
 `bin/`, `decompiled/` and `ghidra/` are reference copies of Chris Garry's PIPP and its output.
-They are git-ignored and must never be published. No `LICENSE` file exists on purpose until the
-author's permission is obtained. See [`../notes/provenance.md`](../notes/provenance.md).
+They are git-ignored and must never be published. The repository itself is GPLv3 (see `LICENSE` and
+`NOTICE`); that covers this project's own code and artwork only, not PIPP. See
+[`../notes/provenance.md`](../notes/provenance.md).
 
 ## Switch coverage (final)
 

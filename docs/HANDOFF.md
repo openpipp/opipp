@@ -7,8 +7,9 @@ documents it points at. Everything here is verified as of commit **093eea2**.
 
 A reverse-engineered, managed (.NET 10 / C# 13) reconstruction of **PIPP 2.5** (Planetary Imaging
 PreProcessor, by Chris Garry), built to become an open-source, modernised replacement. The original
-is closed-source; `bin/`, `decompiled/` and `ghidra/` are read-only reference material and must never
-be published or committed. No `LICENSE` until the author's permission is obtained.
+is closed-source; `bin/`, `decompiled/` and `ghidra/` are read-only reference material and are
+git-ignored, never published or committed. The repository is GPLv3 for its own code and artwork (see
+`LICENSE` and `NOTICE`).
 
 ## State in one table
 

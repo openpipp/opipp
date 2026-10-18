@@ -2,8 +2,9 @@
 
 The first distributable build of the reconstruction. **Alpha** means: the engine is functionally
 complete and parity-tested, but one algorithm (surface tracking) is still one pixel off on part of
-the real-data fixture, and the project has no publication permission yet. Treat it as a working
-preview, not a replacement for the original.
+the real-data fixture. It is published under GPLv3 in the belief that reproducing formats and
+behaviour for interoperability is fair use. Treat it as a working preview, not a replacement for the
+original.
 
 ## Artifact
 
@@ -47,8 +48,8 @@ Version identity lives in `Directory.Build.props` (`Version=0.1.2-alpha`).
 - **Deliberate divergences** carried over from the reconstruction: spec-correct 16-bit TIFF, a valid
   animated GIF instead of the original's image-less file, clamped `-aoi_crop`, and the start-up path
   guard.
-- **Release**: no `LICENSE`, and the build must not be redistributed without Chris Garry's written
-  permission (`notes/provenance.md`).
+- **Licence**: GPLv3 for this repository's code and artwork; it grants nothing in PIPP itself (see
+  `NOTICE`).
 
 ## Rebuilding
 
