@@ -73,3 +73,24 @@ The coarse stage does not improve on seeding at the box for this fixture, which 
 leaves it disabled until its percentile/brightness acceptance gates are reproduced. The residual
 8 frames are off by exactly one pixel in every variant, so the difference is in the score
 arithmetic, not in the search policy.
+
+## Probe: what the engine does when its gates reject (2026-10-18)
+
+A 3-frame synthetic SER (hard-edged asymmetric arrow; frame 2 moved +2,-1; frame 3 moved +4,-2) with
+`-en_ss -en_surface_feature_tracking -afb 56,56,48x48` produced **no shift at all** from the original:
+frames 2 and 3 are byte-identical to their inputs. Our port shifted frame 2 by exactly the injected
+amount, which is "correct" by content but diverges from the engine.
+
+Conclusion: the engine's coarse stage (`FUN_1400a6e40`) refuses this content and the caller then
+leaves the frame unshifted; the fine stage is never reached. The acceptance gates in the coarse loop
+are therefore part of the observable behaviour, not an optimisation:
+
+- low percentile of the candidate must fall inside
+  `[max(0, -10 - mean*DAT_140137938), 10 - (refLow+1)*ratio*DAT_140137940]`
+- brightness ratio `candidateSum / refSum` must lie in `[DAT_140120fb0, DAT_140137930]`
+- `highPercentile - lowPercentile > 24`
+
+Our port currently seeds at the box and skips these gates, so it tracks content the original rejects
+and can land elsewhere on content the original accepts. Porting the gates (and reading those four
+constants from `.rdata` rather than guessing them) is the next step; it is also the likely reason the
+Saturn fixture differs on 8 of 30 frames, because the gated seed moves the fine window.
