@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Pipp.Core.Alignment;
 using Pipp.Core.Diagnostics;
+using Pipp.Core.Formats;
 using Pipp.Core.Frames;
 using Pipp.Core.Processing;
 using Pipp.Core.Quality;
@@ -350,6 +351,23 @@ public sealed class Processor
                     outputFrames++;
                     outputs.Add(masterPath);
                     _protocol?.WriteLine($"  {selected.Count} frames stacked -> {Path.GetFileName(masterPath)}");
+                }
+                else if (_settings.OutputExtension.Equals(".gif", StringComparison.OrdinalIgnoreCase))
+                {
+                    // One animated file at the output root: unlike TIFF/PNG the engine does not use a
+                    // per-input folder for GIF. The original writes an image-less GIF (no image
+                    // descriptors at all), so writing a valid animation is a deliberate divergence.
+                    string gifPath = Path.Combine(_settings.OutputDirectory, baseName + ".gif");
+                    var gifFrames = new List<Frame>(selected.Count);
+                    foreach (var (frame, _, offset) in selected)
+                    {
+                        gifFrames.Add(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.Shift(frame, offset));
+                        outputFrames++;
+                    }
+
+                    int delay = Math.Max(1, (int)Math.Round(100.0 / Math.Max(1, _settings.Fps)));
+                    GifWriter.Write(gifPath, gifFrames, new GifOptions(delay, Loop: true));
+                    outputs.Add(gifPath);
                 }
                 else if (IsMultiFrameContainer(_settings.OutputExtension))
                 {

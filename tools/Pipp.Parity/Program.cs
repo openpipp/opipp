@@ -106,8 +106,11 @@ internal static class Program
             new ParityCase("quality", ["-tif", "-q=2"], Mode: CompareMode.SetEquality),
             new ParityCase("bmp-out", ["-bmp"]),
             new ParityCase("y8-out", ["-avi", "-y8"]),
-            new ParityCase("gif-out", ["-gif"], Mode: CompareMode.KnownGap,
-                Note: "GIF writer not implemented (needs LZW + palette quantiser)"),
+            // The original writes a GIF with no image descriptor at all (only a NETSCAPE extension,
+            // a comment block and the trailer), so there is nothing to compare pixels against; we
+            // emit a valid animation instead. Deliberate divergence, like the 16-bit TIFF case.
+            new ParityCase("gif-out", ["-gif"], Mode: CompareMode.KnownDivergence,
+                Note: "original emits an image-less GIF; we write a valid animation"),
             // The original writes 16-bit TIFF samples byte-swapped under an "II" header, which makes
             // the files unreadable by standard tools (confirmed with ffmpeg). We write spec-correct
             // files instead; this is a deliberate divergence, not an unknown.

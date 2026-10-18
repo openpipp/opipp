@@ -235,6 +235,7 @@ internal static class Program
         if (formats.HasFlag(PippOutputFormats.Tiff)) return ".tif";
         if (formats.HasFlag(PippOutputFormats.Png)) return ".png";
         if (formats.HasFlag(PippOutputFormats.Bmp)) return ".bmp";
+        if (formats.HasFlag(PippOutputFormats.Gif)) return ".gif";
         return ".ser";
     }
 
