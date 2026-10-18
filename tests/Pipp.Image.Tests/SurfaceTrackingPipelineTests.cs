@@ -86,6 +86,7 @@ public class SurfaceTrackingPipelineTests
                 OutputDirectory = outputDirectory,
                 OutputExtension = ".ser",
                 SurfaceTracking = true,
+                EnableStabilisation = true, /* the engine needs both switches */
                 AlignmentBox = new PixelRect(16, 16, 32, 32),
             };
 
@@ -131,6 +132,7 @@ public class SurfaceTrackingPipelineTests
                 OutputDirectory = outputDirectory,
                 OutputExtension = ".ser",
                 SurfaceTracking = true,
+                EnableStabilisation = true, /* the engine needs both switches */
             };
 
             var report = new Processor(settings).Run([input]);
@@ -185,6 +187,7 @@ public class SurfaceTrackingPipelineTests
                 OutputDirectory = outputDirectory,
                 OutputExtension = ".ser",
                 SurfaceTracking = true,
+                EnableStabilisation = true, /* the engine needs both switches */
                 AlignmentBox = new PixelRect(8, 8, 16, 16),
             };
 
