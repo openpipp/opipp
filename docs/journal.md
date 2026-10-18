@@ -252,3 +252,29 @@ the object box. The remaining difference must come from the parts of the driver 
 That last point is the most likely explanation for frame 1 being special: its score may be scaled by a
 different content statistic than the others. Next: read `FUN_1400b00b0`'s tail (the return value) and
 the stride-loop accumulation, then re-fit the model.
+
+## M14 - The engine's quality ranking is order-dependent (first frame boosted 1.3x)
+
+Reordering the capture settles it. With frames reordered so that frame 11 is processed first:
+
+| run | first frame | score | next best | score | ratio |
+| --- | --- | --- | --- | --- | --- |
+| original order | frame 1 | 1065.667424 | frame 11 | 813.334568 | 1.310 |
+| reordered (11 first) | frame 11 | 1100.569423 | frame 3 | 803.749462 | 1.369 |
+
+Frame 11 is the *same pixels* in both runs, yet scores 1100.6 when processed first and 813.3 when
+second. So the ~1.3x advantage is **not image content** - it is a structural artefact of being the
+first frame through the quality path, and it explains why no content-based metric (variance,
+Tenengrad, Laplacian, top-5 brightness, the recovered squared-difference metric at any stride, whole
+frame or object bbox) could reproduce the 1.31 ratio: they were all ~0.95-1.0 because the effect is
+not in the pixels.
+
+Likely cause, from the pseudo-C: the search box `image[0x374..0x377]` is zero-initialised and, when
+all four fields are zero, is set to the **whole frame** (116959-116964); only afterwards is it carried
+over and expanded per frame. The first frame is therefore measured over a much larger region than
+every later frame, which changes the accumulated value.
+
+Implication for parity: matching the quality log requires reproducing this initialisation and the
+carry-over of the box between frames, not a better sharpness formula. The next session should model
+the box life-cycle (full frame on the first frame, then per-frame detection + one-pixel expansion)
+and check the *ratios* rather than absolute scores.
