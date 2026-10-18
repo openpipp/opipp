@@ -1,4 +1,4 @@
-# OPIPP 0.1.0-alpha
+# OPIPP 0.1.1-alpha
 
 The first distributable build of the reconstruction. **Alpha** means: the engine is functionally
 complete and parity-tested, but one algorithm (surface tracking) is still one pixel off on part of
@@ -9,9 +9,9 @@ preview, not a replacement for the original.
 
 | | |
 |---|---|
-| File | `dist/OPIPP-0.1.0-alpha-win-x64.zip` |
-| Size | 50,772,018 bytes (48.4 MiB) |
-| SHA-256 | `b5d62df7eb1840ce5ccc56b8b281a96f2b0144f9b78304bacae8bae9069c4063` |
+| File | `dist/OPIPP-0.1.1-alpha-win-x64.zip` |
+| Size | 50,772,075 bytes (48.4 MiB) |
+| SHA-256 | `4a4aa97320eebbee965284b15f73031d6742225674df4cf4e40598b4b829099d` |
 | Runtime | self-contained .NET 10, win-x64 — no .NET install needed |
 | Contents | `Opipp.App.exe` (GUI, managed), `Opipp.Cli.exe` (drop-in engine), `README-ALPHA.txt` |
 
@@ -20,12 +20,12 @@ preview, not a replacement for the original.
 ```
 export DOTNET_ROOT="$HOME/.dotnet-sdk"; export PATH="$DOTNET_ROOT:$DOTNET_ROOT/tools:$PATH"
 dotnet publish src/Opipp.App -c Release -r win-x64 --self-contained true \
-    -o dist/OPIPP-0.1.0-alpha-win-x64
+    -o dist/OPIPP-0.1.1-alpha-win-x64
 dotnet publish src/Opipp.Cli -c Release -r win-x64 --self-contained true \
-    -o dist/OPIPP-0.1.0-alpha-win-x64
+    -o dist/OPIPP-0.1.1-alpha-win-x64
 ```
 
-Version identity lives in `Directory.Build.props` (`Version=0.1.0-alpha`).
+Version identity lives in `Directory.Build.props` (`Version=0.1.1-alpha`).
 
 ## Smoke tests run on the published folder
 
@@ -40,8 +40,8 @@ Version identity lives in `Directory.Build.props` (`Version=0.1.0-alpha`).
 
 ## What is known to be off
 
-- **Surface-feature tracking**: 22 of 30 frames on the real Saturn fixture are byte-identical to
-  the original; the other 8 differ by exactly one pixel (mean L1 0.43). The engine's fine tracker
+- **Surface-feature tracking**: 23 of 30 frames on the real Saturn fixture are byte-identical to
+  the original; the other 8 differ by exactly one pixel (off by one pixel). The engine's fine tracker
   is ported (blur, percentile-stretched template, per-candidate LUT, SSE, asymmetric window), but
   the last bit of its arithmetic is not reproduced. See `docs/journal.md` (M27).
 - **Deliberate divergences** carried over from the reconstruction: spec-correct 16-bit TIFF, a valid
@@ -56,6 +56,6 @@ Version identity lives in `Directory.Build.props` (`Version=0.1.0-alpha`).
 commands above, then:
 
 ```
-powershell -NoProfile -Command "Compress-Archive -Path 'dist\OPIPP-0.1.0-alpha-win-x64\*' \
-    -DestinationPath 'dist\OPIPP-0.1.0-alpha-win-x64.zip' -Force"
+powershell -NoProfile -Command "Compress-Archive -Path 'dist\OPIPP-0.1.1-alpha-win-x64\*' \
+    -DestinationPath 'dist\OPIPP-0.1.1-alpha-win-x64.zip' -Force"
 ```
