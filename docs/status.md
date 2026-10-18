@@ -78,7 +78,8 @@ and therefore centring on real data.
 | ~~Colour SER misread~~ | Fixed: PIPP uses ColorID **100 = RGB / 101 = BGR**, not 16/17. Writer now uses 100; reader still accepts the old ids |
 | Debayer interpolation differs by 1 LSB on ~37% of interior pixels (up to 3 at edges) | Our `-db -db=2` result vs the original on a synthetic RGGB mosaic. The old parity case only ran `-db=2`, which the engine treats as pattern-only, so this was never exercised. Next: compare our interpolation kernel against `FUN_14009f4e0`/`FUN_14009e5f0`/`FUN_14009fc30` |
 | GIF output | Not implemented: needs LZW + palette quantiser |
-| Detection threshold uses Otsu, not the engine's "Calculated minpixel value" | Phase 4 |
+| Centring (`-ctr`) output still differs | Threshold now matches, and the transform is a pure integer translation with the vacated border filled with the frame's background level (3 on the Saturn capture): shift `(-19,+37)` reproduces frame 1 exactly. The remaining unknown is the centroid rule - our weighted centroid lands 2-4 px from the engine's implied measurement |
+| ~~Detection threshold uses Otsu~~ | Fixed: `FUN_14009ab40` averages 3x3 blocks into a 1/3-scale image, averages the five *smallest* row maxima, then `T = m + (meanAbove-m)/4`. Exact on real frames (18 vs 18); synthetic discs come out one unit low because the engine rounds inside its luma lookups |
 | GIF, RAW/dcraw, animation, AOI, master saving, quality weighting | Parsed, not executed — Phases 2–5 |
 | `Pipp.App` still calls the native API for `Test Options` and calibration | Phase 6 |
 

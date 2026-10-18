@@ -175,6 +175,7 @@ internal static class Program
 
             Centre = o.Centre,
             MinPixelValue = o.MinPixelValue,
+            CheckForPlanet = o.CheckForPlanet,
             KeepImageNames = o.KeepImageFilenames,
             SurfaceTracking = o.SurfaceFeatureTracking,
             AlignmentBox = o.AnchorFeatureX is int ax && o.AnchorFeatureY is int ay && o.AnchorFeatureWidth is int aw && o.AnchorFeatureHeight is int ah

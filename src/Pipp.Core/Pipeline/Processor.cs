@@ -111,8 +111,11 @@ public sealed class PipelineSettings
     /// <summary>Overexposed pixel threshold; defaults to the frame's maximum value.</summary>
     public int OverexposedThreshold { get; set; }
 
-    /// <summary>Explicit detection floor (-mp); when null the pipeline derives one per frame.</summary>
+    /// <summary>Explicit detection floor (-mp); when null the pipeline derives one from the first frame.</summary>
     public int? MinPixelValue { get; set; }
+
+    /// <summary>Reject frames with no detectable object (<c>-chk</c>); also makes the log carry the threshold.</summary>
+    public bool CheckForPlanet { get; set; }
 
     /// <summary>Write the engine's layout: frames in a per-input folder plus a logs folder.</summary>
     public bool PippLayout { get; set; } = true;
@@ -239,6 +242,7 @@ public sealed class Processor
             using (source)
             {
                 var accepted = new List<(Frame Frame, double Score, AlignmentOffset Offset)>();
+                int? detectionThreshold = null;
                 Frame? reference = null;
                 int index = 0;
 
@@ -294,12 +298,15 @@ public sealed class Processor
                     double score = QualityMetrics.Compute(frame, _settings.QualityAlgorithm);
                     AlignmentOffset offset = AlignmentOffset.Zero;
 
+                    // The engine derives the detection threshold once, from the first frame it
+                    // prepares, and reuses it for the rest of the file (pipp_core FUN_14009ab40).
+                    detectionThreshold ??= _settings.MinPixelValue ?? DetectionThreshold.ComputeOrDefault(frame);
+
                     if (_settings.Centre)
                     {
                         // -ctr puts the object at the engine's fixed target in every frame rather
                         // than aligning frames to each other, so each frame is measured on its own.
-                        int threshold = _settings.MinPixelValue ?? FrameAligner.OtsuThreshold(frame);
-                        offset = FrameAligner.CentreOffset(frame, threshold);
+                        offset = FrameAligner.CentreOffset(frame, detectionThreshold.Value);
                     }
                     else if (_settings.SurfaceTracking)
                     {
@@ -403,6 +410,7 @@ public sealed class Processor
                         dropped,
                         discardedObject - objectDiscardsBefore,
                         selected[0].Frame,
+                        detectionThreshold,
                         selected);
                 }
 
@@ -438,6 +446,7 @@ public sealed class Processor
         int droppedByQuality,
         int droppedNoObject,
         Frame sample,
+        int? detectionThreshold,
         List<(Frame Frame, double Score, AlignmentOffset Offset)> ranked)
     {
         string logDirectory = Path.Combine(_settings.OutputDirectory, "logs");
@@ -456,11 +465,16 @@ public sealed class Processor
 
         text.Append("\r\nSource image files:\r\n  ").Append(sourceFile).Append("\r\n");
 
-        if (_settings.Centre || droppedNoObject > 0)
+        if (_settings.Centre || _settings.CheckForPlanet || droppedNoObject > 0)
         {
             text.Append("\r\nProcessing Details:\r\n");
-            text.Append("  Calculated minpixel value: ")
-                .Append(FrameAligner.OtsuThreshold(sample).ToString(CultureInfo.InvariantCulture))
+            int shownThreshold = detectionThreshold
+                ?? _settings.MinPixelValue
+                ?? DetectionThreshold.ComputeOrDefault(sample);
+            text.Append(_settings.MinPixelValue.HasValue
+                    ? "  Calculated '-minpixel' value: "
+                    : "  Calculated minpixel value: ")
+                .Append(shownThreshold.ToString(CultureInfo.InvariantCulture))
                 .Append("\r\n");
         }
 

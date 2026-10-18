@@ -16,7 +16,7 @@ be published or committed. No `LICENSE` until the author's permission is obtaine
 | --- | --- |
 | Repo | `C:\Users\ilanp\Projects\PIPP-RE` (git, local only, HEAD `093eea2`) |
 | Build | `dotnet build PIPP.slnx` - clean |
-| Tests | **295 passing, 0 failing** (7 projects) |
+| Tests | **300 passing, 0 failing** (7 projects) |
 | Parity | **18 cases: 15 verified, 1 deliberate divergence, 2 known gaps**; `--real` adds 3 real-data cases, all matching |
 | Managed code | Core 11.8k lines, Cli 0.3k, App 14.5k, tests 5.5k |
 | Reference | `decompiled/` 14,277 lines C#; `ghidra/out/pipp_core.c` 4,229 functions |
@@ -63,11 +63,21 @@ Evidence (all pixel-exact against `bin/pipp_core.exe`):
 - Synthetic colour fixture, `-hs=204` and `-hs=204 -hsrgb` (min-gain vs per-channel differ by up to 52).
 - Synthetic 32x24 disc keeps the constant 2.04, so the old measurement stays valid.
 
-## Next task - Phase 4a item 2: the detection threshold, then centring
+## Next task - Phase 4a item 2b: the centring centroid
 
-`-ctr` still diverges on the real planet: we threshold with Otsu, the engine uses a "Calculated
-minpixel value" it prints into its own log. Characterise it black-box first (vary the fixture, read
-the logged value), then implement and verify with a `--real` parity case for `-ctr`.
+The threshold is solved (see the commit before this one): `FUN_14009ab40`, 1/3-scale image, five
+smallest row maxima, `m + (meanAbove-m)/4`; exact on real frames, one low on synthetic discs.
+
+`-ctr` still diverges, but it is now bounded: the transform is a **pure integer translation**, the
+vacated border is filled with the frame's background level (3 on the Saturn capture), and
+`shift(-19,+37)` with fill 3 reproduces oracle frame 1 **exactly**. What is missing is the centroid
+rule: binary, v, v-thr, v^2 and 1/3-scale centroids all land 2-4 px from the engine's implied
+measurement (339,282) for target (320,319 or 320,318).
+
+Next: find the routine that turns the threshold into an offset. Start from the detection call
+`FUN_140077560(image, ...)` (its `-1` return means "no object") and follow where it stores the
+object position; compare that against `FrameAligner.Centroid`. Then extend `--real` with a
+`real-centre` case (30 frames), which should go from 0/30 to 30/30 identical.
 
 Two smaller items found while doing the stretch, both recorded in `status.md`:
 

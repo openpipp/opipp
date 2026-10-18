@@ -69,3 +69,25 @@ Two side findings: `-hs_bp` had never been wired into `PipelineSettings` (now it
 parity case had been comparing two **no-ops** - `-db=<n>` only sets the pattern; the bare `-db` flag
 enables interpolation, and with it our output differs by ~1 LSB on 37% of pixels (recorded as a known
 gap, not fixed here).
+
+## M5 - Detection threshold (`<commit>`)
+
+Phase 4 item 1. The engine's "Calculated minpixel value" is `FUN_14009ab40`:
+
+- it averages 3x3 blocks into a 1/3-scale copy of the frame (integer mean of nine samples);
+- takes each small-image row's maximum, keeps the five **smallest** (padding with zero), and averages
+  them (`m`) - on a frame with a planet most rows are empty, which is why the value tracks the
+  background rather than the object;
+- averages every small-image pixel strictly above `m`, then returns `m + (meanAbove - m)/4`; a zero
+  result makes the caller substitute 40 (`FUN_14009b350(x, 0x28)`).
+
+Verified: real Saturn frames report 17-18 and the reconstruction now prints the same value (18 on
+frame 1, log-for-log). Synthetic noiseless discs are one unit low, a rounding artefact inside the
+engine's per-sample luma tables, recorded rather than papered over. Replaces `FrameAligner.OtsuThreshold`
+in the pipeline and in the log; `-chk` now makes the log carry the value, as the engine does.
+
+Centring was then measured properly: `-ctr` **is** a pure integer translation (the object bbox moves
+without resizing), the vacated border is filled with the frame's background level, and shift
+`(-19,+37)` with fill 3 reproduces oracle frame 1 byte-for-byte. The centroid rule itself is still
+open: every weighting we tried (binary, v, v-thr, squared, 1/3-scale) lands 2-4 px away from the
+offset the engine applied.
