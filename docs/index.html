@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OPIPP — Open PIPP</title>
+<meta name="description" content="OPIPP is an independent, fully managed continuation of PIPP for planetary image pre-processing. Early alpha; roadmap, completeness and downloads.">
+<style>
+  :root{
+    --bg:#070b16; --panel:#0e1526; --panel-2:#111a2e; --line:#1e2a44;
+    --ink:#e8eefc; --muted:#94a3c4; --accent:#22d3ee; --accent-2:#0ea5e9;
+    --ok:#34d399; --warn:#fbbf24; --bad:#f87171;
+    --max:1060px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:
+      radial-gradient(1200px 600px at 80% -10%, #0d2b45 0%, transparent 60%),
+      radial-gradient(900px 500px at 0% 0%, #10233f 0%, transparent 55%),
+      var(--bg);
+    color:var(--ink);
+    font:16px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:var(--max);margin:0 auto;padding:0 22px}
+  header.hero{padding:56px 0 18px}
+  .banner{display:block;width:min(760px,100%);height:auto;margin:0 0 26px}
+  h1{font-size:clamp(28px,4vw,44px);line-height:1.1;margin:0 0 10px;letter-spacing:-.02em}
+  .lede{color:var(--muted);max-width:70ch;margin:0 0 22px;font-size:1.05rem}
+  .cta{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .btn{display:inline-block;padding:11px 18px;border-radius:10px;font-weight:600;border:1px solid var(--line)}
+  .btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#04121a;border:none}
+  .btn.ghost{color:var(--ink);background:var(--panel)}
+  .pill{font-size:.8rem;padding:4px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted);background:var(--panel)}
+  section{padding:38px 0;border-top:1px solid var(--line)}
+  h2{font-size:1.5rem;margin:0 0 6px;letter-spacing:-.01em}
+  h2 .num{color:var(--accent);font-variant-numeric:tabular-nums;margin-right:10px;font-size:.9em}
+  .sub{color:var(--muted);margin:0 0 22px;max-width:78ch}
+  .grid{display:grid;gap:14px}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel-2));border:1px solid var(--line);border-radius:14px;padding:18px}
+  .card h3{margin:0 0 6px;font-size:1rem}
+  .card p{margin:0;color:var(--muted);font-size:.92rem}
+  .kpi{display:flex;flex-wrap:wrap;gap:14px}
+  .kpi .card{flex:1 1 160px;text-align:center}
+  .kpi .v{font-size:1.9rem;font-weight:700;letter-spacing:-.02em}
+  .kpi .l{color:var(--muted);font-size:.82rem;text-transform:uppercase;letter-spacing:.08em}
+  .bars{display:grid;gap:12px;margin-top:8px}
+  .bar{display:grid;grid-template-columns:190px 1fr 54px;gap:12px;align-items:center;font-size:.92rem}
+  .bar .name{color:var(--muted)}
+  .track{height:10px;background:#0a1120;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+  .fill{height:100%;background:linear-gradient(90deg,var(--accent-2),var(--accent));border-radius:999px}
+  .bar .pct{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+  table{width:100%;border-collapse:collapse;font-size:.93rem}
+  th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:.8rem;text-transform:uppercase;letter-spacing:.07em}
+  .state{white-space:nowrap;font-size:.82rem;padding:3px 9px;border-radius:999px;border:1px solid var(--line)}
+  .done{color:var(--ok);border-color:#134e3a;background:#07231a}
+  .next{color:var(--warn);border-color:#4a3a10;background:#241a06}
+  .blocked{color:var(--bad);border-color:#4a1c1c;background:#240a0a}
+  ul.clean{margin:0;padding-left:18px;color:var(--muted)}
+  ul.clean li{margin:6px 0}
+  code{background:#0a1120;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:.88em}
+  pre{background:#0a1120;border:1px solid var(--line);border-radius:12px;padding:14px;overflow:auto;font-size:.86rem}
+  footer{padding:34px 0 60px;color:var(--muted);font-size:.88rem;border-top:1px solid var(--line)}
+  .note{border-left:3px solid var(--accent);padding:10px 14px;background:#0b1424;border-radius:0 8px 8px 0;color:var(--muted)}
+  .tag{display:inline-block;font-size:.75rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 9px;margin:0 6px 6px 0}
+  @media (max-width:640px){ .bar{grid-template-columns:1fr;gap:6px} .bar .pct{text-align:left} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <img class="banner" src="assets/opipp-banner.png" alt="OpenPIPP — ringed planet logo and wordmark">
+  <h1>Planetary pre-processing, modernized and open</h1>
+  <p class="lede">
+    OPIPP is an independent, fully managed continuation of <strong>PIPP</strong> (Planetary Imaging
+    PreProcessor). It reads the same captures, accepts the same command-line switches and produces the
+    same output layout — but the code is new, readable C# that can keep evolving.
+  </p>
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/openpipp/opipp/releases">Download for Windows</a>
+    <a class="btn ghost" href="https://github.com/openpipp/opipp">Source on GitHub</a>
+    <span class="pill">0.1.2-alpha</span>
+    <span class="pill">GPLv3</span>
+    <span class="pill">Windows x64 · self-contained</span>
+  </div>
+</header>
+
+<section id="status">
+  <h2><span class="num">01</span>Where it stands</h2>
+  <p class="sub">Verified numbers, not aspirations. Everything below is measured against the original
+  binaries on the same inputs.</p>
+  <div class="kpi">
+    <div class="card"><div class="v">553</div><div class="l">tests passing</div></div>
+    <div class="card"><div class="v">29/29</div><div class="l">parity cases</div></div>
+    <div class="card"><div class="v">131</div><div class="l">switches addressed</div></div>
+    <div class="card"><div class="v">76</div><div class="l">verified byte-for-byte</div></div>
+    <div class="card"><div class="v">≈94%</div><div class="l">weighted completeness</div></div>
+  </div>
+</section>
+
+<section id="completeness">
+  <h2><span class="num">02</span>Completeness by area</h2>
+  <p class="sub">Weighted by how much of the product each area represents. The weights are a judgement
+  call, published in the roadmap so they can be argued with.</p>
+  <div class="bars">
+    <div class="bar"><span class="name">Output formats</span><span class="track"><span class="fill" style="width:99%"></span></span><span class="pct">99%</span></div>
+    <div class="bar"><span class="name">Core image operations</span><span class="track"><span class="fill" style="width:98%"></span></span><span class="pct">98%</span></div>
+    <div class="bar"><span class="name">Frame selection</span><span class="track"><span class="fill" style="width:97%"></span></span><span class="pct">97%</span></div>
+    <div class="bar"><span class="name">Calibration &amp; masters</span><span class="track"><span class="fill" style="width:96%"></span></span><span class="pct">96%</span></div>
+    <div class="bar"><span class="name">Input formats</span><span class="track"><span class="fill" style="width:95%"></span></span><span class="pct">95%</span></div>
+    <div class="bar"><span class="name">Animation / GIF</span><span class="track"><span class="fill" style="width:95%"></span></span><span class="pct">95%</span></div>
+    <div class="bar"><span class="name">Layout, logs, <code>-gui</code></span><span class="track"><span class="fill" style="width:99%"></span></span><span class="pct">99%</span></div>
+    <div class="bar"><span class="name">GUI application</span><span class="track"><span class="fill" style="width:92%"></span></span><span class="pct">92%</span></div>
+    <div class="bar"><span class="name">Alignment &amp; tracking</span><span class="track"><span class="fill" style="width:85%"></span></span><span class="pct">85%</span></div>
+    <div class="bar"><span class="name">Stacking</span><span class="track"><span class="fill" style="width:70%"></span></span><span class="pct">70%</span></div>
+  </div>
+  <p class="sub" style="margin-top:18px">The one material gap is <strong>surface-feature tracking</strong>:
+  it is exact on 23 of 30 frames of a real Saturn capture, and one pixel off on the rest. Everything
+  else is at or near exactness.</p>
+</section>
+
+<section id="roadmap">
+  <h2><span class="num">03</span>Roadmap</h2>
+  <p class="sub">Phases are closed only when a parity case or a test proves them.</p>
+  <table>
+    <thead><tr><th>Phase</th><th>State</th><th>What it means</th></tr></thead>
+    <tbody>
+      <tr><td>1 · Drop-in parity</td><td><span class="state done">done</span></td><td>Output layout, numbering, logs, exit codes, <code>-gui</code> token stream</td></tr>
+      <tr><td>2 · Remaining formats</td><td><span class="state done">done</span></td><td>BMP, Y8, GIF, colour SER, AVI including MJPEG</td></tr>
+      <tr><td>3 · Calibration</td><td><span class="state done">done</span></td><td>Dark/flat/flat-dark masters in the engine's <code>.tmp</code> format</td></tr>
+      <tr><td>4 · Selection, alignment, stacking</td><td><span class="state next">one gap</span></td><td>All exact except the tracking residual</td></tr>
+      <tr><td>5 · Animation &amp; long tail</td><td><span class="state done">done</span></td><td><code>-anim_*</code>, WinJUPOS naming, legacy AVI, RAW switches</td></tr>
+      <tr><td>6 · GUI parity</td><td><span class="state done">done</span></td><td>Fully managed — no native DLL required</td></tr>
+      <tr><td>7 · Release</td><td><span class="state blocked">blocked</span></td><td>Publishing is a fair-use judgement call; no original binaries are distributed</td></tr>
+      <tr><td>8 · Alpha build</td><td><span class="state done">done</span></td><td>Self-contained Windows build with GUI and CLI</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="margin:26px 0 8px;font-size:1.05rem">Next unit of work</h3>
+  <p class="sub" style="margin-bottom:8px">Port the engine's coarse search stage
+  (<code>FUN_1400a7ec0</code>) and re-enable the seed. Success criterion: the synthetic probe still
+  refuses content the original refuses, and the Saturn fixture reaches at least 28 of 30 frames.</p>
+</section>
+
+<section id="features">
+  <h2><span class="num">04</span>What it does</h2>
+  <div class="grid g3">
+    <div class="card"><h3>Reads your captures</h3><p>SER, AVI (including MJPEG), FITS, TIFF, PNG, BMP and baseline DNG — decoded in managed code.</p></div>
+    <div class="card"><h3>Pre-processes</h3><p>Debayer, calibrate with dark/flat masters, stretch, bin, resize, rotate, flip, mono or colour.</p></div>
+    <div class="card"><h3>Selects &amp; aligns</h3><p>Quality ranking (three algorithms), planet detection with rejection reasons, centring, surface tracking, stacking.</p></div>
+    <div class="card"><h3>Writes what you need</h3><p>TIFF, FITS, PNG, BMP, SER, AVI and animated GIF, in the original's numbered layout with matching logs.</p></div>
+    <div class="card"><h3>Drops in</h3><p>The CLI speaks the same switches and the same stdin protocol as <code>pipp_core.exe</code>, so existing scripts and front-ends keep working.</p></div>
+    <div class="card"><h3>Stays open</h3><p>GPLv3, no native dependencies, no vendored binaries — build it yourself from source.</p></div>
+  </div>
+</section>
+
+<section id="gaps">
+  <h2><span class="num">05</span>Known gaps &amp; deliberate divergences</h2>
+  <p class="sub">Listed rather than hidden. If something here matters to your workflow, that is exactly
+  the feedback worth sending.</p>
+  <ul class="clean">
+    <li><strong>Surface tracking</strong> — 23/30 frames exact on the real fixture; the coarse search stage is not faithful yet.</li>
+    <li><strong>16-bit TIFF</strong> — the original writes byte-swapped samples under an <code>II</code> header; OPIPP writes spec-correct files.</li>
+    <li><strong>GIF</strong> — the original emits a file with no image; OPIPP writes a valid animation.</li>
+    <li><strong><code>-aoi_crop</code></strong> — the original reads out of bounds; OPIPP clamps.</li>
+    <li><strong>DNG</strong> — absolute values differ from dcraw's colour scaling.</li>
+  </ul>
+</section>
+
+<section id="contribute">
+  <h2><span class="num">06</span>Feedback is the point</h2>
+  <p class="sub">This is early. The most useful thing you can send is a capture that fails, stalls or
+  comes out worse than the original.</p>
+  <div class="grid g3">
+    <div class="card"><h3>Report a capture</h3><p>Attach the SER/AVI, the command line you used, and the log from <code>&lt;output&gt;/logs/</code>.</p></div>
+    <div class="card"><h3>Describe a workflow</h3><p>What do you do in PIPP that OPIPP makes awkward or impossible?</p></div>
+    <div class="card"><h3>Compare output</h3><p>Run a job through both engines and diff the frames — the parity harness makes this mechanical.</p></div>
+  </div>
+  <div class="cta" style="margin-top:18px">
+    <a class="btn primary" href="https://github.com/openpipp/opipp/issues/new/choose">Open an issue</a>
+    <a class="btn ghost" href="https://github.com/openpipp/opipp/discussions">Start a discussion</a>
+  </div>
+</section>
+
+<section id="legal">
+  <h2><span class="num">07</span>Provenance, licence and AI</h2>
+  <div class="note" style="margin-bottom:16px">
+    <strong>Not affiliated with PIPP.</strong> OPIPP is independent: not affiliated with, endorsed by,
+    sponsored by or supported by Chris Garry or the PIPP project, and not an official PIPP release.
+    Bug reports about the original belong with the original author.
+  </div>
+  <p class="sub">
+    PIPP is closed-source freeware. OPIPP is a clean, managed reimplementation built for
+    interoperability, research and modernization: it reproduces file formats and a command-line
+    vocabulary, not the original's code, and no original binaries are redistributed here. The project
+    is published in the belief that this is fair use — the project's position, not a legal
+    determination.
+  </p>
+  <p class="sub">
+    <strong>Licence:</strong> GPLv3 or later covers this repository's own code and artwork, and nothing
+    else. See <a href="https://github.com/openpipp/opipp/blob/main/LICENSE">LICENSE</a> and
+    <a href="https://github.com/openpipp/opipp/blob/main/NOTICE">NOTICE</a>.
+  </p>
+  <p class="sub">
+    <strong>AI was used to build this, and will keep being used.</strong> The port was written with
+    large-language-model assistance working from decompiled output and black-box measurements. Every
+    behaviour claim is backed by a test or a parity case; anything unverified is recorded as a known
+    gap instead of described as working.
+  </p>
+</section>
+
+<footer>
+  <div>OPIPP — Open PIPP · GPLv3 · independent of the PIPP project ·
+    <a href="https://github.com/openpipp/opipp">GitHub</a> ·
+    <a href="https://github.com/openpipp/opipp/releases">Releases</a> ·
+    <a href="https://github.com/openpipp/opipp/blob/main/docs/roadmap.md">Full roadmap</a>
+  </div>
+</footer>
+
+</div>
+</body>
+</html>
