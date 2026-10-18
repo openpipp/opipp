@@ -16,7 +16,7 @@ be published or committed. No `LICENSE` until the author's permission is obtaine
 | --- | --- |
 | Repo | `C:\Users\ilanp\Projects\PIPP-RE` (git, local only, HEAD `093eea2`) |
 | Build | `dotnet build PIPP.slnx` - clean |
-| Tests | **372 passing, 0 failing** (7 projects) |
+| Tests | **392 passing, 0 failing** (7 projects) |
 | Parity | **18 synthetic + 4 real-data cases** (`--real`), all matching; GIF is a deliberate divergence |
 | Managed code | Core 11.8k lines, Cli 0.3k, App 14.5k, tests 5.5k |
 | Reference | `decompiled/` 14,277 lines C#; `ghidra/out/pipp_core.c` 4,229 functions |
@@ -68,11 +68,14 @@ Evidence (all pixel-exact against `bin/pipp_core.exe`):
 Done: detection threshold (item 1), centring (item 2b, 30/30 pixel-exact), quality scoring (item 3,
 six decimals), detection and `-chk`/`-ms` (item 2). All committed and covered by parity cases.
 
+Also done: surface tracking (`-en_surface_feature_tracking` + `-en_ss` + `-afb_*`, not `-st`) wired
+to `SurfaceTracker` with a documented +-1 px residual, and stacking arithmetic corrected to the
+engine's truncating integer division (`-meanmed` does not exist in 2.5.9).
+
 Open, in the order I would take them:
 
-1. **Centring centroid** (item 2b, below) - bounded, one unknown left.
-2. **Quality estimator** (item 3) - the log format matches but the ranking does not: engine frame 1
-   = 1065.7 vs frame 11 = 813.3 (31% apart); ours has them within 4% and in the opposite order.
+2. **Quality estimator** - historical note, now resolved: engine frame 1 = 1065.7 vs frame 11 = 813.3
+   was a mask-buffer reuse artefact, reproduced exactly (see M18).
    Pipeline located: subsample `FUN_1400af990` -> normalise by mean -> 3x3 blur `FUN_1400afc90` ->
    metric `FUN_1400aecf0` (mode 3: `FUN_1400afda0`). Global statistics are ruled out (see journal M7).
    Producer found: `FUN_1400af2d0` returns the score, inserted at 86600 via

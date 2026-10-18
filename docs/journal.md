@@ -382,3 +382,38 @@ decoder; a 3-frame 64x48 MJPG AVI matches ffmpeg to mean 0.011 / max 2 of 255.
 5 inert. The `-gif` row was corrected after GIF output was wired.
 
 372 tests, 22 parity cases (18 synthetic + 4 real), all matching.
+
+## M19 - Tracking and stacking: the switches are not what the roadmap assumed
+
+**Surface tracking (`cec62c5`).** `-st` does not exist in either binary (`Error: unknown argument
+'-st'`). The real switches are `-en_surface_feature_tracking` + `-en_ss` + `-afb_x/y/width/height`,
+and the engine's conditions were verified one by one:
+
+- `-en_surface_feature_tracking` **alone** is byte-identical to a plain run (30/30 frames) - it does
+  nothing without an AFB box;
+- adding `-en_ss` is what produces shifts; offsets are integer-only and the vacated border is filled
+  with **0**, not the frame median;
+- the reference is frame 1 and the applied shift is the **negation** of the measurement.
+
+`SurfaceTracker` now drives the pipeline with `EstimateTranslation` as fallback, no AFB means no-op,
+and a new `PipelineSettings.EnableStabilisation` gates the behaviour on both switches.
+
+Residual against the engine (AFB 330,340,48x48): 5/30 exact shifts, within 1 px on x 26/29 and
+y 29/29, mean |residual| 0.83 px x / 0.69 px y. Both outputs are pure integer translations of their
+plain runs, so this is a different correlation peak, not a wiring error. On a large AFB over the rings
+the engine aliases to the ring period while ours follows the object - an honest difference, documented
+rather than smoothed over.
+
+**Stacking.** `-meanmed` **does not exist in PIPP 2.5.9**: no such string in `pipp_core.exe` or
+`PIPP.exe`, nothing in `-help`, nothing emitted by the GUI's arg builder, and the CLI has no stacking
+switch at all. The only engine stacker is `pipp_dll!stack_frames`, used for master dark/flat:
+
+- the argument list is **NULL-terminated** `char**` (the managed declaration in `LegacyNativeApi` is
+  suspect for variable-length lists);
+- the per-pixel accumulator is a **32-bit int** and the average is **unsigned integer division**, so
+  10 and 11 average to **10**, not 11;
+- accumulation is per sample, identical for 8- and 16-bit.
+
+`FrameStacker.Mean` now truncates instead of rounding half up (64-bit accumulator kept; divergence
+only above the engine's 32-bit overflow point). Light-frame stacking remains a managed-only extension
+with no oracle to compare against.
