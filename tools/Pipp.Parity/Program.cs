@@ -26,9 +26,20 @@ internal static class Program
 
         /// <summary>Frames are compared as a multiset (quality selection may reorder them).</summary>
         SetEquality,
+
+        /// <summary>Known, deliberate difference from the original; reported but not counted as failure.</summary>
+        KnownDivergence,
+
+        /// <summary>Feature not implemented yet; reported but not counted as failure.</summary>
+        KnownGap,
     }
 
-    private sealed record ParityCase(string Name, string[] Switches, string Input = "ser", CompareMode Mode = CompareMode.Exact);
+    private sealed record ParityCase(
+        string Name,
+        string[] Switches,
+        string Input = "ser",
+        CompareMode Mode = CompareMode.Exact,
+        string? Note = null);
 
     private static int Main(string[] args)
     {
@@ -51,6 +62,12 @@ internal static class Program
         string bayerInput = Path.Combine(work, "bayer.ser");
         WriteBayerSer(bayerInput, width: 64, height: 48, frames: 4);
 
+        string ser16Input = Path.Combine(work, "capture16.ser");
+        WriteSyntheticSer(ser16Input, width: 32, height: 24, frames: 4, bitDepth: 16);
+
+        string colourInput = Path.Combine(work, "colour.ser");
+        WriteColourSer(colourInput, width: 32, height: 24, frames: 4);
+
         string bigInput = Path.Combine(work, "big.ser");
         WriteSyntheticSer(bigInput, width: 96, height: 96, frames: 4, bitDepth: 8, discRadius: 20, drift: 4, flatBackground: true);
 
@@ -68,6 +85,21 @@ internal static class Program
             // the centring transform itself
             new ParityCase("centre", ["-tif", "-ctr", "-ms=5"], Input: "big"),
             new ParityCase("quality", ["-tif", "-q=2"], Mode: CompareMode.SetEquality),
+            new ParityCase("bmp-out", ["-bmp"]),
+            new ParityCase("y8-out", ["-avi", "-y8"]),
+            new ParityCase("gif-out", ["-gif"], Mode: CompareMode.KnownGap,
+                Note: "GIF writer not implemented (needs LZW + palette quantiser)"),
+            // The original writes 16-bit TIFF samples byte-swapped under an "II" header, which makes
+            // the files unreadable by standard tools (confirmed with ffmpeg). We write spec-correct
+            // files instead; this is a deliberate divergence, not an unknown.
+            new ParityCase("tif-16bit", ["-tif"], Input: "ser16", Mode: CompareMode.KnownDivergence,
+                Note: "16-bit TIFF: original byte-swaps samples; we write spec-correct files"),
+            // The original's SER probe maps ColorID 16 to BAYER_CYYM rather than RGB, so it reads a
+            // spec-correct colour SER as a mono mosaic. Resolve the colour dialect before comparing.
+            new ParityCase("tif-colour", ["-tif"], Input: "colour", Mode: CompareMode.KnownGap,
+                Note: "colour SER: original reads ColorID 16 as mono/BAYER_CYYM"),
+            new ParityCase("png-colour", ["-png"], Input: "colour", Mode: CompareMode.KnownGap,
+                Note: "colour SER: original reads ColorID 16 as mono/BAYER_CYYM"),
         };
 
         int failures = 0;
@@ -77,6 +109,8 @@ internal static class Program
             {
                 "bayer" => bayerInput,
                 "big" => bigInput,
+                "ser16" => ser16Input,
+                "colour" => colourInput,
                 _ => input,
             };
             failures += RunCase(c, oracle, managed, work, caseInput) ? 0 : 1;
@@ -98,6 +132,11 @@ internal static class Program
 
         Console.WriteLine();
         Console.WriteLine($"=== {c.Name}: {string.Join(' ', c.Switches)} ===");
+        if (c.Mode is CompareMode.KnownDivergence or CompareMode.KnownGap)
+        {
+            Console.WriteLine($"  ({c.Mode}: {c.Note})");
+            return true;
+        }
 
         var oracleRun = Run(oracle, [.. c.Switches, "-od=" + oracleOut, input], work);
         var managedRun = Run(managed, [.. c.Switches, "-od=" + managedOut, input], work);
@@ -517,6 +556,41 @@ internal static class Program
             }
             string hashText = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
             return new Description($"container x{frames}", width, height, channels, bitDepth, hashText);
+        }
+    }
+
+    /// <summary>
+    /// Writes a 3-channel SER with a bright disc on a flat dark field: detector-friendly, and the
+    /// colour fringes make channel handling visible in the output.
+    /// </summary>
+    private static void WriteColourSer(string path, int width, int height, int frames)
+    {
+        using var writer = new SerWriter(path, width, height, 3, 8, frames);
+        for (int f = 0; f < frames; f++)
+        {
+            var frame = new Frame(width, height, 3, 8);
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    int dx = x - (width / 2 + f), dy = y - height / 2;
+                    bool inside = dx * dx + dy * dy <= 16;
+                    int index = ((y * width) + x) * 3;
+                    if (inside)
+                    {
+                        frame.Samples[index] = 240;
+                        frame.Samples[index + 1] = 200;
+                        frame.Samples[index + 2] = 120;
+                    }
+                    else
+                    {
+                        frame.Samples[index] = 38;
+                        frame.Samples[index + 1] = 30;
+                        frame.Samples[index + 2] = 24;
+                    }
+                }
+            }
+            writer.Write(frame);
         }
     }
 

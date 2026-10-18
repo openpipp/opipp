@@ -1,0 +1,179 @@
+oracle : C:\Users\ilanp\Projects\PIPP-RE\bin\pipp_core.exe
+managed: C:\Users\ilanp\Projects\PIPP-RE\src\Pipp.Cli\bin\Debug\net10.0\Pipp.Cli.exe
+work   : C:\Users\ilanp\Projects\PIPP-RE\parity
+
+=== plain-tif: -tif ===
+  oracle  exit=0 files=5
+  managed exit=0 files=5
+  oracle names : capture\1.tif, capture\2.tif, capture\3.tif, capture\4.tif
+  managed names: capture\1.tif, capture\2.tif, capture\3.tif, capture\4.tif
+  [0] oracle  1.tif                    .tif 32x24x1@8 sha256=d023c3498475c438
+      managed 1.tif                    .tif 32x24x1@8 sha256=d023c3498475c438
+  [1] oracle  2.tif                    .tif 32x24x1@8 sha256=c9a43f62ba3be531
+      managed 2.tif                    .tif 32x24x1@8 sha256=c9a43f62ba3be531
+  [2] oracle  3.tif                    .tif 32x24x1@8 sha256=e6aa66726ea76a0c
+      managed 3.tif                    .tif 32x24x1@8 sha256=e6aa66726ea76a0c
+  [3] oracle  4.tif                    .tif 32x24x1@8 sha256=45bd3e45251a534d
+      managed 4.tif                    .tif 32x24x1@8 sha256=45bd3e45251a534d
+  layout: MATCH (5 vs 5 files)
+  log: MATCH
+
+=== stretch: -tif -hs=204 ===
+  oracle  exit=0 files=5
+  managed exit=0 files=5
+  oracle names : capture\1.tif, capture\2.tif, capture\3.tif, capture\4.tif
+  managed names: capture\1.tif, capture\2.tif, capture\3.tif, capture\4.tif
+  [0] oracle  1.tif                    .tif 32x24x1@8 sha256=3e7b3ac3981bd92f
+      managed 1.tif                    .tif 32x24x1@8 sha256=3e7b3ac3981bd92f
+  [1] oracle  2.tif                    .tif 32x24x1@8 sha256=4f2ead84f40f28e1
+      managed 2.tif                    .tif 32x24x1@8 sha256=4f2ead84f40f28e1
+  [2] oracle  3.tif                    .tif 32x24x1@8 sha256=5997f4378e83c5a2
+      managed 3.tif                    .tif 32x24x1@8 sha256=5997f4378e83c5a2
+  [3] oracle  4.tif                    .tif 32x24x1@8 sha256=274163a9c5fdf7c7
+      managed 4.tif                    .tif 32x24x1@8 sha256=274163a9c5fdf7c7
+  layout: MATCH (5 vs 5 files)
+  log: MATCH
+
+=== flip: -tif -flip_x ===
+  oracle  exit=0 files=5
+  managed exit=0 files=5
+  oracle names : capture\1.tif, capture\2.tif, capture\3.tif, capture\4.tif
+  managed names: capture\1.tif, capture\2.tif, capture\3.tif, capture\4.tif
+  [0] oracle  1.tif                    .tif 32x24x1@8 sha256=3b3922ea57f1aab9
+      managed 1.tif                    .tif 32x24x1@8 sha256=3b3922ea57f1aab9
+  [1] oracle  2.tif                    .tif 32x24x1@8 sha256=76f48942a610cf39
+      managed 2.tif                    .tif 32x24x1@8 sha256=76f48942a610cf39
+  [2] oracle  3.tif                    .tif 32x24x1@8 sha256=1dd58395eb9cc8fd
+      managed 3.tif                    .tif 32x24x1@8 sha256=1dd58395eb9cc8fd
+  [3] oracle  4.tif                    .tif 32x24x1@8 sha256=34e98c4766467d60
+      managed 4.tif                    .tif 32x24x1@8 sha256=34e98c4766467d60
+  layout: MATCH (5 vs 5 files)
+  log: MATCH
+
+=== fits-out: -fits ===
+  oracle  exit=0 files=5
+  managed exit=0 files=5
+  oracle names : capture\1.fit, capture\2.fit, capture\3.fit, capture\4.fit
+  managed names: capture\1.fit, capture\2.fit, capture\3.fit, capture\4.fit
+  [0] oracle  1.fit                    .fits 32x24x1@8 sha256=d023c3498475c438
+      managed 1.fit                    .fits 32x24x1@8 sha256=d023c3498475c438
+  [1] oracle  2.fit                    .fits 32x24x1@8 sha256=c9a43f62ba3be531
+      managed 2.fit                    .fits 32x24x1@8 sha256=c9a43f62ba3be531
+  [2] oracle  3.fit                    .fits 32x24x1@8 sha256=e6aa66726ea76a0c
+      managed 3.fit                    .fits 32x24x1@8 sha256=e6aa66726ea76a0c
+  [3] oracle  4.fit                    .fits 32x24x1@8 sha256=45bd3e45251a534d
+      managed 4.fit                    .fits 32x24x1@8 sha256=45bd3e45251a534d
+  layout: MATCH (5 vs 5 files)
+  log: MATCH
+
+=== png-out: -png ===
+  oracle  exit=0 files=5
+  managed exit=0 files=5
+  oracle names : capture\1.png, capture\2.png, capture\3.png, capture\4.png
+  managed names: capture\1.png, capture\2.png, capture\3.png, capture\4.png
+  [0] oracle  1.png                    .png 32x24x1@8 sha256=d023c3498475c438
+      managed 1.png                    .png 32x24x1@8 sha256=d023c3498475c438
+  [1] oracle  2.png                    .png 32x24x1@8 sha256=c9a43f62ba3be531
+      managed 2.png                    .png 32x24x1@8 sha256=c9a43f62ba3be531
+  [2] oracle  3.png                    .png 32x24x1@8 sha256=e6aa66726ea76a0c
+      managed 3.png                    .png 32x24x1@8 sha256=e6aa66726ea76a0c
+  [3] oracle  4.png                    .png 32x24x1@8 sha256=45bd3e45251a534d
+      managed 4.png                    .png 32x24x1@8 sha256=45bd3e45251a534d
+  layout: MATCH (5 vs 5 files)
+  log: MATCH
+
+=== avi-out: -avi ===
+  oracle  exit=0 files=2
+  managed exit=0 files=2
+  oracle names : capture.avi
+  managed names: capture.avi
+  [0] oracle  capture.avi              container x4 32x24x1@8 sha256=8a0c2f19605aec51
+      managed capture.avi              container x4 32x24x1@8 sha256=8a0c2f19605aec51
+  layout: MATCH (2 vs 2 files)
+  log: MATCH
+
+=== debayer: -tif -db=2 -db_type=0 ===
+  oracle  exit=0 files=5
+  managed exit=0 files=5
+  oracle names : bayer\1.tif, bayer\2.tif, bayer\3.tif, bayer\4.tif
+  managed names: bayer\1.tif, bayer\2.tif, bayer\3.tif, bayer\4.tif
+  [0] oracle  1.tif                    .tif 64x48x1@8 sha256=ca70c6a28f362336
+      managed 1.tif                    .tif 64x48x1@8 sha256=ca70c6a28f362336
+  [1] oracle  2.tif                    .tif 64x48x1@8 sha256=e528ee8605234bd9
+      managed 2.tif                    .tif 64x48x1@8 sha256=e528ee8605234bd9
+  [2] oracle  3.tif                    .tif 64x48x1@8 sha256=ae4913ed4f514b2d
+      managed 3.tif                    .tif 64x48x1@8 sha256=ae4913ed4f514b2d
+  [3] oracle  4.tif                    .tif 64x48x1@8 sha256=b8e9aef24b57eadc
+      managed 4.tif                    .tif 64x48x1@8 sha256=b8e9aef24b57eadc
+  layout: MATCH (5 vs 5 files)
+  log: MATCH
+
+=== centre: -tif -ctr -ms=5 ===
+  oracle  exit=0 files=5
+  managed exit=0 files=5
+  oracle names : big\1.tif, big\2.tif, big\3.tif, big\4.tif
+  managed names: big\1.tif, big\2.tif, big\3.tif, big\4.tif
+  [0] oracle  1.tif                    .tif 96x96x1@8 sha256=98daec1dce1ce936
+      managed 1.tif                    .tif 96x96x1@8 sha256=98daec1dce1ce936
+  [1] oracle  2.tif                    .tif 96x96x1@8 sha256=98daec1dce1ce936
+      managed 2.tif                    .tif 96x96x1@8 sha256=98daec1dce1ce936
+  [2] oracle  3.tif                    .tif 96x96x1@8 sha256=98daec1dce1ce936
+      managed 3.tif                    .tif 96x96x1@8 sha256=98daec1dce1ce936
+  [3] oracle  4.tif                    .tif 96x96x1@8 sha256=98daec1dce1ce936
+      managed 4.tif                    .tif 96x96x1@8 sha256=98daec1dce1ce936
+  layout: MATCH (5 vs 5 files)
+  log: MATCH
+
+=== quality: -tif -q=2 ===
+  oracle  exit=0 files=4
+  managed exit=0 files=4
+  oracle names : capture\0.tif, capture\1.tif
+  managed names: capture\0.tif, capture\1.tif
+  [0] oracle  0.tif                    .tif 32x24x1@8 sha256=d023c3498475c438
+      managed 0.tif                    .tif 32x24x1@8 sha256=d023c3498475c438
+  [1] oracle  1.tif                    .tif 32x24x1@8 sha256=c9a43f62ba3be531
+      managed 1.tif                    .tif 32x24x1@8 sha256=c9a43f62ba3be531
+  layout: MATCH (4 vs 4 files)
+  log: MATCH
+  quality log: MATCH (structure; scores are Phase 4)
+  frame multiset: MATCH
+
+=== bmp-out: -bmp ===
+  oracle  exit=0 files=5
+  managed exit=0 files=5
+  oracle names : capture\1.bmp, capture\2.bmp, capture\3.bmp, capture\4.bmp
+  managed names: capture\1.bmp, capture\2.bmp, capture\3.bmp, capture\4.bmp
+  [0] oracle  1.bmp                    .bmp 32x24x1@8 sha256=d023c3498475c438
+      managed 1.bmp                    .bmp 32x24x1@8 sha256=d023c3498475c438
+  [1] oracle  2.bmp                    .bmp 32x24x1@8 sha256=c9a43f62ba3be531
+      managed 2.bmp                    .bmp 32x24x1@8 sha256=c9a43f62ba3be531
+  [2] oracle  3.bmp                    .bmp 32x24x1@8 sha256=e6aa66726ea76a0c
+      managed 3.bmp                    .bmp 32x24x1@8 sha256=e6aa66726ea76a0c
+  [3] oracle  4.bmp                    .bmp 32x24x1@8 sha256=45bd3e45251a534d
+      managed 4.bmp                    .bmp 32x24x1@8 sha256=45bd3e45251a534d
+  layout: MATCH (5 vs 5 files)
+  log: MATCH
+
+=== y8-out: -avi -y8 ===
+  oracle  exit=0 files=2
+  managed exit=0 files=2
+  oracle names : capture.avi
+  managed names: capture.avi
+  [0] oracle  capture.avi              container x4 32x24x1@8 sha256=8a0c2f19605aec51
+      managed capture.avi              container x4 32x24x1@8 sha256=8a0c2f19605aec51
+  layout: MATCH (2 vs 2 files)
+  log: MATCH
+
+=== gif-out: -gif ===
+  (KnownGap: GIF writer not implemented (needs LZW + palette quantiser))
+
+=== tif-16bit: -tif ===
+  (KnownDivergence: 16-bit TIFF: original byte-swaps samples; we write spec-correct files)
+
+=== tif-colour: -tif ===
+  (KnownGap: colour SER: original reads ColorID 16 as mono/BAYER_CYYM)
+
+=== png-colour: -png ===
+  (KnownGap: colour SER: original reads ColorID 16 as mono/BAYER_CYYM)
+
+ALL CASES MATCH

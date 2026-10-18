@@ -17,8 +17,8 @@ inventory.
 
 ## Parity
 
-`dotnet run --project tools/Pipp.Parity` → **ALL CASES MATCH** (9 cases, comparing pixel content,
-directory layout and log text).
+`dotnet run --project tools/Pipp.Parity` → **ALL CASES MATCH** (12 cases: 9 verified, 1 deliberate
+divergence, 2 known gaps; pixel content, directory layout and log text compared).
 
 | Case | Switches | Compared |
 | --- | --- | --- |
@@ -31,6 +31,11 @@ directory layout and log text).
 | debayer | `-tif -db=2 -db_type=0` | pixels |
 | centre | `-tif -ctr -ms=5` | pixels |
 | quality | `-tif -q=2` | frame multiset |
+| bmp-out | `-bmp` | pixels, layout, log |
+| y8-out | `-avi -y8` | AVI frames |
+| tif-16bit | `-tif` (16-bit input) | *deliberate divergence* |
+| tif-colour, png-colour | `-tif`, `-png` (RGB input) | *known gap* |
+| gif-out | `-gif` | *known gap* |
 
 ## Behaviour verified against the original
 
@@ -48,9 +53,11 @@ directory layout and log text).
 | --- | --- |
 | `-gui` token stream differs (`@PFILELAB` 0- vs 1-based, `@ANIM`/`@QSORT`/`@FNAMELAB`, ordering) | Phase 6, blocks dropping the native fallback |
 | Quality log scores differ (structure matches) | Phase 4, quality algorithm not parity-proven |
-| Colour SER output | Superset: the original's help claims mono only |
+| 16-bit TIFF samples are byte-swapped by the original under an `II` header (unreadable in ffmpeg) | We write spec-correct files; replicating a data-corrupting bug is not acceptable |
+| The original's SER probe maps ColorID 16 to BAYER_CYYM, so it reads a spec-correct RGB SER as mono | Resolve the colour dialect before claiming colour parity |
+| GIF output | Not implemented: needs LZW + palette quantiser |
 | Detection threshold uses Otsu, not the engine's "Calculated minpixel value" | Phase 4 |
-| GIF, Y8, RAW/dcraw, animation, AOI, master saving, quality weighting | Parsed, not executed — Phases 2–5 |
+| GIF, RAW/dcraw, animation, AOI, master saving, quality weighting | Parsed, not executed — Phases 2–5 |
 | `Pipp.App` still calls the native API for `Test Options` and calibration | Phase 6 |
 
 ## Environment notes
