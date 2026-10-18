@@ -1,7 +1,7 @@
 # HANDOFF - start here
 
 Cold-start guide for continuing this project in a fresh session. Read this first, then the two
-documents it points at. Everything here is verified as of commit **b1756a4**.
+documents it points at. Everything here is verified as of commit **093eea2**.
 
 ## What the project is
 
@@ -14,7 +14,7 @@ be published or committed. No `LICENSE` until the author's permission is obtaine
 
 | Item | Value |
 | --- | --- |
-| Repo | `C:\Users\ilanp\Projects\PIPP-RE` (git, local only, 7 commits) |
+| Repo | `C:\Users\ilanp\Projects\PIPP-RE` (git, local only, HEAD `093eea2`) |
 | Build | `dotnet build PIPP.slnx` - clean |
 | Tests | **295 passing, 0 failing** (7 projects) |
 | Parity | **18 cases: 15 verified, 1 deliberate divergence, 2 known gaps**; `--real` adds 3 real-data cases, all matching |

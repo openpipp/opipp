@@ -41,7 +41,7 @@ The stretch turned out to be image-dependent: gain 2.3043 on the real frame vs 2
 divergence. The Ghidra trace located the option field (`+0x1DC`, default `0xCC`, percent form
 `x255/100`) but not yet the consumer.
 
-## M4 - Real-data stretch parity (`HEAD` at the time of writing)
+## M4 - Real-data stretch parity (`093eea2`)
 
 Found the consumer by following the option, not grepping for `0x1dc`: the parser wrapper
 `FUN_1400aea40` is called from `FUN_14007e8e0` with a stack-local options struct, whose field
