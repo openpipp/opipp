@@ -2,11 +2,11 @@
 
 ![Open PIPP](docs/assets/opipp-banner.png)
 
-[![Download for Windows](https://img.shields.io/github/v/release/openpipp/opipp?label=download%20for%20windows&include_prereleases&color=0aa)](https://github.com/openpipp/opipp/releases/latest)
+[![Download for Windows](https://img.shields.io/github/v/release/openpipp/opipp?label=download%20for%20windows&include_prereleases&color=0aa)](https://github.com/openpipp/opipp/releases)
 
 ## Download (Windows x64)
 
-Grab the latest self-contained build from **[Releases](https://github.com/openpipp/opipp/releases/latest)**.
+Grab the latest self-contained build from **[Releases](https://github.com/openpipp/opipp/releases)**.
 Unzip anywhere — no .NET installation needed. It contains the GUI (`Opipp.App.exe`) and the
 command-line engine (`Opipp.Cli.exe`).
 
