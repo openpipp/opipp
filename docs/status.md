@@ -135,3 +135,10 @@ without `-hsrgb`. Next is the rest of Phase 4a: the quality metric's integer str
 `bin/`, `decompiled/` and `ghidra/` are reference copies of Chris Garry's PIPP and its output.
 They are git-ignored and must never be published. No `LICENSE` file exists on purpose until the
 author's permission is obtained. See [`../notes/provenance.md`](../notes/provenance.md).
+
+## Switch coverage (final)
+
+131 switches: **76 verified against the original**, 37 executed (wired, not oracle-proven), 6 documented
+skips and 12 inert (accepted by the engine with no observable effect). The six skips are `-raw_db`,
+`-raw_hl`, `-raw_ocs`, `-raw_hpf` (need dcraw 9.27, which the engine statically links), `-aoi_reject`
+(the discard rule could not be pinned down) and `-flat_bayer` (private master format).

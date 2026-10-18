@@ -16,8 +16,9 @@ be published or committed. No `LICENSE` until the author's permission is obtaine
 | --- | --- |
 | Repo | `C:\Users\ilanp\Projects\PIPP-RE` (git, local only, HEAD `093eea2`) |
 | Build | `dotnet build PIPP.slnx` - clean |
-| Tests | **392 passing, 0 failing** (7 projects) |
+| Tests | **481 passing, 0 failing** (7 projects) |
 | Parity | **18 synthetic + 4 real-data cases** (`--real`), all matching; GIF is a deliberate divergence |
+| Switches | **113 of 131 wired** (76 verified / 37 executed), 6 documented skips, 12 inert |
 | Managed code | Core 11.8k lines, Cli 0.3k, App 14.5k, tests 5.5k |
 | Reference | `decompiled/` 14,277 lines C#; `ghidra/out/pipp_core.c` 4,229 functions |
 | Real data | `samples/` 4.8 GB (git-ignored, evaluation-use third-party capture) |
