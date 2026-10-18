@@ -4,6 +4,8 @@
 
 [![Download for Windows](https://img.shields.io/github/v/release/openpipp/opipp?label=download%20for%20windows&include_prereleases&color=0aa)](https://github.com/openpipp/opipp/releases)
 
+Project site: <https://openpipp.github.io/opipp/>
+
 ## Download (Windows x64)
 
 Grab the latest self-contained build from **[Releases](https://github.com/openpipp/opipp/releases)**.
