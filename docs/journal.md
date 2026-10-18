@@ -124,3 +124,19 @@ ratio of 0.87-1.07, while the engine reports **1.3102**. So the score is not a g
 with the box tracking in the path, it is most likely measured inside the detected object's box.
 
 Next: read `FUN_1400aecf0` (and `FUN_1400afda0` for mode 3); that is the metric itself.
+
+## M8 - Quality: mode 3 is a brightness sum, not the score
+
+`FUN_1400afda0` (the `param_2 == 3` branch, returns `double`) walks the search box
+(`image[0x374..0x377]`), and for every sample whose 8-bit value exceeds the threshold (`param_1[4]`,
+i.e. the "Calculated minpixel value") accumulates the **16-bit sample**; it returns that sum as a
+double. So it is a *detection* score - how much signal is above the floor - not a sharpness metric.
+
+The quality log itself reads its numbers from a container: `FUN_1400b03b0(container, i)` for the
+score and `FUN_1400b0350(container)` for the best, written with `%lf` and a `%d%%` ratio
+(corpus 89130-89176). The scores are pushed into that container earlier, by whatever computes them,
+so the next step is to find the insert call (the push counterpart of `FUN_1400b03b0`) and read its
+caller - that is where the `1065.667424`-style decimal is produced.
+
+Also noted: `FUN_1400aecf0` (called with the blurred buffer) compares `threshold << 8` against
+samples and marks a 3x3 neighbourhood - it is the overexposed/no-signal marker, not the metric.

@@ -74,7 +74,11 @@ Open, in the order I would take them:
    = 1065.7 vs frame 11 = 813.3 (31% apart); ours has them within 4% and in the opposite order.
    Pipeline located: subsample `FUN_1400af990` -> normalise by mean -> 3x3 blur `FUN_1400afc90` ->
    metric `FUN_1400aecf0` (mode 3: `FUN_1400afda0`). Global statistics are ruled out (see journal M7).
-   Read `FUN_1400aecf0` next. This blocks the Phase 4 exit criterion "kept-frame set **and order**".
+   `FUN_1400aecf0` turned out to be the overexposed-pixel marker and `FUN_1400afda0` (mode 3) a sum
+   of above-threshold samples - both detection-side. The score itself is pushed into a container and
+   read back with `FUN_1400b03b0`/`FUN_1400b0350` when the log is written (corpus 89130-89176);
+   find the insert call and read its caller. That is the remaining unknown, and it blocks the Phase 4
+   exit criterion "kept-frame set **and order**".
 3. **Detection rejection reasons** (item 2) - `-chk` now logs the threshold; the object finder
    `FUN_140077560` returns -1 for "no object" and the per-reason counters are not reproduced.
 4. **Weighting and bounds** (item 3) - `-qw`, `-incqv`, `-freject`.
