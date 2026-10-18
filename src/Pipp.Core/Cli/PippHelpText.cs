@@ -48,7 +48,7 @@ Input options:
   -sf=<n>                  First frame to process (1-based).
   -f=<n>                   Number of frames to process.
   -ctrf                    Take the processed frames from the centre of the input.
-  -ifd=<n>                 Drop this many frames at the start of the input.
+  -ifd=<n>                 Input frame dropping: keep one frame, then discard n, repeating.
   -mono                    Force monochrome input (disables colour autodetection).
   -colour                  Force colour input (disables colour autodetection).
   -db                      Debayer colour input frames.

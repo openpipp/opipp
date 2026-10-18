@@ -104,7 +104,16 @@ internal static class Program
         }
 
         PrintSummary(report, inputs, options, settings);
-        return report.OutputFrames > 0 ? 0 : 1;
+
+        // The engine exits -1 (0xFFFFFFFF) and says so on stderr when every frame was discarded;
+        // keep that contract so the GUI can distinguish "nothing produced" from a crash.
+        if (report.OutputFrames == 0)
+        {
+            Console.Error.WriteLine($"Error: All frames have been discarded from {report.InputFrames} input frames");
+            return -1;
+        }
+
+        return 0;
     }
 
     /// <summary>Reads one argument per line from a redirected stdin, as the GUI protocol does.</summary>
@@ -183,6 +192,22 @@ internal static class Program
             KeepImageNames = o.KeepImageFilenames,
             SurfaceTracking = o.SurfaceFeatureTracking,
             EnableStabilisation = o.EnableStabilisation,
+            AnchorFeatureReject = o.AnchorFeatureReject,
+
+            // Frame window (-sf / -f / -ctrf / -ifd): the engine's fields are 0 when the switch is
+            // absent, so StartFrame stays nullable to keep "absent" distinct from an explicit -sf=0.
+            StartFrame = o.StartFrame,
+            FrameCount = o.FrameCount ?? 0,
+            FramesFromCentre = o.FramesFromCentre,
+            InputFrameDrop = o.InputFrameDrop,
+
+            // Output layout and selection (-osubdir / -sr / -join / -incqv / -drop).
+            OutputSubdirectory = string.IsNullOrWhiteSpace(o.OutputSubdirectory) ? null : o.OutputSubdirectory,
+            SaveRejectedFrames = o.SaveRejectedFrames,
+            JoinMode = o.Join,
+            IncludeQualityValue = o.IncludeQualityValue,
+            OutputFrameDrop = o.OutputFrameDrop,
+
             AlignmentBox = o.AnchorFeatureX is int ax && o.AnchorFeatureY is int ay && o.AnchorFeatureWidth is int aw && o.AnchorFeatureHeight is int ah
                 ? new PixelRect(ax, ay, aw, ah)
                 : null,
@@ -262,7 +287,7 @@ internal static class Program
         Console.WriteLine();
         Console.WriteLine("  Summary:");
         Console.WriteLine($"    Output frame format:             {settings.OutputExtension}");
-        Console.WriteLine($"    Output Directory:                {settings.OutputDirectory}");
+        Console.WriteLine($@"    Output Directory:                {(string.IsNullOrWhiteSpace(settings.OutputSubdirectory) ? settings.OutputDirectory : Path.Combine(settings.OutputDirectory, settings.OutputSubdirectory!))}");
 
         foreach (var file in report.FailedFiles)
         {

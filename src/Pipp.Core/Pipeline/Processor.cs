@@ -55,6 +55,58 @@ public sealed class PipelineSettings
     /// <summary>Output directory; created when missing.</summary>
     public string OutputDirectory { get; set; } = ".";
 
+    /// <summary>
+    /// Subdirectory created under <see cref="OutputDirectory"/> (<c>-osubdir</c>); everything the run
+    /// writes, including <c>logs/</c> and <c>rejected/</c>, lands below it.
+    /// </summary>
+    public string? OutputSubdirectory { get; set; }
+
+    /// <summary>
+    /// First frame of the processed range, 1-based (<c>-sf</c>). <see langword="null"/> means "from
+    /// frame 1"; an explicit 0 reproduces the engine's <c>-sf=0</c>, which starts one frame early.
+    /// </summary>
+    public int? StartFrame { get; set; }
+
+    /// <summary>
+    /// Number of frames to process (<c>-f</c>), counted from <see cref="StartFrame"/> or the centre of
+    /// the capture. 0 (the default) means "to the end of the input".
+    /// </summary>
+    public int FrameCount { get; set; }
+
+    /// <summary>Take <see cref="FrameCount"/> frames from the centre of the input (<c>-ctrf</c>).</summary>
+    public bool FramesFromCentre { get; set; }
+
+    /// <summary>
+    /// Input frame dropping (<c>-ifd</c>): keep one frame, then discard this many, repeating. The
+    /// engine's own help calls it "drop frames at the start", but the shipped binary staggers the
+    /// whole capture (verified on <c>saturn30.ser</c>: <c>-ifd=5</c> keeps frames 1, 7, 13, 19, 25).
+    /// </summary>
+    public int InputFrameDrop { get; set; }
+
+    /// <summary>
+    /// Write frames rejected by detection or overexposure to <c>rejected/&lt;name&gt;_rejected/</c>
+    /// as TIFF instead of discarding them (<c>-sr</c>).
+    /// </summary>
+    public bool SaveRejectedFrames { get; set; }
+
+    /// <summary>
+    /// Treat all inputs as one continuous stream with a single output and a single log (<c>-join</c>).
+    /// The output is named after the first input.
+    /// </summary>
+    public bool JoinMode { get; set; }
+
+    /// <summary>Append <c>_quality_&lt;pct&gt;%</c> to still-image filenames after quality selection (<c>-incqv</c>).</summary>
+    public bool IncludeQualityValue { get; set; }
+
+    /// <summary>
+    /// Output frame dropping (<c>-drop</c>): write one frame, then skip this many, repeating. 0 writes
+    /// every frame.
+    /// </summary>
+    public int OutputFrameDrop { get; set; }
+
+    /// <summary>Reject frames whose anchor feature cannot be found (<c>-freject</c>).</summary>
+    public bool AnchorFeatureReject { get; set; }
+
     /// <summary>Output file extension, e.g. <c>.ser</c>, <c>.fits</c>, <c>.avi</c>, <c>.bmp</c>, <c>.tif</c>, <c>.png</c>.</summary>
     public string OutputExtension { get; set; } = ".ser";
 
@@ -252,7 +304,9 @@ public sealed class Processor
         var outputs = new List<string>();
         var failed = new List<string>();
         int inputFrames = 0, outputFrames = 0, discardedQuality = 0,
-            discardedNoObject = 0, discardedPartial = 0, discardedTooSmall = 0, filesProcessed = 0;
+            discardedNoObject = 0, discardedPartial = 0, discardedTooSmall = 0,
+            discardedNoFeature = 0, discardedStart = 0, discardedInputDrop = 0, discardedOutputDrop = 0,
+            filesProcessed = 0;
 
         // One metric instance for the whole run: the engine's mask buffer lives in its work image
         // and is reused (never cleared) across frames, which is exactly what the score depends on.
@@ -261,28 +315,39 @@ public sealed class Processor
             _settings.QualityMaxDownsample,
             _settings.QualityIncrement);
 
-        Directory.CreateDirectory(_settings.OutputDirectory);
+        // -osubdir wraps the complete output layout, logs and rejected frames included; the oracle
+        // writes <od>/<subdir>/logs/ and <od>/<subdir>/<input>/.
+        string outputRoot = EffectiveOutputDirectory();
+        Directory.CreateDirectory(outputRoot);
+
+        // -join collapses the inputs into one continuous stream: one output and one log, named
+        // after the first input (verified: capture.ser + real1.ser -> capture/1.tif..5.tif).
+        var units = BuildUnits(files);
         int fileIndex = 0;
 
-        foreach (var file in files)
+        foreach (var unit in units)
         {
             cancellationToken.ThrowIfCancellationRequested();
             fileIndex++;
             int noObjectBefore = discardedNoObject;
             int partialBefore = discardedPartial;
             int tooSmallBefore = discardedTooSmall;
-            _protocol?.WriteFileLabel(fileIndex, files.Count);
-            Report(0, file, 0, 0, $"Processing {Path.GetFileName(file)}");
+            int noFeatureBefore = discardedNoFeature;
+            int inputDropBefore = discardedInputDrop;
+            int outputDropBefore = discardedOutputDrop;
+            int outputBefore = outputFrames;
+            _protocol?.WriteFileLabel(fileIndex, units.Count);
+            Report(0, unit.Name, 0, 0, $"Processing {Path.GetFileName(unit.Name)}");
 
             IFrameSource source;
             try
             {
-                source = FrameSourceFactory.Open(file);
+                source = unit.Open();
             }
             catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or FileNotFoundException)
             {
-                failed.Add(file);
-                _protocol?.WriteLine($"Error: could not open file '{file}': {ex.Message}");
+                failed.Add(unit.Name);
+                _protocol?.WriteLine($"Error: could not open file '{unit.Name}': {ex.Message}");
                 continue;
             }
 
@@ -299,9 +364,23 @@ public sealed class Processor
                 ushort? shiftFill = stabilise && !_settings.Centre ? (ushort)0 : null;
                 int index = 0;
 
+                // -sf / -f / -ctrf / -ifd: the engine builds a frame window per input file
+                // (pipp_core FUN_14007e8e0: start = sf-1 or (n-f)/2, end = min(f+start, n)).
+                var window = FrameWindow.Compute(source.FrameCount, _settings);
+                discardedStart += Math.Max(0, window.Start);
+
+                string baseName = _settings.Prefix + Path.GetFileNameWithoutExtension(unit.Name) + _settings.Suffix;
+                string rejectedDirectory = Path.Combine(outputRoot, "rejected", baseName + "_rejected");
+                int rejectedDigits = Math.Max(1, source.FrameCount.ToString(CultureInfo.InvariantCulture).Length);
+
                 while (true)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+
+                    // The window is an upper bound on frames *read*: frames before the start and the
+                    // ones -ifd staggers out still count against it, exactly like the engine.
+                    if (index >= window.Limit) break;
+
                     Frame? raw;
                     try
                     {
@@ -309,7 +388,7 @@ public sealed class Processor
                     }
                     catch (InvalidDataException ex)
                     {
-                        failed.Add(file);
+                        failed.Add(unit.Name);
                         _protocol?.WriteLine($"Error: {ex.Message}");
                         break;
                     }
@@ -318,7 +397,20 @@ public sealed class Processor
                     inputFrames++;
                     index++;
                     raw.Index = index - 1;
-                    raw.SourceName = file;
+                    raw.SourceName = unit.Name;
+
+                    if (index - 1 < window.Start)
+                    {
+                        continue;
+                    }
+
+                    // -ifd keeps one frame and then discards `InputFrameDrop`, restarting at the first
+                    // frame of the window (oracle: -sf=5 -ifd=2 keeps 5, 8, 11, ...).
+                    if (window.InputDrop > 0 && (index - 1 - window.Start) % (window.InputDrop + 1) != 0)
+                    {
+                        discardedInputDrop++;
+                        continue;
+                    }
 
                     Frame frame;
                     try
@@ -329,6 +421,7 @@ public sealed class Processor
                     {
                         // a frame that cannot be transformed is a rejected frame, not a crash
                         discardedNoObject++;
+                        SaveRejected(raw, "no_object", index, rejectedDirectory, rejectedDigits);
                         _protocol?.WriteLine($"  Frame {index} rejected: {ex.Message}");
                         continue;
                     }
@@ -339,6 +432,7 @@ public sealed class Processor
                         if (over > maxOver)
                         {
                             discardedNoObject++;
+                            SaveRejected(frame, "overexposed", index, rejectedDirectory, rejectedDigits);
                             continue;
                         }
                     }
@@ -375,9 +469,10 @@ public sealed class Processor
                             // Every failure path in the finder zeroes the box the metric reads.
                             quality.ClearDetectedBox();
                             string reason = DetectionLabel(detection.Status);
+                            SaveRejected(frame, RejectPrefix(detection.Status), index, rejectedDirectory, rejectedDigits);
                             _protocol?.WriteLine($"  Frame {index} rejected: {reason}");
-                            Report((int)(100.0 * index / Math.Max(1, source.FrameCount)), file, index, source.FrameCount,
-                                $"Frame {index} of {source.FrameCount} ({reason})");
+                            Report(Percent(index, window), unit.Name, index, window.Limit,
+                                $"Frame {index} of {window.Limit} ({reason})");
                             continue;
                         }
 
@@ -415,31 +510,42 @@ public sealed class Processor
                             {
                                 offset = new AlignmentOffset(-m.Dx, -m.Dy);
                             }
+                            else if (_settings.AnchorFeatureReject)
+                            {
+                                // -freject: the engine counts these as "no AFB found" and drops the frame
+                                // (the mirror of the log line pipp_core prints for the counter).
+                                discardedNoFeature++;
+                                SaveRejected(frame, "no_afb", index, rejectedDirectory, rejectedDigits);
+                                _protocol?.WriteLine($"  Frame {index} rejected: no AFB found");
+                                continue;
+                            }
                         }
                     }
 
                     accepted.Add((frame, score, offset));
-                    Report((int)(100.0 * index / Math.Max(1, source.FrameCount)), file, index, source.FrameCount,
-                        $"Frame {index} of {source.FrameCount}");
+                    Report(Percent(index, window), unit.Name, index, window.Limit,
+                        $"Frame {index} of {window.Limit}");
                 }
-
-                string baseName = _settings.Prefix + Path.GetFileNameWithoutExtension(file) + _settings.Suffix;
 
                 if (accepted.Count == 0)
                 {
                     // The engine still writes both logs when every frame was rejected; the summary
                     // then carries the discard counters and "Total output frames: 0".
-                    if (_settings.WriteLogFile && sample is not null)
+                    if (_settings.WriteLogFile)
                     {
                         WriteLogFiles(
-                            file,
+                            unit.Sources,
                             baseName,
-                            source.FrameCount,
+                            window.Limit,
                             0,
                             0,
                             discardedNoObject - noObjectBefore,
                             discardedPartial - partialBefore,
                             discardedTooSmall - tooSmallBefore,
+                            discardedNoFeature - noFeatureBefore,
+                            window.Start,
+                            discardedInputDrop - inputDropBefore,
+                            discardedOutputDrop - outputDropBefore,
                             sample,
                             detectionThreshold,
                             []);
@@ -452,9 +558,37 @@ public sealed class Processor
                 var selected = Select(accepted, out int dropped);
                 discardedQuality += dropped;
 
+                // -drop writes one frame and then skips `OutputFrameDrop`, repeating
+                // (pipp_core: counter++ then reset when counter > drop; oracle -drop=2 keeps 1, 4, 7).
+                var written = selected;
+                if (_settings.OutputFrameDrop > 0)
+                {
+                    written = new List<(Frame Frame, double Score, AlignmentOffset Offset)>(selected.Count);
+                    for (int i = 0; i < selected.Count; i++)
+                    {
+                        if (i % (_settings.OutputFrameDrop + 1) == 0) written.Add(selected[i]);
+                        else discardedOutputDrop++;
+                    }
+                }
+
+                double bestScore = 0;
+                foreach (var entry in selected)
+                {
+                    if (entry.Score > bestScore) bestScore = entry.Score;
+                }
+
+                // -nr keeps the source order even when quality selection ran: the best N frames are
+                // chosen but written oldest-first (oracle: -q=10 -nr wrote source frames
+                // 1, 2, 4, 10, 11, 15, 17, 18, 19, 20 where -q=10 wrote them in score order).
+                bool qualitySelection = _settings.KeepFrames is not null || _settings.KeepPercent is not null;
+                if (!_settings.RenumberFrames && qualitySelection)
+                {
+                    written = written.OrderBy(entry => entry.Frame.Index).ToList();
+                }
+
                 if (_settings.Stack is StackMethod method)
                 {
-                    string masterPath = Path.Combine(_settings.OutputDirectory, baseName + _settings.OutputExtension);
+                    string masterPath = Path.Combine(outputRoot, baseName + _settings.OutputExtension);
                     var first = selected[0].Frame;
                     var stacker = new FrameStacker(first.Width, first.Height, first.Channels, first.BitDepth, method);
                     foreach (var (frame, _, offset) in selected)
@@ -473,9 +607,9 @@ public sealed class Processor
                     // One animated file at the output root: unlike TIFF/PNG the engine does not use a
                     // per-input folder for GIF. The original writes an image-less GIF (no image
                     // descriptors at all), so writing a valid animation is a deliberate divergence.
-                    string gifPath = Path.Combine(_settings.OutputDirectory, baseName + ".gif");
-                    var gifFrames = new List<Frame>(selected.Count);
-                    foreach (var (frame, _, offset) in selected)
+                    string gifPath = Path.Combine(outputRoot, baseName + ".gif");
+                    var gifFrames = new List<Frame>(written.Count);
+                    foreach (var (frame, _, offset) in written)
                     {
                         gifFrames.Add(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset, shiftFill));
                         outputFrames++;
@@ -487,11 +621,21 @@ public sealed class Processor
                 }
                 else if (IsMultiFrameContainer(_settings.OutputExtension))
                 {
-                    // SER/AVI hold the whole run in one file.
-                    string outputPath = Path.Combine(_settings.OutputDirectory, baseName + _settings.OutputExtension);
-                    var template = selected[0].Frame;
-                    using var sink = FrameSinkFactory.Create(outputPath, template, selected.Count, _settings.Fps);
-                    foreach (var (frame, _, offset) in selected)
+                    // SER/AVI hold the whole run in one file; joining inputs of different geometry
+                    // is exactly the case the engine refuses ("Frames of different sizes ...").
+                    string outputPath = Path.Combine(outputRoot, baseName + _settings.OutputExtension);
+                    var template = written[0].Frame;
+                    foreach (var (frame, _, _) in written)
+                    {
+                        if (frame.Width != template.Width || frame.Height != template.Height)
+                        {
+                            throw new InvalidDataException(
+                                "Frames of different sizes cannot written to an AVI or SER file");
+                        }
+                    }
+
+                    using var sink = FrameSinkFactory.Create(outputPath, template, written.Count, _settings.Fps);
+                    foreach (var (frame, _, offset) in written)
                     {
                         sink.Write(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset, shiftFill));
                         outputFrames++;
@@ -504,35 +648,49 @@ public sealed class Processor
                     // a per-input folder, numbers them from 1 (0 when quality selection ran) and pads
                     // only as far as the frame count requires: 4 frames -> 1.tif, 12 frames -> 01.tif.
                     string frameDirectory = _settings.PippLayout
-                        ? Path.Combine(_settings.OutputDirectory, baseName)
-                        : _settings.OutputDirectory;
+                        ? Path.Combine(outputRoot, baseName)
+                        : outputRoot;
                     if (_settings.PippLayout)
                     {
                         Directory.CreateDirectory(frameDirectory);
                     }
 
-                    bool qualitySelection = _settings.KeepFrames is not null || _settings.KeepPercent is not null;
                     int firstNumber = _settings.PippLayout ? (qualitySelection ? 0 : 1) : 0;
 
-                    // Pad to the width of the source frame count, not the kept count: a 30-frame
-                    // capture keeps 00.tif..09.tif from a -q=10 run, while a 4-frame capture keeps
-                    // 1.tif..4.tif.
-                    int highest = Math.Max(firstNumber + selected.Count - 1, source.FrameCount);
-                    int digits = Math.Max(1, highest.ToString(CultureInfo.InvariantCulture).Length);
+                    // Padding follows the engine: without quality selection it is the width of the
+                    // source frame count (a 30-frame capture writes 01.tif..05.tif for -f=5), with
+                    // selection it is the width of the kept count (verified with the oracle: -q=3
+                    // writes 0.tif..2.tif while -q=10 writes 00.tif..09.tif, and -q=10 -drop=1 keeps
+                    // the 2-digit names because ten frames were selected before dropping). -nr
+                    // switches the basis back to the source count (-q=3 -nr wrote 00.tif..02.tif).
+                    int basis = qualitySelection && _settings.RenumberFrames ? Math.Max(1, selected.Count) : source.FrameCount;
+                    int digits = Math.Max(1, basis.ToString(CultureInfo.InvariantCulture).Length);
                     string numberFormat = "D" + digits.ToString(CultureInfo.InvariantCulture);
                     int number = firstNumber;
-                    foreach (var (frame, _, offset) in selected)
+                    foreach (var (frame, score, offset) in written)
                     {
-                        var written = offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset, shiftFill);
-                        string stem = _settings.RenumberFrames
+                        var output = offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset, shiftFill);
+                        // -nr names a plain run's frames after their source number (1-based:
+                        // -f=4 -nr wrote 01.tif..04.tif), but a quality run stays sequential because
+                        // the engine has already reordered the stream itself.
+                        string stem = _settings.RenumberFrames || qualitySelection
                             ? number.ToString(numberFormat, CultureInfo.InvariantCulture)
-                            : written.Index.ToString(numberFormat, CultureInfo.InvariantCulture);
+                            : (output.Index + 1).ToString(numberFormat, CultureInfo.InvariantCulture);
+
+                        // -incqv: the engine appends the frame's score as a percentage of the best,
+                        // printed with four significant digits (oracle: "1_quality_76.32%.tif").
+                        if (_settings.IncludeQualityValue && qualitySelection)
+                        {
+                            double percent = bestScore > 0 ? score / bestScore * 100.0 : 100.0;
+                            stem += "_quality_" + percent.ToString("G4", CultureInfo.InvariantCulture) + "%";
+                        }
+
                         string fileName = _settings.KeepImageNames
                             ? $"{baseName}_f{stem}{_settings.OutputExtension}"
                             : $"{stem}{_settings.OutputExtension}";
                         string outputPath = Path.Combine(frameDirectory, fileName);
-                        using var sink = FrameSinkFactory.Create(outputPath, written, 1, _settings.Fps);
-                        sink.Write(written);
+                        using var sink = FrameSinkFactory.Create(outputPath, output, 1, _settings.Fps);
+                        sink.Write(output);
                         outputFrames++;
                         outputs.Add(outputPath);
                         number++;
@@ -542,14 +700,18 @@ public sealed class Processor
                 if (_settings.WriteLogFile)
                 {
                     WriteLogFiles(
-                        file,
+                        unit.Sources,
                         baseName,
-                        source.FrameCount,
-                        selected.Count,
+                        window.Limit,
+                        outputFrames - outputBefore,
                         dropped,
                         discardedNoObject - noObjectBefore,
                         discardedPartial - partialBefore,
                         discardedTooSmall - tooSmallBefore,
+                        discardedNoFeature - noFeatureBefore,
+                        window.Start,
+                        discardedInputDrop - inputDropBefore,
+                        discardedOutputDrop - outputDropBefore,
                         selected[0].Frame,
                         detectionThreshold,
                         selected);
@@ -582,7 +744,7 @@ public sealed class Processor
     /// was rejected.
     /// </summary>
     private void WriteLogFiles(
-        string sourceFile,
+        IReadOnlyList<string> sourceFiles,
         string baseName,
         int inputFrameCount,
         int outputFrameCount,
@@ -590,14 +752,19 @@ public sealed class Processor
         int droppedNoObject,
         int droppedPartial,
         int droppedTooSmall,
-        Frame sample,
+        int droppedNoFeature,
+        int discardedForStart,
+        int discardedByInputDrop,
+        int discardedByOutputDrop,
+        Frame? sample,
         int? detectionThreshold,
         List<(Frame Frame, double Score, AlignmentOffset Offset)> ranked)
     {
-        string logDirectory = Path.Combine(_settings.OutputDirectory, "logs");
+        string outputRoot = EffectiveOutputDirectory();
+        string logDirectory = Path.Combine(outputRoot, "logs");
         Directory.CreateDirectory(logDirectory);
 
-        string directory = _settings.OutputDirectory.Replace('\\', '/');
+        string directory = outputRoot.Replace('\\', '/');
         if (!directory.EndsWith('/')) directory += "/";
 
         var text = new StringBuilder();
@@ -608,9 +775,13 @@ public sealed class Processor
             text.Append("  ").Append(argument).Append("\r\n");
         }
 
-        text.Append("\r\nSource image files:\r\n  ").Append(sourceFile).Append("\r\n");
+        text.Append("\r\nSource image files:\r\n");
+        foreach (string source in sourceFiles)
+        {
+            text.Append("  ").Append(source).Append("\r\n");
+        }
 
-        if (_settings.Centre || _settings.CheckForPlanet || droppedNoObject > 0)
+        if (sample is not null && (_settings.Centre || _settings.CheckForPlanet || droppedNoObject > 0))
         {
             text.Append("\r\nProcessing Details:\r\n");
             int shownThreshold = detectionThreshold
@@ -624,6 +795,14 @@ public sealed class Processor
         text.Append("\r\nSummary:\r\n");
         text.Append("PIPP version: ").Append(_settings.EngineVersion).Append("\r\n");
         text.Append("  Total input frames: ").Append(inputFrameCount.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+        if (discardedForStart > 0)
+        {
+            text.Append("    Frames discarded for Start Frame option: ").Append(discardedForStart.ToString(CultureInfo.InvariantCulture)).Append((char)13).Append((char)10);
+        }
+        if (discardedByInputDrop > 0)
+        {
+            text.Append("    Frames discarded for Input Frame Dropping option: ").Append(discardedByInputDrop.ToString(CultureInfo.InvariantCulture)).Append((char)13).Append((char)10);
+        }
         if (droppedNoObject > 0)
         {
             text.Append("  Frames discarded with no planet detected: ").Append(droppedNoObject.ToString(CultureInfo.InvariantCulture)).Append((char)13).Append((char)10);
@@ -631,6 +810,10 @@ public sealed class Processor
         if (droppedPartial > 0)
         {
             text.Append("  Frames discarded with partial planet detected: ").Append(droppedPartial.ToString(CultureInfo.InvariantCulture)).Append((char)13).Append((char)10);
+        }
+        if (droppedNoFeature > 0)
+        {
+            text.Append("  Frames discarded with no AFB found: ").Append(droppedNoFeature.ToString(CultureInfo.InvariantCulture)).Append((char)13).Append((char)10);
         }
         if (droppedTooSmall > 0)
         {
@@ -641,12 +824,17 @@ public sealed class Processor
             // the engine prints the line (with 0) whenever quality selection ran
             text.Append("  Frames discarded by quality: ").Append(droppedByQuality.ToString(CultureInfo.InvariantCulture)).Append((char)13).Append((char)10);
         }
+        if (_settings.OutputFrameDrop > 0)
+        {
+            text.Append("  Frames discarded by output frame drop option: ").Append(discardedByOutputDrop.ToString(CultureInfo.InvariantCulture)).Append((char)13).Append((char)10);
+        }
         text.Append("  Total output frames: ").Append(outputFrameCount.ToString(CultureInfo.InvariantCulture)).Append(":\r\n");
         if (_settings.KeepFrames is not null || _settings.KeepPercent is not null)
         {
             text.Append("  Quality Algorithm: ").Append(QualityAlgorithmLabel(_settings.QualityAlgorithm)).Append("\r\n");
         }
-        text.Append("  Output Frame Type: ").Append(sample.Channels == 3 || _settings.ForceColour ? "Colour" : "Monochrome").Append("\r\n");
+        // With no prepared frame the engine falls back to its "Colour" default (oracle: -sf=31).
+        text.Append("  Output Frame Type: ").Append(sample is null || sample.Channels == 3 || _settings.ForceColour ? "Colour" : "Monochrome").Append("\r\n");
         text.Append("  Output Frame Format: ").Append(FormatLabel(_settings.OutputExtension)).Append("\r\n");
         text.Append("  Output Directory: ").Append(directory).Append("\r\n");
 
@@ -828,6 +1016,115 @@ public sealed class Processor
         return result;
     }
 
+    /// <summary>Output root: <c>&lt;od&gt;/&lt;osubdir&gt;</c> when <c>-osubdir</c> is set, else <c>-od</c>.</summary>
+    private string EffectiveOutputDirectory()
+    {
+        string root = _settings.OutputDirectory;
+        if (string.IsNullOrWhiteSpace(_settings.OutputSubdirectory)) return root;
+        string sub = _settings.OutputSubdirectory!;
+        return Path.IsPathRooted(sub) ? sub : Path.Combine(root, sub);
+    }
+
+    /// <summary>
+    /// One unit of work: a single input, or every input joined into one stream (<c>-join</c>).
+    /// The unit decides how the source is opened so the loop body stays unaware of the difference.
+    /// </summary>
+    private List<InputUnit> BuildUnits(List<string> files)
+    {
+        if (_settings.JoinMode && files.Count > 1)
+        {
+            return [new InputUnit(files[0], files, () => new JoinedFrameSource(files))];
+        }
+
+        return files.Select(f => new InputUnit(f, [f], () => FrameSourceFactory.Open(f))).ToList();
+    }
+
+    private sealed record InputUnit(string Name, IReadOnlyList<string> Sources, Func<IFrameSource> Open);
+
+    /// <summary>
+    /// The engine's per-input frame window. <paramref name="Start"/> is the 0-based first frame,
+    /// <paramref name="Limit"/> the exclusive upper bound on frames <em>read</em> and
+    /// <paramref name="InputDrop"/> the <c>-ifd</c> stride.
+    /// </summary>
+    /// <remarks>
+    /// Bisected against <c>pipp_core.exe</c> on a 30-frame capture (frame numbers 1-based):
+    /// <c>-f=5</c> reads 1..5; <c>-sf=3</c> starts at 3; <c>-ctrf -f=5</c> starts at 13 = (30-5)/2+1;
+    /// <c>-ctrf</c> alone starts at 16 = 30/2+1; <c>-ifd=5</c> keeps 1, 7, 13, 19, 25.
+    /// The <c>-f</c>/<c>-ifd</c> alignment quirk is reproduced as observed, not as the help text
+    /// describes it: <c>pipp_core</c> ignores <c>-f</c> unless <c>f = 1 + k*(ifd+1)</c>, so
+    /// <c>-ifd=2 -f=10</c> reads 10 frames while <c>-ifd=2 -f=11</c> reads the whole capture.
+    /// </remarks>
+    private readonly record struct FrameWindow(int Start, int Limit, int InputDrop)
+    {
+        public static FrameWindow Compute(int total, PipelineSettings settings)
+        {
+            int frames = settings.FrameCount;
+            int start = settings.FramesFromCentre
+                ? Math.Max(0, (total - frames) / 2)
+                : (settings.StartFrame ?? 1) - 1;
+            // A container that does not declare a frame count falls back to "read to EOF".
+            int limit = total > 0 ? total : int.MaxValue;
+
+            if (frames != 0)
+            {
+                bool honour = settings.InputFrameDrop <= 0
+                    || (frames - 1) % (settings.InputFrameDrop + 1) == 0;
+                if (honour) limit = total > 0 ? Math.Min(start + frames, total) : start + frames;
+            }
+
+            return new FrameWindow(start, Math.Max(0, limit), settings.InputFrameDrop);
+        }
+    }
+
+    /// <summary>Progress percentage inside the window rather than the whole container.</summary>
+    private static int Percent(int index, FrameWindow window) =>
+        (int)(100.0 * index / Math.Max(1, window.Limit));
+
+    /// <summary>The engine's rejected-frame filename prefix for a detection failure.</summary>
+    private static string RejectPrefix(PlanetDetectionStatus status) => status switch
+    {
+        PlanetDetectionStatus.PartialObject => "partial_object",
+        PlanetDetectionStatus.TooSmall => "too_small",
+        _ => "no_object",
+    };
+
+    /// <summary>
+    /// Writes one rejected frame the way <c>-sr</c> does in the engine: under
+    /// <c>rejected/&lt;name&gt;_rejected/</c>, named <c>&lt;reason&gt;_&lt;source frame&gt;.tif</c>, always a
+    /// three-channel TIFF at the frame's bit depth (a mono frame is replicated across R, G and B).
+    /// </summary>
+    /// <remarks>
+    /// Verified with the oracle: <c>-sr -chk -ms=10000</c> on a 30-frame capture produced
+    /// <c>rejected/saturn30_rejected/too_small_01.tif</c>, a 640x640x3 8-bit TIFF whose bytes equal
+    /// the corresponding normal output frame; on a 4-frame capture the names are
+    /// <c>too_small_1.tif</c>..<c>too_small_4.tif</c>. The extension is always <c>.tif</c> even for
+    /// <c>-png</c>/<c>-ser</c> output.
+    /// </remarks>
+    private void SaveRejected(Frame frame, string reason, int sourceFrame, string directory, int digits)
+    {
+        if (!_settings.SaveRejectedFrames) return;
+
+        Directory.CreateDirectory(directory);
+        string suffix = "_" + sourceFrame.ToString("D" + digits.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
+        string path = Path.Combine(directory, reason + suffix + ".tif");
+
+        Frame output = frame;
+        if (frame.Channels == 1)
+        {
+            output = new Frame(frame.Width, frame.Height, 3, frame.BitDepth);
+            for (int i = 0; i < frame.Samples.Length; i++)
+            {
+                ushort value = frame.Samples[i];
+                output.Samples[i * 3] = value;
+                output.Samples[i * 3 + 1] = value;
+                output.Samples[i * 3 + 2] = value;
+            }
+        }
+
+        using var sink = FrameSinkFactory.Create(path, output, 1, _settings.Fps);
+        sink.Write(output);
+    }
+
     private void Report(int percent, string? file, int frameIndex, int frameCount, string message)
     {
         _progress?.Report(new PipelineProgress(Math.Clamp(percent, 0, 100), file, frameIndex, frameCount, message));
@@ -838,5 +1135,77 @@ public sealed class Processor
             _protocol.Write(EngineToken.FrameNumber, frameIndex);
             if (frameCount > 0) _protocol.Write(EngineToken.FrameCount, frameCount);
         }
+    }
+}
+
+/// <summary>
+/// Presents several containers as one continuous frame stream: the meaning of <c>-join</c> in the
+/// engine, which produces a single output and a single log named after the first input.
+/// </summary>
+/// <remarks>
+/// Verified with the oracle: <c>-tif -join</c> over a 4-frame 32x24 capture and a 1-frame 640x640
+/// capture writes <c>capture/1.tif</c>..<c>capture/5.tif</c> and one <c>capture_pipp_log.txt</c>
+/// whose "Source image files" section lists both paths and whose "Total input frames" is 5.
+/// Mixing geometries in a SER/AVI output is an error, exactly like the engine's
+/// "Frames of different sizes cannot written to an AVI or SER file".
+/// </remarks>
+public sealed class JoinedFrameSource : IFrameSource
+{
+    private readonly List<IFrameSource> _sources = [];
+    private int _current;
+
+    /// <summary>Opens every input and concatenates its frames.</summary>
+    public JoinedFrameSource(IEnumerable<string> files)
+    {
+        ArgumentNullException.ThrowIfNull(files);
+        try
+        {
+            foreach (string file in files) _sources.Add(FrameSourceFactory.Open(file));
+        }
+        catch
+        {
+            Dispose();
+            throw;
+        }
+
+        if (_sources.Count == 0) throw new ArgumentException("no input files", nameof(files));
+    }
+
+    /// <inheritdoc />
+    public int Width => _sources[0].Width;
+
+    /// <inheritdoc />
+    public int Height => _sources[0].Height;
+
+    /// <inheritdoc />
+    public int Channels => _sources[0].Channels;
+
+    /// <inheritdoc />
+    public int BitDepth => _sources[0].BitDepth;
+
+    /// <inheritdoc />
+    public int FrameCount => _sources.Sum(source => source.FrameCount);
+
+    /// <inheritdoc />
+    public BayerPattern Bayer => _sources[0].Bayer;
+
+    /// <inheritdoc />
+    public Frame? ReadFrame()
+    {
+        while (_current < _sources.Count)
+        {
+            Frame? frame = _sources[_current].ReadFrame();
+            if (frame is not null) return frame;
+            _current++;
+        }
+
+        return null;
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        foreach (var source in _sources) source.Dispose();
+        _sources.Clear();
     }
 }

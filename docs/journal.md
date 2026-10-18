@@ -417,3 +417,33 @@ switch at all. The only engine stacker is `pipp_dll!stack_frames`, used for mast
 `FrameStacker.Mean` now truncates instead of rounding half up (64-bit accumulator kept; divergence
 only above the engine's 32-bit overflow point). Light-frame stacking remains a managed-only extension
 with no oracle to compare against.
+
+## M20 - Ten more switches wired; three audit assumptions were wrong
+
+Each switch was characterised by running the oracle before implementing, which overturned the audit's
+prose in three places:
+
+- **`-f` is not an end frame.** `-f=5` on a 30-frame capture writes frames 1, 7, 13, 19, 25 - a window
+  of five frames sampled across the range start, with `Total input frames` becoming `min(sf+n-1, total)`.
+- **`-ifd` is not a leading-frame drop.** It keeps one frame then discards n, repeating
+  (`-ifd=5` -> 1, 7, 13, 19, 25), and the counter restarts at the window start. A consequence: `-f` is
+  ignored unless `f = 1 + k*(ifd+1)`.
+- **`-ctrf`** starts at `max(0, (n-f)/2)` and overrides `-sf`; alone it starts at the midpoint.
+
+Also wired: `-osubdir` (wraps the whole layout, including logs and rejected folders), `-sr` (rejected
+frames under `<out>/[sub/]rejected/<input>_rejected/<reason>_<NN>.tif`, always 3-channel TIFF), `-join`
+(one stream/output/log across inputs via a new `JoinedFrameSource`; mixed geometry is a clean error),
+`-incqv` (quality percentage in the name, four significant digits) and `-drop` (output stride).
+
+`-freject` could **not** be verified: every oracle configuration accepted all frames, and two AFB +
+`-sr` combinations crashed the binary with `0xC0000094`. Ours rejects when neither the ZNCC nor the
+fallback correlator finds a measurement; recorded as help-text-derived, not oracle-verified.
+
+Fixes that fell out of the numbering work: `-nr` now writes 1-based source numbers (and, under quality
+selection, selected frames in source order renumbered from 0); quality-run padding follows the kept
+count; all-frames-discarded exits -1 with the engine message; the log gains start-frame, input-drop,
+output-drop and no-AFB counters and is written even when nothing was prepared.
+
+Verified: 411 tests, 22/22 parity cases, and a 44-case differential sweep of which 42 are byte- or
+pixel-identical (the two exceptions are an all-discarded label and the non-deterministic quality
+percentages). Spot-check: `-f=5` gives five files, all five pixel-identical to the oracle.

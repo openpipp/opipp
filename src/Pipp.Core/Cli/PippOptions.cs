@@ -337,7 +337,7 @@ public sealed record PippOptions
     /// <summary>Take <see cref="FrameCount"/> frames from the centre of the input (<c>-ctrf</c>).</summary>
     public bool FramesFromCentre { get; set; }
 
-    /// <summary>Discard this many frames at the start of the input (<c>-ifd=&lt;n&gt;</c>).</summary>
+    /// <summary>Input frame dropping (<c>-ifd=&lt;n&gt;</c>): keep one frame, then discard this many, repeating.</summary>
     public int InputFrameDrop { get; set; }
 
     /// <summary>Colour/monochrome handling (<c>-mono</c>, <c>-colour</c>).</summary>

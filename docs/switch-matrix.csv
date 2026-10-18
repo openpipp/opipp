@@ -33,7 +33,7 @@ switch,status,evidence
 -colour,verified,Transform() 559/568 — Full.
 -convmono,verified,Transform() 561/600 — Full.
 -ctr,verified,Run() 305 / log 468 — Full.
--ctrf,parsed-only,No PS property; the range origin is fixed at frame 1.
+-ctrf,verified,"wired and oracle-verified: start = max(0,(n-f)/2); alone starts at n/2; overrides -sf"
 -cx,executed,"Transform() 623 — `partial` — needs -cx or -cy (`BuildCrop`, Program 219-226); offsets alone are ignored."
 -cy,executed,Transform() 623 — `partial` — needs a crop size.
 -dark,executed,Transform() 581 — `partial` — gate for `LoadMaster` (Program 192); no effect unless -dark_tmp/-dark_pgm names a readable PGM.
@@ -43,10 +43,10 @@ switch,status,evidence
 -db,executed,"Transform() 564 / none — `partial` — bare `-db` works; `-db=<pattern>` only sets `DebayerPattern`, which Processor never reads."
 -db_type,executed,Transform() 566/570 — `partial` — only value 2 (SmoothHue) survives; 0 and 1 both map to `false` (Program 139).
 -debugavi,parsed-only,No PS property; `AviWriter` has no diagnostics switch.
--drop,parsed-only,No PS property.
+-drop,verified,"wired and oracle-verified: write 1, skip n (stride n+1), renumber; counter logged"
 -en_ss,parsed-only,No PS property.
 -en_surface_feature_tracking,verified,Run() 311 — Full.
--f,parsed-only,No PS property; the read loop runs to EOF.
+-f,verified,wired and oracle-verified: window of n frames from the range start (not an end frame); 0/absent = whole file
 -fits,executed,ChooseExtension 228 / Run 354 — `partial` — one container per run; extension is `.fit`.
 -flat,executed,Transform() 585 — `partial` — gate for `LoadMaster` (Program 193); no effect unless -flat_tmp names a readable PGM.
 -flat_bayer,parsed-only,No PS property.
@@ -57,9 +57,9 @@ switch,status,evidence
 -flip_y,verified,Transform() 615 — Full.
 -fps_rate,executed,writers 348/359/395 — `partial` — `Fps` reaches only the AVI rate fields (FrameIo 104-111); SER and stills ignore it.
 -fps_scale,executed,writers 348/359/395 — `partial` — AVI timing only.
--freject,parsed-only,No PS property.
+-freject,executed,NOT oracle-verified: could not be triggered: every oracle configuration accepted all frames; two AFB+-sr combos crashed the binary (0xC0000094). Implemented from help text
 -gamma,verified,Transform() 591 — Full.
--gif,verified,"wired: Program.ChooseExtension maps .gif; Processor writes one animated GifWriter file; original emits an image-less GIF (deliberate divergence)"
+-gif,verified,wired: Program.ChooseExtension maps .gif; Processor writes one animated GifWriter file; original emits an image-less GIF (deliberate divergence)
 -gif_border_tol,parsed-only,"No PS property, and no GIF writer."
 -gif_col_tbl_depth,parsed-only,"No PS property, and no GIF writer."
 -gif_lossy_comp,parsed-only,"No PS property, and no GIF writer."
@@ -71,10 +71,10 @@ switch,status,evidence
 -hs,verified,Transform() 604 — Full; the `%`/`p` spellings are normalised to 1..255 in the parser (CommandLineParser 290-303).
 -hs_bp,verified,Transform() 609 — Full.
 -hsrgb,verified,Transform() 610 — Full.
--ifd,parsed-only,No PS property; the read loop cannot drop leading frames.
--incqv,parsed-only,No PS property.
+-ifd,verified,"wired and oracle-verified: keep 1, drop n (stride), counter restarts at the window start - NOT a leading-frame drop"
+-incqv,verified,wired and oracle-verified: <stem>_quality_<pct>% with 4 significant digits
 -input_gain,verified,Transform() 591 — Full.
--join,parsed-only,Banner only (Program.cs:91); `Run()` loops per file independently.
+-join,verified,wired and oracle-verified: one stream/output/log across inputs; window applies to the concatenation
 -keepimgname,verified,Run() 391 — Full.
 -median,verified,Transform() 596 — Full.
 -mono,verified,Transform() 559/568 — Full.
@@ -88,7 +88,7 @@ switch,status,evidence
 -oe,executed,"Run() 283 — `partial` — the count gate works, but `OverexposedThreshold` (the pixel value) is never set, so it uses the frame maximum (Processor 548-551)."
 -op,verified,Run() 336 — Full.
 -os,verified,Run() 336 — Full.
--osubdir,parsed-only,No PS property; output is written straight into `OutputDirectory` (Processor 219).
+-osubdir,verified,"wired and oracle-verified: wraps the whole layout: <od>/<name>/<input>/, <name>/logs/, <name>/rejected/"
 -ox,executed,Transform() 623 — `partial` — read only when a crop size is present.
 -oy,executed,Transform() 623 — `partial` — read only when a crop size is present.
 -pb,parsed-only,No PS property.
@@ -119,9 +119,9 @@ switch,status,evidence
 -sdp,parsed-only,No PS property; there is no overlay stage.
 -ser,executed,ChooseExtension 228 / Run 354 — `partial` — one container per run.
 -ser_bpp,parsed-only,No PS property; the SER reader always trusts the header.
--sf,parsed-only,No PS property; the read loop (Processor 249-325) has no start index.
+-sf,verified,wired and oracle-verified: 1-based inclusive start; -sf=0 starts one frame early (engine quirk)
 -shdw,parsed-only,No PS property.
--sr,parsed-only,"No PS property; rejected frames are dropped (Processor 278, 288)."
+-sr,verified,"wired and oracle-verified: <out>/[sub/]rejected/<input>_rejected/<reason>_<NN>.tif, always 3-channel TIFF"
 -temp_dir,parsed-only,No PS property; the managed engine stages nothing on disk.
 -test_run,parsed-only,No PS property; `TestRun` is never read.
 -tif,executed,ChooseExtension 228 / Run 354 — `partial` — one container per run.
