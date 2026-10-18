@@ -22,6 +22,7 @@ public sealed class AviReader : IFrameSource
         Palette8,
         Bgr24,
         Y800,
+        Jpeg,
     }
 
     private readonly Stream _stream;
@@ -77,24 +78,35 @@ public sealed class AviReader : IFrameSource
             Channels = _mode switch
             {
                 DecodeMode.Bgr24 => 3,
+                DecodeMode.Jpeg => 3,
                 DecodeMode.Palette8 => PaletteIsGrayscale(bitmap, _structure.Palette) ? 1 : 3,
                 _ => 1,
             };
 
             _palette = BuildPalette(bitmap, _structure.Palette);
 
-            long rowBytes = _mode == DecodeMode.Bgr24 ? (long)Info.Width * 3 : Info.Width;
-            long stride = _mode == DecodeMode.Y800 ? rowBytes : (rowBytes + 3) & ~3L;
-            long frameBytes = stride * Info.Height;
-            if (rowBytes > int.MaxValue || frameBytes > int.MaxValue)
-                throw new InvalidDataException($"AVI frame {Info.Width}x{Info.Height} is too large to decode in memory.");
+            if (_mode == DecodeMode.Jpeg)
+            {
+                // JPEG frames are self-describing: no row stride or fixed frame buffer applies.
+                _rowBytes = 0;
+                _stride = 0;
+                _frameBuffer = Array.Empty<byte>();
+            }
+            else
+            {
+                long rowBytes = _mode == DecodeMode.Bgr24 ? (long)Info.Width * 3 : Info.Width;
+                long stride = _mode == DecodeMode.Y800 ? rowBytes : (rowBytes + 3) & ~3L;
+                long frameBytes = stride * Info.Height;
+                if (rowBytes > int.MaxValue || frameBytes > int.MaxValue)
+                    throw new InvalidDataException($"AVI frame {Info.Width}x{Info.Height} is too large to decode in memory.");
 
-            _rowBytes = (int)rowBytes;
-            _stride = (int)stride;
-            _frameBuffer = new byte[(int)frameBytes];
+                _rowBytes = (int)rowBytes;
+                _stride = (int)stride;
+                _frameBuffer = new byte[(int)frameBytes];
 
-            if (_mode == DecodeMode.Y800)
-                _topDown = true;
+                if (_mode == DecodeMode.Y800)
+                    _topDown = true;
+            }
         }
         catch
         {
@@ -144,6 +156,20 @@ public sealed class AviReader : IFrameSource
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_nextIndex >= FrameCount)
             return null;
+
+        if (_mode == DecodeMode.Jpeg)
+        {
+            AviFrameLocation jpegLocation = _structure.Frames[_nextIndex];
+            var payload = new byte[jpegLocation.Size];
+            _stream.Position = jpegLocation.Offset;
+            _stream.ReadExactly(payload);
+
+            Frame decoded = JpegBaselineDecoder.Decode(payload);
+            decoded.Index = _nextIndex;
+            decoded.SourceName = _sourcePath is null ? null : Path.GetFileName(_sourcePath);
+            _nextIndex++;
+            return decoded;
+        }
 
         AviFrameLocation location = _structure.Frames[_nextIndex];
         int stride = _stride;
@@ -214,6 +240,11 @@ public sealed class AviReader : IFrameSource
 
     private static DecodeMode SelectMode(uint compression, int bitCount, string fourCC)
     {
+        if (compression == AviIds.Mjpg || string.Equals(fourCC, "MJPG", StringComparison.OrdinalIgnoreCase))
+        {
+            return DecodeMode.Jpeg;
+        }
+
         if (compression == AviIds.Y800)
         {
             if (bitCount != 8)

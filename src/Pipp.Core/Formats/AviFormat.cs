@@ -128,6 +128,9 @@ internal static class AviIds
     public static readonly uint Strf = AviFourCC.Make("strf");
     public static readonly uint Idx1 = AviFourCC.Make("idx1");
     public static readonly uint Vids = AviFourCC.Make("vids");
+
+    /// <summary>Motion JPEG video stream.</summary>
+    public static readonly uint Mjpg = AviFourCC.Make("MJPG");
     public static readonly uint Dib = AviFourCC.Make("DIB ");
     public static readonly uint Y800 = AviFourCC.Make("Y800");
     public static readonly uint Db = AviFourCC.Make("00db");
