@@ -8,14 +8,17 @@ by Chris Garry (http://sites.google.com/site/astropipp/ — original site, now o
 - The `decompiled/` and `ghidra/` directories are **reference artifacts**, not source to be compiled or
   redistributed. They remain the property of the original author.
 - New code under `src/` is written for this reconstruction, informed by the observed behaviour of the
-  original. It is intended to be released under an OSI licence **only with the original author's
-  permission** (or if the author publishes their own source).
+  original. It is published under the **GNU GPL v3 or later** (see `LICENSE`), which covers this
+  project's own code and artwork only — it grants no rights in PIPP itself.
 
-Until that permission exists, treat this tree as private research material:
+The project is published in the belief that reproducing file formats and a command-line vocabulary
+for interoperability, research and modernization is **fair use**. That is the project's stated
+position, not a legal determination.
 
-- do not publish the repository or release binaries;
-- do not vendor `decompiled/` or `ghidra/out/` anywhere;
-- `LICENSE` intentionally absent until provenance is cleared.
+Safeguards that remain in force:
 
-If permission is granted, add the chosen licence here plus a NOTICE crediting Chris Garry for the
-original PIPP design, formats and algorithms.
+- no original binaries are distributed with this repository;
+- `decompiled/` and `ghidra/` are git-ignored and never shipped, vendored or committed;
+- `NOTICE` records the lack of affiliation and the scope of the licence;
+- a rights-holder request to change or remove material will be actioned promptly.
+

@@ -32,8 +32,8 @@ became a switch on the `pipp_core.exe` command line (152 emissions, full table i
 - Video (AVI in/out) is the one place where an external native dependency is unavoidable for
   compressed codecs; plan is `FFmpeg.AutoGen` (or `ffmpeg` CLI fallback) behind `Opipp.Core.Video`,
   with pure-managed paths for uncompressed AVI. SER/FITS/BMP/TIFF/PNG are written managed.
-- Provenance: reconstruction of a closed-source freeware app. Repository is marked
-  "reconstruction — publish only with the original author's permission" (see `notes/provenance.md`).
+- Provenance: reconstruction of a closed-source freeware app, published under GPLv3 for its own code
+  and artwork with a stated fair-use position (see `notes/provenance.md` and `NOTICE`).
 
 ## 4. Module map for `Opipp.Core`
 
