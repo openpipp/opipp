@@ -63,6 +63,23 @@ Evidence (all pixel-exact against `bin/pipp_core.exe`):
 - Synthetic colour fixture, `-hs=204` and `-hs=204 -hsrgb` (min-gain vs per-channel differ by up to 52).
 - Synthetic 32x24 disc keeps the constant 2.04, so the old measurement stays valid.
 
+## Phase 4 status
+
+Done: the detection threshold (item 1) - recovered, exact on real frames, committed.
+
+Open, in the order I would take them:
+
+1. **Centring centroid** (item 2b, below) - bounded, one unknown left.
+2. **Quality estimator** (item 3) - the log format matches but the ranking does not: engine frame 1
+   = 1065.7 vs frame 11 = 813.3 (31% apart); ours has them within 4% and in the opposite order. Find
+   the estimator behind "PIPP Default" (`FUN_1400af990` is its downsample; follow callers). This is
+   what blocks the Phase 4 exit criterion "kept-frame set **and order** match".
+3. **Detection rejection reasons** (item 2) - `-chk` now logs the threshold; the object finder
+   `FUN_140077560` returns -1 for "no object" and the per-reason counters are not reproduced.
+4. **Weighting and bounds** (item 3) - `-qw`, `-incqv`, `-freject`.
+5. **Surface tracking / `-ctrf` / `-en_ss`** (item 4).
+6. **`-meanmed`, `-join`** (item 5).
+
 ## Next task - Phase 4a item 2b: the centring centroid
 
 The threshold is solved (see the commit before this one): `FUN_14009ab40`, 1/3-scale image, five

@@ -91,3 +91,15 @@ without resizing), the vacated border is filled with the frame's background leve
 `(-19,+37)` with fill 3 reproduces oracle frame 1 byte-for-byte. The centroid rule itself is still
 open: every weighting we tried (binary, v, v-thr, squared, 1/3-scale) lands 2-4 px away from the
 offset the engine applied.
+
+## M6 - Quality scores quantified (`<pending commit>`)
+
+With `-q=10 -qmin=3 -qmax=5 -qinc=1` the engine writes `logs/<name>_pipp_quality.txt` with
+`Pos / Source Frame / Output Frame / Quality Value / % of Best`. The format already matches ours, so
+the log comparison is structural; the numbers do not.
+
+On the real capture the engine ranks frame 1 first at **1065.667424** and frame 11 second at
+**813.334568** - a 31% spread. Ours ranks frame 11 first at 19.711496 and frame 1 ninth at 18.870455,
+a 4% spread. The ordering itself differs, so this is not a scale factor: the estimator behind "PIPP
+Default" weighs something we do not. Next step is to find that routine (`FUN_1400af990` is the
+downsample it calls; follow its callers), not to calibrate constants.
