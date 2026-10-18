@@ -37,8 +37,8 @@ switch,status,evidence
 -dark_bayer,parsed-only,"parsed, no effect yet"
 -dark_pgm,parsed-only,"parsed, no effect yet"
 -dark_tmp,parsed-only,"parsed, no effect yet"
--db,verified,oracle parity case
--db_type,verified,oracle parity case
+-db,executed,pattern-only form is a verified no-op; interpolated output differs by ~1 LSB (known gap)
+-db_type,executed,selects the debayer algorithm; interpolation not yet matched (known gap)
 -drop,parsed-only,"parsed, no effect yet"
 -en_ss,parsed-only,"parsed, no effect yet"
 -en_surface_feature_tracking,executed,mapped into PipelineSettings / Program
@@ -63,9 +63,9 @@ switch,status,evidence
 -gif_trns_pxl_tol,parsed-only,"parsed, no effect yet"
 -gui,executed,mapped into PipelineSettings / Program
 -hot_pixel,parsed-only,"parsed, no effect yet"
--hs,verified,oracle parity case
--hs_bp,parsed-only,"parsed, no effect yet"
--hsrgb,executed,mapped into PipelineSettings / Program
+-hs,verified,"oracle parity case (synthetic, colour and 30 real frames)"
+-hs_bp,verified,oracle parity case (30 real frames)
+-hsrgb,verified,"oracle parity case (colour fixture, per-channel gains)"
 -ifd,parsed-only,"parsed, no effect yet"
 -incqv,parsed-only,"parsed, no effect yet"
 -input_gain,parsed-only,"parsed, no effect yet"

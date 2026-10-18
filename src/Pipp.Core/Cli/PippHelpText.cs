@@ -68,9 +68,13 @@ Processing options:
   -median                  Apply a 3x3 median filter.
   -convmono=<0..6>         Convert colour to monochrome:
                              0 RG&B, 1 R, 2 G, 3 B, 4 R&G, 5 R&B, 6 G&B.
-  -hs=<n>                  Histogram stretch to this maximum level (1-255).
-  -hs_bp                   Histogram stretch without clipping the black point.
-  -hsrgb                   Equalise the R, G and B histograms independently.
+  -hs=<n>                  Histogram stretch: scale so the frame's bright tail reaches n% of full
+                           scale (1-255; 204 is PIPP's default). -hs=<n>% and -hs=<n>p are the
+                           percentage spelling of the same setting.
+  -hs_bp                   Histogram stretch without clipping the black point: subtract the frame's
+                           measured black point instead of stretching from zero.
+  -hsrgb                   Use a separate stretch gain for each of R, G and B (default: the smallest
+                           channel gain is used for all three).
   -oe=<n>                  Reject frames with more than n overexposed pixels.
   -flip_x                  Mirror frames horizontally.
   -flip_y                  Mirror frames vertically.

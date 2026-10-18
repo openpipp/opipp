@@ -99,8 +99,11 @@ public sealed class PipelineSettings
     /// <summary>Histogram stretch white point (1..255), when set.</summary>
     public int? StretchWhitePoint { get; set; }
 
-    /// <summary>Equalise R/G/B histograms before stretching.</summary>
-    public bool StretchEqualiseRgb { get; set; }
+    /// <summary>Measure and subtract the frame's black point instead of clipping it (<c>-hs_bp</c>).</summary>
+    public bool StretchPreserveBlackPoint { get; set; }
+
+    /// <summary>Keep a separate stretch gain per colour channel rather than the smallest (<c>-hsrgb</c>).</summary>
+    public bool StretchPerChannelGains { get; set; }
 
     /// <summary>Reject frames with more than this many overexposed pixels.</summary>
     public int? MaxOverexposedPixels { get; set; }
@@ -586,11 +589,11 @@ public sealed class Processor
         }
         if (_settings.StretchWhitePoint is int wp)
         {
-            if (_settings.StretchEqualiseRgb && frame.Channels == 3)
-            {
-                frame = HistogramStretch.EqualiseRgb(frame);
-            }
-            frame = HistogramStretch.StretchToWhitePoint(frame, wp);
+            frame = HistogramStretch.StretchToWhitePoint(
+                frame,
+                wp,
+                preserveBlackPoint: _settings.StretchPreserveBlackPoint,
+                perChannelGains: _settings.StretchPerChannelGains);
         }
 
         // 5. geometry

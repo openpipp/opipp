@@ -47,6 +47,8 @@ internal static class Program
         string oracle = Arg(args, "--oracle") ?? Path.Combine(repo, "bin", "pipp_core.exe");
         string managed = Arg(args, "--managed") ?? Path.Combine(repo, "src", "Pipp.Cli", "bin", "Debug", "net10.0", "Pipp.Cli.exe");
         string work = Arg(args, "--work") ?? Path.Combine(repo, "parity");
+        bool includeRealData = Array.Exists(args, a => a == "--real");
+        string realInput = Arg(args, "--real-input") ?? Path.Combine(repo, "samples", "saturn30.ser");
 
         Console.WriteLine($"oracle : {oracle}");
         Console.WriteLine($"managed: {managed}");
@@ -54,6 +56,11 @@ internal static class Program
 
         if (!File.Exists(oracle)) { Console.Error.WriteLine("oracle not found"); return 2; }
         if (!File.Exists(managed)) { Console.Error.WriteLine("managed engine not found (build Pipp.Cli first)"); return 2; }
+        if (includeRealData && !File.Exists(realInput))
+        {
+            Console.Error.WriteLine($"real-data input not found: {realInput}");
+            return 2;
+        }
 
         Directory.CreateDirectory(work);
         string input = Path.Combine(work, "capture.ser");
@@ -71,7 +78,7 @@ internal static class Program
         string bigInput = Path.Combine(work, "big.ser");
         WriteSyntheticSer(bigInput, width: 96, height: 96, frames: 4, bitDepth: 8, discRadius: 20, drift: 4, flatBackground: true);
 
-        var cases = new[]
+        var cases = new List<ParityCase>
         {
             // container plumbing and single transforms first: a mismatch here means I/O, not math
             new ParityCase("plain-tif", ["-tif"]),
@@ -80,7 +87,19 @@ internal static class Program
             new ParityCase("fits-out", ["-fits"]),
             new ParityCase("png-out", ["-png"]),
             new ParityCase("avi-out", ["-avi"]),
-            new ParityCase("debayer", ["-tif", "-db=2", "-db_type=0"], Input: "bayer"),
+            // -db=2 alone is only the *pattern*; the engine debayers when the bare -db flag is also
+            // present. This case therefore pins the pattern-only no-op (both engines keep the frame
+            // mono), which is a real part of the switch's contract but not interpolation.
+            new ParityCase("db-pattern-only", ["-tif", "-db=2", "-db_type=0"], Input: "bayer"),
+            // Real debayering (-db + pattern) does not match yet: our interpolation differs from the
+            // original by 1 LSB on ~37% of interior pixels (up to 3 at the edges). Phase 2/4 work.
+            new ParityCase("debayer-interpolated", ["-tif", "-db", "-db=2", "-db_type=0"], Input: "bayer",
+                Mode: CompareMode.KnownGap,
+                Note: "debayer interpolation differs by 1 LSB on ~37% of pixels"),
+            // colour stretch: the colour fixture has different per-channel tails (240/200/120), so the
+            // smallest-gain rule and the -hsrgb per-channel gains are both observable
+            new ParityCase("stretch-colour", ["-tif", "-hs=204"], Input: "colour"),
+            new ParityCase("stretch-colour-rgb", ["-tif", "-hs=204", "-hsrgb"], Input: "colour"),
             // the engine's default 15px minimum diameter rejects this disc, so relax it to reach
             // the centring transform itself
             new ParityCase("centre", ["-tif", "-ctr", "-ms=5"], Input: "big"),
@@ -100,6 +119,16 @@ internal static class Program
             new ParityCase("png-colour", ["-png"], Input: "colour"),
         };
 
+        if (includeRealData)
+        {
+            // Real 640x640 8-bit Bayer capture (30 frames). This is the set that exposed the
+            // image-dependent stretch: -hs measures the frame's bright tail, so the synthetic disc
+            // cannot exercise it. Kept behind --real because samples/ is git-ignored third-party data.
+            cases.Add(new ParityCase("real-plain", ["-tif"], Input: "real"));
+            cases.Add(new ParityCase("real-stretch", ["-tif", "-hs=204"], Input: "real"));
+            cases.Add(new ParityCase("real-stretch-bp", ["-tif", "-hs=204", "-hs_bp"], Input: "real"));
+        }
+
         int failures = 0;
         foreach (var c in cases)
         {
@@ -109,6 +138,7 @@ internal static class Program
                 "big" => bigInput,
                 "ser16" => ser16Input,
                 "colour" => colourInput,
+                "real" => realInput,
                 _ => input,
             };
             failures += RunCase(c, oracle, managed, work, caseInput) ? 0 : 1;

@@ -514,6 +514,24 @@ public class CommandLineTests
     }
 
     [Fact]
+    public void HistogramStretchPercentSpelling_MapsToTheSameFieldAsTheIntegerForm()
+    {
+        // The engine's parser converts -hs=xx% (and -hs=xxp) to xx*255/100 in the same option field,
+        // so all three spellings below end up as the same setting.
+        foreach (var token in new[] { "-hs=80%", "-hs=80p", "-hs=204" })
+        {
+            var result = CommandLineParser.Parse([token]);
+
+            Assert.True(result.Success, token);
+            Assert.Equal(204, result.Options.HistogramStretch);
+        }
+
+        Assert.False(CommandLineParser.Parse(["-hs=101%"]).Success);
+        Assert.False(CommandLineParser.Parse(["-hs=0%"]).Success);
+        Assert.False(CommandLineParser.Parse(["-hs=%"]).Success);
+    }
+
+    [Fact]
     public void FormatSwitches_ReplaceTheDefaultFormat_AndCombine()
     {
         var single = CommandLineParser.Parse(["-png"]);

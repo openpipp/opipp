@@ -146,7 +146,8 @@ internal static class Program
             Gain = o.InputGain <= 0 ? 1.0 : o.InputGain,
             Gamma = o.Gamma <= 0 ? 1.0 : o.Gamma,
             StretchWhitePoint = o.HistogramStretch is int wp and >= 1 and <= 255 ? wp : null,
-            StretchEqualiseRgb = o.HistogramStretchRgb,
+            StretchPreserveBlackPoint = o.HistogramStretchNoBlackPoint,
+            StretchPerChannelGains = o.HistogramStretchRgb,
             MaxOverexposedPixels = o.OverexposureThreshold,
 
             FlipX = o.FlipX,

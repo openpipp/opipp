@@ -40,3 +40,32 @@ The stretch turned out to be image-dependent: gain 2.3043 on the real frame vs 2
 `b` drifting 28.05-29.49. The user chose **option A**: chase exact parity rather than declare a
 divergence. The Ghidra trace located the option field (`+0x1DC`, default `0xCC`, percent form
 `x255/100`) but not yet the consumer.
+
+## M4 - Real-data stretch parity (`HEAD` at the time of writing)
+
+Found the consumer by following the option, not grepping for `0x1dc`: the parser wrapper
+`FUN_1400aea40` is called from `FUN_14007e8e0` with a stack-local options struct, whose field
+`+0x1DC` appears in the frame loop as `local_261c` and is passed to **`FUN_14009b4a0`**. That routine
+is the whole answer:
+
+- **white point = mean of the 25 brightest samples** (`0x19`), per channel, accumulated from the top of
+  the histogram with a weighted boundary bin and integer division;
+- **gain = `whitePoint * (max/100) / (white − black)`** with `max` = 255 or 65535 (the doubles `2.55`
+  and `655.35` at `0x140137788`/`0x140137790`), `black` = 0 unless `-hs_bp` (mean of the 25 darkest);
+- **map = `truncate((v − black) * gain)`**, clipped;
+- on colour, the **smallest** channel gain is used unless `-hsrgb` (`options + 0x1E0`) asks for one per
+  channel. No equalisation, despite the help text.
+
+The old constant-gain model was the saturated-tail special case, and the "−1 bias" was double
+precision: `204*2.55/255` sits just below 2.04.
+
+Verification: a Python model of the rule reproduced **all 30 frames** of the real Saturn capture
+exactly, then the C# port did too (`--real` in the harness). Gains at `-hs=204` are 2.2816-2.3432
+(W = 222..228, median 2.3120) - wider than the earlier six-frame estimate, which had been derived
+from rounded pixel pairs. `-hs_bp` and the two colour-stretch variants also match, so `-hsrgb` and
+the black-point rule moved from "parsed" to "verified".
+
+Two side findings: `-hs_bp` had never been wired into `PipelineSettings` (now it is), and the debayer
+parity case had been comparing two **no-ops** - `-db=<n>` only sets the pattern; the bare `-db` flag
+enables interpolation, and with it our output differs by ~1 LSB on 37% of pixels (recorded as a known
+gap, not fixed here).

@@ -443,17 +443,78 @@ public class ProcessingTests
     }
 
     // ------------------------------------------------------- histogram stretch
+    //
+    // The engine's -hs is not a constant gain. It measures a white point from the frame - the mean of
+    // its 25 brightest samples - and normalises to it (FUN_14009b4a0 in the original core). Fixtures
+    // below therefore pin the bright tail explicitly: a tail that averages 255 gives exactly the old
+    // "gain = whitePoint/100" behaviour, and a tail of 225 reproduces the mapping measured on a real
+    // 640x640 Saturn capture.
+
+    /// <summary>8-bit frame with <see cref="HistogramStretch.TailSampleCount"/> samples of
+    /// <paramref name="tail"/> followed by the probe values.</summary>
+    private static Frame WithTail8(int tail, params int[] probes)
+    {
+        var samples = new int[HistogramStretch.TailSampleCount + probes.Length];
+        Array.Fill(samples, tail, 0, HistogramStretch.TailSampleCount);
+        probes.CopyTo(samples, HistogramStretch.TailSampleCount);
+        return Mono(samples.Length, 1, samples);
+    }
+
+    /// <summary>16-bit frame with <see cref="HistogramStretch.TailSampleCount"/> samples of
+    /// <paramref name="tail"/> followed by the probe values.</summary>
+    private static Frame WithTail16(int tail, params int[] probes)
+    {
+        var samples = new int[HistogramStretch.TailSampleCount + probes.Length];
+        Array.Fill(samples, tail, 0, HistogramStretch.TailSampleCount);
+        probes.CopyTo(samples, HistogramStretch.TailSampleCount);
+        return Mono16(samples.Length, 1, samples);
+    }
 
     [Fact]
-    public void StretchToWhitePoint_204_UsesSinglePrecisionGain()
+    public void MeasureWhiteSamples_AveragesTheTwentyFiveBrightestSamples()
     {
-        // The engine's gain is a float: 50*2.04f = 101.99999 -> 101, 75 -> 152, 100 -> 203.
-        // Verified against the original binary; integer arithmetic would give 102/153/204.
-        var source = Mono(3, 1, 50, 75, 100);
+        // 24 samples at 255 and one at 200: the bin that crosses the 25-sample budget contributes only
+        // the samples still needed, so the white point is (24*255 + 200)/25 = 252.8 -> 252, not 255.
+        var samples = new int[40];
+        Array.Fill(samples, 10);
+        for (int i = 0; i < 24; i++) samples[i] = 255;
+        samples[24] = 200;
+        var frame = Mono(samples.Length, 1, samples);
 
-        var result = HistogramStretch.StretchToWhitePoint(source, 204);
+        Assert.Equal(252, HistogramStretch.MeasureWhiteSamples(frame)[0]);
+    }
 
-        AssertValues(result, 101, 152, 203);
+    [Fact]
+    public void MeasureBlackSamples_AveragesTheTwentyFiveDarkestSamples()
+    {
+        // Mirror of the white point: 24 samples at 0 plus one at 55 gives (0*24 + 55)/25 = 2.2 -> 2.
+        var samples = new int[40];
+        Array.Fill(samples, 200);
+        for (int i = 0; i < 24; i++) samples[i] = 0;
+        samples[24] = 55;
+        var frame = Mono(samples.Length, 1, samples);
+
+        Assert.Equal(2, HistogramStretch.MeasureBlackSamples(frame)[0]);
+    }
+
+    [Fact]
+    public void StretchToWhitePoint_SaturatedTail_ReproducesTheMeasuredOracleMapping()
+    {
+        // A saturated bright tail (mean 255) makes the gain exactly whitePoint/100 = 2.04, which is the
+        // mapping measured against the original binary on its synthetic fixtures: 38 -> 77, 50 -> 101,
+        // 75 -> 152, 100 -> 203, 123 -> 250. The one-unit "bias" is the truncation of a product that
+        // lands just under the integer (204*2.55/255 is slightly below 2.04 in double precision).
+        var frame = WithTail8(255, 0, 38, 50, 75, 100, 123);
+
+        var result = HistogramStretch.StretchToWhitePoint(frame, 204);
+
+        Assert.Equal(0, result.Samples[25]);
+        Assert.Equal(77, result.Samples[26]);
+        Assert.Equal(101, result.Samples[27]);
+        Assert.Equal(152, result.Samples[28]);
+        Assert.Equal(203, result.Samples[29]);
+        Assert.Equal(250, result.Samples[30]);
+        Assert.All(result.Samples.Take(HistogramStretch.TailSampleCount), v => Assert.Equal(255, v));
     }
 
     [Fact]
@@ -477,71 +538,122 @@ public class ProcessingTests
     }
 
     [Fact]
-    public void StretchToWhitePoint_204_AppliesTwoPointZeroFourGain()
+    public void StretchToWhitePoint_RealFrameTail_MatchesTheOracleMapping()
     {
-        // Values match the original engine measured on the same ramp: 38->77, 51->104, 102->208,
-        // 123->250 at -hs=204, i.e. trunc(v * 204 / 100) with clipping.
-        var source = Mono(6, 1, 0, 51, 102, 153, 204, 255);
+        // A bright tail averaging 225 gives -hs=204 a gain of 204*2.55/225 = 2.312, which is exactly
+        // what the original does on the real Saturn capture (measured there: 38 -> 87, 50 -> 115,
+        // 75 -> 173, 100 -> 231, 123 -> clipped). The old constant-gain model produced 77/101/152/203.
+        var frame = WithTail8(225, 0, 38, 50, 75, 100, 123);
 
-        var result = HistogramStretch.StretchToWhitePoint(source, 204);
+        var result = HistogramStretch.StretchToWhitePoint(frame, 204);
 
-        AssertValues(result, 0, 104, 208, 255, 255, 255);
+        Assert.Equal(0, result.Samples[25]);
+        Assert.Equal(87, result.Samples[26]);
+        Assert.Equal(115, result.Samples[27]);
+        Assert.Equal(173, result.Samples[28]);
+        Assert.Equal(231, result.Samples[29]);
+        Assert.Equal(255, result.Samples[30]);
     }
 
     [Fact]
-    public void StretchToWhitePoint_PreserveBlackPoint_MapsMinimumToZero()
+    public void StretchToWhitePoint_PreserveBlackPoint_SubtractsTheMeasuredBlackPoint()
     {
-        var source = Mono(3, 1, 10, 102, 204);
+        // -hs_bp: 25 samples at 20 (the frame's 25 darkest) become the black point, so the gain is
+        // 204*2.55/(255-20) = 2.2136 and values below 20 map to 0.
+        var samples = new List<int>();
+        samples.AddRange(Enumerable.Repeat(20, HistogramStretch.TailSampleCount));
+        samples.AddRange([30, 120, 220]);
+        samples.AddRange(Enumerable.Repeat(255, HistogramStretch.TailSampleCount));
+        var source = Mono(samples.Count, 1, [.. samples]);
 
         var result = HistogramStretch.StretchToWhitePoint(source, 204, preserveBlackPoint: true);
 
-        // black=10, then truncate((v-10)*204/100): 0, 187, clipped 255
-        AssertValues(result, 0, 187, 255);
+        Assert.Equal(0, result.Samples[0]);
+        Assert.Equal(22, result.Samples[25]);   // (30-20) * 2.2136 = 22.1
+        Assert.Equal(221, result.Samples[26]);  // (120-20) * 2.2136 = 221.4
+        Assert.Equal(255, result.Samples[27]);  // clipped
     }
 
     [Fact]
-    public void StretchToWhitePoint_WithoutBlackPoint_PreservesLowValues()
+    public void StretchToWhitePoint_WithoutBlackPoint_StretchesFromZero()
     {
-        var source = Mono(3, 1, 10, 102, 204);
+        var samples = new List<int>();
+        samples.AddRange(Enumerable.Repeat(20, HistogramStretch.TailSampleCount));
+        samples.AddRange([30, 120, 220]);
+        samples.AddRange(Enumerable.Repeat(255, HistogramStretch.TailSampleCount));
+        var source = Mono(samples.Count, 1, [.. samples]);
 
         var result = HistogramStretch.StretchToWhitePoint(source, 204, preserveBlackPoint: false);
 
-        AssertValues(result, 20, 208, 255); // trunc(10*2.04)=20, trunc(102*2.04)=208
+        // black point 0, white 255: the plain 2.04x gain
+        Assert.Equal(40, result.Samples[0]);    // 20 * 2.04 = 40.8
+        Assert.Equal(61, result.Samples[25]);   // 30 * 2.04 = 61.2
+        Assert.Equal(244, result.Samples[26]);  // 120 * 2.04 = 244.8
+        Assert.Equal(255, result.Samples[27]);  // 220 * 2.04 clips
     }
 
     [Fact]
-    public void StretchToPercent_80_AppliesGainOfOnePointTwoFive()
+    public void StretchToPercent_80_IsTheSameSettingAsWhitePoint204()
     {
-        // the percentage and integer spellings are different things in the engine:
-        // 80% means a white point at 80% of full scale (a 1.25x gain), not the same as -hs=204
-        var source = Mono(3, 1, 0, 102, 204);
+        // The engine's parser stores percent*255/100 in the same field as -hs=<n>, so 80% and 204 are
+        // one setting (verified in FUN_1400ab9a0, the switch parser).
+        var frame = WithTail8(255, 0, 102, 204);
 
-        var result = HistogramStretch.StretchToPercent(source, 80);
+        var byPercent = HistogramStretch.StretchToPercent(frame, 80);
+        var byWhitePoint = HistogramStretch.StretchToWhitePoint(frame, 204);
 
-        AssertValues(result, 0, 127, 254);
+        Assert.Equal(byWhitePoint.Samples, byPercent.Samples);
+        Assert.Equal(208, byPercent.Samples[26]);  // 102 * 2.04 = 208.08
+        Assert.Equal(255, byPercent.Samples[27]);  // 204 * 2.04 clips
     }
 
     [Fact]
-    public void StretchToPercent_40_AppliesGainOfTwoAndAHalf()
+    public void StretchToPercent_40_EqualsWhitePoint102()
     {
-        var source = Mono(3, 1, 0, 51, 102);
+        // 40% -> 40*255/100 = 102, i.e. a 1.02x gain on a saturated tail.
+        var frame = WithTail8(255, 0, 51, 102, 204);
 
-        var result = HistogramStretch.StretchToPercent(source, 40);
+        var result = HistogramStretch.StretchToPercent(frame, 40);
 
-        // percentage spelling means "white at 40% of full scale" (gain 100/40) with the engine's
-        // one-unit bias: trunc((v*100 - 1)/40)
-        AssertValues(result, 0, 127, 254);
+        Assert.Equal(52, result.Samples[26]);   // 51 * 1.02 = 52.02
+        Assert.Equal(104, result.Samples[27]);  // 102 * 1.02 = 104.04
+        Assert.Equal(208, result.Samples[28]);  // 204 * 1.02 = 208.08
     }
 
     [Fact]
-    public void StretchToWhitePoint_16Bit_UsesSameGainPercentage()
+    public void StretchToWhitePoint_16Bit_MeasuresTheTailInSixteenBitUnits()
     {
-        var source = Mono16(3, 1, 0, 26214, 52428);
+        // A saturated 16-bit tail gives the same 2.04x gain; the constant is 655.35 = 65535/100 rather
+        // than 2.55 = 255/100.
+        var source = WithTail16(65535, 0, 26214, 52428);
 
         var result = HistogramStretch.StretchToWhitePoint(source, 204);
 
-        // the gain applies to 16-bit samples too: trunc(26214*2.04)=53476, 52428*2.04 clips
-        AssertValues(result, 0, 53476, 65535);
+        Assert.Equal(0, result.Samples[25]);
+        Assert.Equal(53476, result.Samples[26]);  // 26214 * 2.04 = 53476.6
+        Assert.Equal(65535, result.Samples[27]);  // 52428 * 2.04 clips
+    }
+
+    [Fact]
+    public void StretchToWhitePoint_Colour_UsesTheSmallestChannelGainUnlessRgbIsRequested()
+    {
+        // R and G tails average 255, B averages 200. Without -hsrgb the engine applies the smallest
+        // gain (2.04) to every channel; with it each channel keeps its own (B would get 2.601).
+        var samples = new List<int>();
+        for (int i = 0; i < HistogramStretch.TailSampleCount; i++) samples.AddRange([255, 255, 200]);
+        samples.AddRange([100, 100, 100]);
+        var source = Rgb(samples.Count / 3, 1, [.. samples]);
+        int probe = HistogramStretch.TailSampleCount * 3;
+
+        var shared = HistogramStretch.StretchToWhitePoint(source, 204);
+        var perChannel = HistogramStretch.StretchToWhitePoint(source, 204, perChannelGains: true);
+
+        Assert.Equal(203, shared.Samples[probe]);      // 100 * 2.04 = 203.99..., truncated (the
+        Assert.Equal(203, shared.Samples[probe + 1]);  // engine's one-unit artefact: 100 -> 203)
+        Assert.Equal(203, shared.Samples[probe + 2]);
+        Assert.Equal(203, perChannel.Samples[probe]);
+        Assert.Equal(203, perChannel.Samples[probe + 1]);
+        Assert.Equal(255, perChannel.Samples[probe + 2]); // 100 * 2.601 = 260, clipped
     }
 
     [Theory]
@@ -582,17 +694,20 @@ public class ProcessingTests
     [Fact]
     public void EqualiseRgb_ThenStretch_ProducesNeutralGrey()
     {
-        var source = Rgb(2, 1,
-            10, 20, 40,
-            50, 100, 200);
+        // 25 pixels of each tone so the stretch has a measurable bright tail: equalising a (10,20,40)
+        // and a (50,100,200) pixel gives (40,40,40) and (200,200,200), then the 200 tail gives a
+        // 204*2.55/200 = 2.601x gain and the result stays neutral.
+        var samples = new List<int>();
+        for (int i = 0; i < HistogramStretch.TailSampleCount; i++) samples.AddRange([10, 20, 40]);
+        for (int i = 0; i < HistogramStretch.TailSampleCount; i++) samples.AddRange([50, 100, 200]);
+        var source = Rgb(samples.Count / 3, 1, [.. samples]);
 
         var equalised = HistogramStretch.EqualiseRgb(source);
         var result = HistogramStretch.StretchToWhitePoint(equalised, 204);
 
-        // equalised to (40,40,40) and (200,200,200), then trunc(v*204/100)
-        AssertValues(result,
-            81, 81, 81,
-            255, 255, 255);
+        int tail = HistogramStretch.TailSampleCount * 3;
+        Assert.Equal([104, 104, 104], Values(result)[..3]);               // 40 * 2.601 = 104.0
+        Assert.Equal([255, 255, 255], Values(result)[tail..(tail + 3)]);  // 200 * 2.601 clips
     }
 
     [Fact]

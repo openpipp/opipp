@@ -92,7 +92,7 @@ work   : C:\Users\ilanp\Projects\PIPP-RE\parity
   layout: MATCH (2 vs 2 files)
   log: MATCH
 
-=== debayer: -tif -db=2 -db_type=0 ===
+=== db-pattern-only: -tif -db=2 -db_type=0 ===
   oracle  exit=0 files=5
   managed exit=0 files=5
   oracle names : bayer\1.tif, bayer\2.tif, bayer\3.tif, bayer\4.tif
@@ -105,6 +105,41 @@ work   : C:\Users\ilanp\Projects\PIPP-RE\parity
       managed 3.tif                    .tif 64x48x1@8 sha256=ae4913ed4f514b2d
   [3] oracle  4.tif                    .tif 64x48x1@8 sha256=b8e9aef24b57eadc
       managed 4.tif                    .tif 64x48x1@8 sha256=b8e9aef24b57eadc
+  layout: MATCH (5 vs 5 files)
+  log: MATCH
+
+=== debayer-interpolated: -tif -db -db=2 -db_type=0 ===
+  (KnownGap: debayer interpolation differs by 1 LSB on ~37% of pixels)
+
+=== stretch-colour: -tif -hs=204 ===
+  oracle  exit=0 files=5
+  managed exit=0 files=5
+  oracle names : colour\1.tif, colour\2.tif, colour\3.tif, colour\4.tif
+  managed names: colour\1.tif, colour\2.tif, colour\3.tif, colour\4.tif
+  [0] oracle  1.tif                    .tif 32x24x3@8 sha256=4de56528146ba805
+      managed 1.tif                    .tif 32x24x3@8 sha256=4de56528146ba805
+  [1] oracle  2.tif                    .tif 32x24x3@8 sha256=f8532a1e83a2953e
+      managed 2.tif                    .tif 32x24x3@8 sha256=f8532a1e83a2953e
+  [2] oracle  3.tif                    .tif 32x24x3@8 sha256=88b9a44095cf40c1
+      managed 3.tif                    .tif 32x24x3@8 sha256=88b9a44095cf40c1
+  [3] oracle  4.tif                    .tif 32x24x3@8 sha256=926e380fc0677fbb
+      managed 4.tif                    .tif 32x24x3@8 sha256=926e380fc0677fbb
+  layout: MATCH (5 vs 5 files)
+  log: MATCH
+
+=== stretch-colour-rgb: -tif -hs=204 -hsrgb ===
+  oracle  exit=0 files=5
+  managed exit=0 files=5
+  oracle names : colour\1.tif, colour\2.tif, colour\3.tif, colour\4.tif
+  managed names: colour\1.tif, colour\2.tif, colour\3.tif, colour\4.tif
+  [0] oracle  1.tif                    .tif 32x24x3@8 sha256=10cb21c996ed5ebb
+      managed 1.tif                    .tif 32x24x3@8 sha256=10cb21c996ed5ebb
+  [1] oracle  2.tif                    .tif 32x24x3@8 sha256=0ad1102624802482
+      managed 2.tif                    .tif 32x24x3@8 sha256=0ad1102624802482
+  [2] oracle  3.tif                    .tif 32x24x3@8 sha256=33b9887babce8d54
+      managed 3.tif                    .tif 32x24x3@8 sha256=33b9887babce8d54
+  [3] oracle  4.tif                    .tif 32x24x3@8 sha256=9da0db3eeb1aeea5
+      managed 4.tif                    .tif 32x24x3@8 sha256=9da0db3eeb1aeea5
   layout: MATCH (5 vs 5 files)
   log: MATCH
 

@@ -32,18 +32,38 @@ documented reconstruction. Evidence addresses are Ghidra image addresses in `bin
 - Engine help text at 0x140138490: `0: GBRG  1: BGGR  2: RGGB  3: GRBG`.
 - Implementation: `Processing/Debayer.FromPippIndex`, used by the CLI mapping.
 
-### Histogram stretch (measured against the oracle, not inferred)
-- Help string at 0x138600 describes `-hs=xxxx` as "stretch to maximum pixel value 204 (80% of 255)",
-  but the **observed behaviour is a gain of xxxx/100**: `-hs=204` multiplies by 2.04, it does not map
-  204 to 255.
-- Measured on a fixed ramp through the original binary: at 204, 38 -&gt; 77 and 123 -&gt; 250; at 153,
-  38 -&gt; 58 and 123 -&gt; 188; at 102, 38 -&gt; 38 and 123 -&gt; 125. Exact-integer inputs land one
-  lower than naive arithmetic suggests (50 -&gt; 101, 75 -&gt; 152, 100 -&gt; 203), which fits
-  `truncate((v * whitePoint - 1) / 100)` — the engine carries a one-unit bias.
-- Implementation: `Processing/HistogramStretch.StretchToWhitePoint`; tests
-  `StretchToWhitePoint_204_AppliesTwoPointZeroFourGain`, `StretchToWhitePoint_204_UsesSinglePrecisionGain`.
-  The percentage spelling (`-hs=xx%`) is a *different* mapping (white point at xx% of full scale,
-  gain 100/xx) and remains inferred — no oracle case exercises it yet.
+### Histogram stretch (recovered from the binary, verified on real data)
+- The help string at 0x138600 describes `-hs=xxxx` as "stretch to maximum pixel value 204 (80% of
+  255)", which is misleading: the engine **measures a white point from the frame** and normalises to
+  it, so the gain is image-dependent.
+- Routine: `FUN_14009b4a0(frame, whitePoint, isColour, hsBp)` in `pipp_core.exe`, called from the
+  frame loop of `FUN_14007e8e0`. The option is at `options + 0x1DC` (default `0xCC` = 204, set in
+  `FUN_1400ab9a0`, validated 1..255).
+- **White point** = mean of the frame's **25 brightest samples** (`0x19`), per channel: accumulate the
+  histogram from full scale downwards, let the bin that crosses the 25-sample budget contribute only
+  the samples still needed, then divide by 25 with integer truncation.
+- **Gain** = `whitePoint * (max/100) / (white − black)`, where `max` is 255 or 65535 (the double
+  constants `2.55` at 0x140137788 and `655.35` at 0x140137790) and `black` is 0 unless `-hs_bp`, which
+  measures the black point as the mean of the 25 *darkest* samples the same way.
+- **Mapping** = `truncate((v − black) * gain)`, clipped to the sample range; values below the black
+  point become 0. Measured against the original: at 204, 38 -> 77 and 123 -> 250 on a saturated
+  fixture, and 38 -> 87, 50 -> 115, 100 -> 231 on a real frame whose tail averages 225.
+- The "one-unit bias" recorded earlier (`truncate((v*whitePoint − 1)/100)`) is not a separate rule: it
+  is the double-precision product. `204*2.55/255` is slightly below 2.04, so exact multiples land one
+  lower (50 -> 101, 75 -> 152, 100 -> 203) while everything else truncates normally.
+- `-hs=xx%` and `-hs=xxp` are converted by the engine's parser to `xx*255/100` in the same field, so
+  `-hs=80%` and `-hs=204` are the same setting.
+- `-hsrgb` (`options + 0x1E0`) keeps a separate gain per channel; without it the engine applies the
+  **smallest** of the three channel gains to every channel. It does not equalise channels, despite the
+  help text.
+- Implementation: `Processing/HistogramStretch.StretchToWhitePoint` and the
+  `MeasureWhiteSamples`/`MeasureBlackSamples` probes; tests
+  `MeasureWhiteSamples_AveragesTheTwentyFiveBrightestSamples`,
+  `StretchToWhitePoint_SaturatedTail_ReproducesTheMeasuredOracleMapping` and
+  `StretchToWhitePoint_RealFrameTail_MatchesTheOracleMapping`.
+- Evidence: all 30 frames of the real Saturn capture are pixel-identical to the original at
+  `-hs=204` (gains 2.2916-2.3223, one per frame); the synthetic 32x24 disc has a saturated tail, so it
+  keeps the constant 2.04.
 
 ### SER v3 header (verified, corrects an earlier assumption)
 - The header is **178 bytes**: a 42-byte integer prefix (FileID `LUCAM-RECORDER`, LuID, ColorID,

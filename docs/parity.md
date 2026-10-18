@@ -16,8 +16,22 @@ like a regression. Rebuild both.
 
 ## Which options each case covers
 
-See the case table in [`status.md`](status.md). A case covers only the switches it passes - "9/9"
-means nine option sets, not "the engine matches".
+See the case table in [`status.md`](status.md). A case covers only the switches it passes - "15/15"
+means fifteen option sets, not "the engine matches".
+
+## Real data (`--real`)
+
+`samples/` holds a 4.8 GB third-party capture and is git-ignored, so the real-data cases are opt-in:
+
+```bash
+dotnet run --project tools/Pipp.Parity --no-build -- --real
+dotnet run --project tools/Pipp.Parity --no-build -- --real --real-input path/to/capture.ser
+```
+
+They run the three stretch-sensitive option sets (`-tif`, `-hs=204`, `-hs=204 -hs_bp`) over the
+30-frame Saturn capture and compare all 30 outputs the same way as the synthetic cases. This is the
+check that exposed the image-dependent stretch: a synthetic disc whose bright tail saturates at 255
+cannot tell a constant gain apart from a measured white point.
 
 ## Adding a case
 

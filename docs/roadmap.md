@@ -10,7 +10,7 @@ Two different goals are tracked separately, because they finish at different tim
 | --- | --- | --- | --- |
 | **Recovery** (read the original) | binaries decompiled | 100 % | 100 % |
 | **Parity** (behave like the original) | switches executed + oracle-verified | ~32 % | 100 % |
-| **Verification** (prove it) | parity cases matching | 9 cases / 11 switches | all executable areas |
+| **Verification** (prove it) | parity cases matching | 18 cases / 11 switches | all executable areas |
 
 Recovery is finished. Everything left is porting and proof.
 
@@ -160,6 +160,14 @@ the remaining format work, for three reasons:
 Order: (a) realistic fixture and rerun all 12 cases, fixing what breaks; (b) characterise the
 threshold from logged values, implement, verify on the same fixtures; (c) return to GIF, then AVI
 input codecs.
+
+**Progress after the first pass (real-data parity, item (a)):**
+
+- (a) is done. The realistic fixture exposed exactly one math error - the histogram stretch - and it is
+  fixed and verified on 30 real frames (`--real` in the harness). Plain output was already exact.
+- Still open from (a): the debayer interpolation is ~1 LSB off once the `-db` flag actually enables it
+  (the old case compared two no-ops), and `-ctr` diverges on real data because of the threshold below.
+- (b) is the next task: the engine's "Calculated minpixel value" (we use Otsu).
 
 Quick win to take alongside: Phase 3's master saving (`-save_dark`, `-save_flat`) is a small wiring
 job against `MasterFrameBuilder` and unlocks an everyday workflow.

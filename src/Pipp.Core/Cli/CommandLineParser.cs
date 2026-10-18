@@ -288,8 +288,20 @@ public static class CommandLineParser
                     break;
 
                 case "-hs":
-                    if (TryInt(token, value, 1, 255, out var stretch)) options.HistogramStretch = stretch;
+                {
+                    // -hs=xx% and -hs=xxp are the engine's percentage spelling; its parser stores
+                    // xx*255/100 in the same field as -hs=<n>, so 80% and 204 are one setting.
+                    if (value is { Length: > 0 } hsText && hsText[^1] is '%' or 'p' or 'P')
+                    {
+                        if (TryPercent(token, value, out var stretchPercent)) options.HistogramStretch = stretchPercent;
+                    }
+                    else if (TryInt(token, value, 1, 255, out var stretch))
+                    {
+                        options.HistogramStretch = stretch;
+                    }
+
                     break;
+                }
 
                 case "-hs_bp":
                     if (Flag(token, value)) options.HistogramStretchNoBlackPoint = true;
@@ -725,6 +737,33 @@ public static class CommandLineParser
                 return false;
             }
 
+            return true;
+        }
+
+        bool TryPercent(string switchToken, string? switchValue, out int whitePoint)
+        {
+            whitePoint = 0;
+            if (!HasValue(switchToken, switchValue, out var text)) return false;
+            if (text.Length < 2)
+            {
+                errors.Add($"Value '{text}' for switch '{switchToken}' is not a valid percentage.");
+                return false;
+            }
+
+            string digits = text[..^1];
+            if (!int.TryParse(digits, NumberStyles.Integer, CultureInfo.InvariantCulture, out var percent))
+            {
+                errors.Add($"Value '{text}' for switch '{switchToken}' is not a valid percentage.");
+                return false;
+            }
+
+            if (percent is < 1 or > 100)
+            {
+                errors.Add($"Value {percent}% for switch '{switchToken}' is outside the allowed range 1..100.");
+                return false;
+            }
+
+            whitePoint = percent * 255 / 100;
             return true;
         }
 

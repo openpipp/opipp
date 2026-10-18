@@ -129,21 +129,19 @@ is used for parity runs). Results on frames 1/15/30:
 | Case | Result |
 | --- | --- |
 | `-tif` (plain) | **pixel-identical** |
-| `-tif -db=2` (debayer) | **pixel-identical** |
-| `-tif -hs=204` | diverges |
+| `-tif -db=2` (debayer) | **pixel-identical** - but `-db=2` is pattern-only, so both engines keep the frame mono and the case never exercised interpolation |
+| `-tif -hs=204` | **pixel-identical** (fixed; see below) |
 | `-tif -ctr -ms=5` | diverges |
 
-### The stretch gain is image-dependent, not a constant 2.04
+### The stretch is a measured white point, not a constant gain
 
-Measured on the real frame: input 23 -> 53, 46 -> 106, 69 -> 159, 92 -> 212, i.e. a **gain of 2.3043**
-with zero intercept, against 2.04 on the synthetic fixture. Same switch, same code path, different
-gain - so `-hs=204` is not simply "multiply by 2.04". The synthetic fixture (min 38, max 255) hid
-this because its histogram is degenerate.
+Resolved: `FUN_14009b4a0` measures the mean of the frame's 25 brightest samples as its white point and
+divides the gain by it, so `-hs=204` gives 2.04 on a saturated fixture and 2.2816-2.3432 across the 30
+real frames (one value per frame). The observed "gain of 2.3043" on the probe frame corresponds to a
+white point of 225, i.e. 2.312.
 
-Implication: the formula recorded earlier is only valid for fixtures with that value range. The
-correct rule must involve a per-frame statistic (black point, percentile or maximum). This is the
-first item of Phase 4a: sweep `-hs` on this real frame and fit the gain against the frame's
-histogram, then re-verify both fixtures.
+All 30 frames now match the original exactly, as do `-hs_bp` and the colour variants. The rule and its
+evidence are in [`../notes/algorithms.md`](../notes/algorithms.md).
 
-Centring also diverges on the real planet, as predicted: our Otsu threshold is not the engine's
-"Calculated minpixel value".
+Centring still diverges on the real planet, as predicted: our Otsu threshold is not the engine's
+"Calculated minpixel value". That is the next item.

@@ -14,11 +14,11 @@ be published or committed. No `LICENSE` until the author's permission is obtaine
 
 | Item | Value |
 | --- | --- |
-| Repo | `C:\Users\ilanp\Projects\PIPP-RE` (git, local only, 5 commits, HEAD `b1756a4`) |
+| Repo | `C:\Users\ilanp\Projects\PIPP-RE` (git, local only, 7 commits) |
 | Build | `dotnet build PIPP.slnx` - clean |
-| Tests | **291 passing, 0 failing** (7 projects) |
-| Parity | **15 cases: 13 verified, 1 deliberate divergence, 1 known gap** |
-| Managed code | Core 11.5k lines, Cli 0.3k, App 14.5k, tests 5.5k |
+| Tests | **295 passing, 0 failing** (7 projects) |
+| Parity | **18 cases: 15 verified, 1 deliberate divergence, 2 known gaps**; `--real` adds 3 real-data cases, all matching |
+| Managed code | Core 11.8k lines, Cli 0.3k, App 14.5k, tests 5.5k |
 | Reference | `decompiled/` 14,277 lines C#; `ghidra/out/pipp_core.c` 4,229 functions |
 | Real data | `samples/` 4.8 GB (git-ignored, evaluation-use third-party capture) |
 
@@ -29,61 +29,71 @@ export DOTNET_ROOT="$HOME/.dotnet-sdk"; export PATH="$DOTNET_ROOT:$DOTNET_ROOT/t
 cd "C:/Users/ilanp/Projects/PIPP-RE"
 dotnet test PIPP.slnx --nologo
 dotnet build src/Pipp.Cli/Pipp.Cli.csproj && dotnet build tools/Pipp.Parity/Pipp.Parity.csproj
-dotnet run --project tools/Pipp.Parity --no-build      # expect: ALL CASES MATCH
+dotnet run --project tools/Pipp.Parity --no-build              # expect: ALL CASES MATCH
+dotnet run --project tools/Pipp.Parity --no-build -- --real    # + 30 real Saturn frames
 ```
 
 Rebuild **both** consumers before a parity run - a stale `Pipp.Cli.exe` silently compares old output.
 
-## The task in flight (Phase 4a, option A chosen by the user)
+## Phase 4a item 1 - histogram stretch: DONE
 
-**Goal: make `-hs` (histogram stretch) match the original on real data, not just on synthetic fixtures.**
+**`-hs` now matches the original on real data as well as on synthetic fixtures.**
 
-What is proven:
+The recovered rule (all from `FUN_14009b4a0`, the stretch routine; option at `options + 0x1DC`):
 
-- On the synthetic fixture, `gain = wp/100` fits exactly (2.04 at `-hs=204`).
-- On the real Saturn capture the gain is **image-dependent**: 2.2921-2.3068 at the same `-hs=204`,
-  where the model predicts 2.04.
-- Both fixtures fit `gain = (wp/100) * 255/(255 - b)` with `b = 0` (synthetic) and `b ~= 29.6` (real).
-  Two independent `-hs` values per frame agree to 0.2%, so the *form* is likely right.
-- `b` drifts across six real frames (28.05-29.49) while their background statistics are identical
-  (mode 3, p90 6), so it keys off the bright tail, not the background.
-- A battery of order statistics (mean, sd, p99, p99.9, top-1/5/10%, mean+3sd/5sd) does **not**
-  produce 156 (synthetic) and 138 (real) simultaneously. It is not a simple percentile.
+- The engine measures a **white point** per channel: the mean of the frame's **25 brightest samples**
+  (`0x19`), accumulated from the top of the histogram, weighted boundary bin, integer division.
+- **Gain** = `whitePoint * (max/100) / (white - black)`, with `max` = 255 or 65535 (the constants
+  `2.55` and `655.35` at `0x140137788` / `0x140137790`). `black` is 0 unless `-hs_bp`, which uses the
+  mean of the 25 *darkest* samples.
+- **Mapping** = `truncate((v - black) * gain)`, clipped, below-black → 0.
+- `-hs=xx%` / `-hs=xxp` → `xx*255/100` in the same field. `-hsrgb` = per-channel gains; without it
+  the **smallest** channel gain is used for all channels. No channel equalisation happens.
 
-What is known about the code:
+The old "constant gain `xxxx/100` with a −1 bias" model was a special case: fixtures whose bright tail
+saturates at 255 give exactly `wp/100`, and the "bias" is just the double product `204*2.55/255`
+landing a hair below 2.04.
 
-- The option lives at **`options + 0x1DC`**, default **`0xCC` (204)**, set in `FUN_1400ab9a0`.
-- The percent spelling is converted **`x255/100`** before storing (corpus lines 114922-114924).
-- `FUN_1400ab9a0` is only reached through a 152-byte wrapper `FUN_1400aea40`, called from a
-  stack-local options struct - so the consumer is **not** reachable by text search.
-- Text-grep hits on `0x1dc` at lines 21103 / 75496 / 62014 are zlib and FFmpeg structs, not this one.
+Evidence (all pixel-exact against `bin/pipp_core.exe`):
 
-**Next action (do this first):** trace to the consumer with cross-references, not grep.
+- 30 real frames, `-tif -hs=204` - gains 2.2816-2.3432, one per frame (W = 222..228, median 225 →
+  2.3120). The earlier six-frame estimate (2.2921-2.3068) came from rounded pixel pairs; the six
+  frames it sampled actually give 2.2916-2.3120.
+- 30 real frames, `-tif -hs=204 -hs_bp`.
+- Synthetic colour fixture, `-hs=204` and `-hs=204 -hsrgb` (min-gain vs per-channel differ by up to 52).
+- Synthetic 32x24 disc keeps the constant 2.04, so the old measurement stays valid.
 
-1. `procedure_callers` on `FUN_1400aea40`, then on its caller, until a global options pointer appears.
-2. `xrefs` to that global; the function reading `+0x1DC` and scaling samples is the target.
-3. Read it: it should show the `255/(255-b)` computation and name the statistic behind `b`.
-4. Implement in `src/Pipp.Core/Processing/HistogramStretch.cs`, keeping the synthetic result at 2.04
-   and the bias rule `trunc((v*wp - 1)/100)` where it still applies.
-5. Verify: re-run parity (13 cases must stay green) plus the real-data check below.
+## Next task - Phase 4a item 2: the detection threshold, then centring
 
-Real-data check (the one that exposed this):
+`-ctr` still diverges on the real planet: we threshold with Otsu, the engine uses a "Calculated
+minpixel value" it prints into its own log. Characterise it black-box first (vary the fixture, read
+the logged value), then implement and verify with a `--real` parity case for `-ctr`.
+
+Two smaller items found while doing the stretch, both recorded in `status.md`:
+
+- **Debayer was never really verified.** `-db=<n>` only selects the pattern; the bare `-db` flag
+  enables interpolation. With both, our output differs from the original by 1 LSB on ~37% of interior
+  pixels (up to 3 at edges). The old `debayer` case only ran `-db=2`, i.e. it compared two no-ops; it
+  is now renamed `db-pattern-only` and a `debayer-interpolated` known-gap case exists.
+- `-hs_bp` was parsed but never wired to the pipeline; it is now wired and verified.
+
+Real-data check (repeatable):
 
 ```bash
-cd samples
-# oracle and managed on 30 real frames, four option sets: plain / hs / db / ctr
-# outputs land in samples/par/<case>/<oracle|managed>/saturn30/*.tif
+dotnet run --project tools/Pipp.Parity --no-build -- --real
+# real-plain / real-stretch / real-stretch-bp over samples/saturn30.ser, 30 frames each
 ```
 
-Compare decoded pixels with ffmpeg (`-pix_fmt gray`, or `rgb24` for debayer), not file bytes.
-
-If the decompiled consumer proves unreadable, fall back to fitting `b` empirically over ~20 frames
-with deliberately varied histograms.
 
 ## Gotchas that cost time before
 
 - **Oracle invocation**: switches on **argv**, and stdin must end with a literal `DONE` line. EOF
   alone hangs it (zero CPU, no output). Stdin-only produces nothing.
+- **`-db=<n>` is not "debayer"**: it only sets the Bayer pattern. Only the bare `-db` flag enables
+  interpolation, so a parity case needs both (`-db -db=2`).
+- **The stretch statistic is 25 samples**, not a percentage: a fixture must have at least 25 pixels in
+  its bright tail before it exercises the white-point measurement, and a frame with fewer than 25
+  samples above 0 reports a white point below its maximum (that is the engine's own behaviour).
 - **Synthetic fixtures must satisfy the detector**: flat dark background, object not touching an
   edge, `-ms` relaxed (default 15) when the object is small.
 - **FITS**: the original stores rows bottom-up, flips every FITS on read, and writes 16-bit samples

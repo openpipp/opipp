@@ -188,6 +188,9 @@ public sealed class EndToEndTests
             {
                 var frame = new Frame(8, 8, 1, 8);
                 for (int i = 0; i < frame.Samples.Length; i++) frame.Samples[i] = 51;
+                // a saturated tail of 25 samples pins the engine's measured white point at 255, so the
+                // gain is exactly 2.04; on a flat field the same switch would normalise to 51
+                for (int i = 0; i < HistogramStretch.TailSampleCount; i++) frame.Samples[i] = 255;
                 writer.Write(frame);
             }
 
@@ -202,8 +205,9 @@ public sealed class EndToEndTests
             using var reader = new SerReader(report.OutputFiles[0]);
             var stretched = reader.ReadFrame();
             Assert.NotNull(stretched);
-            // -hs=204 is the engine's 2.04x gain: trunc(51*2.04) = 104, matching the original binary
-            Assert.All(stretched!.Samples, v => Assert.Equal(104, v));
+            // -hs=204 with a saturated tail is the engine's 2.04x gain: trunc(51*2.04) = 104
+            Assert.All(stretched!.Samples.Skip(HistogramStretch.TailSampleCount), v => Assert.Equal(104, v));
+            Assert.All(stretched.Samples.Take(HistogramStretch.TailSampleCount), v => Assert.Equal(255, v));
         }
         finally
         {

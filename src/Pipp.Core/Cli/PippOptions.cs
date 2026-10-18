@@ -390,9 +390,17 @@ public sealed record PippOptions
     public int? HistogramStretch { get; set; }
 
     /// <summary>Stretch without clipping the black point (<c>-hs_bp</c>).</summary>
+    /// <remarks>
+    /// The engine measures the frame's black point as the mean of its 25 darkest samples and subtracts
+    /// it before applying the gain, instead of stretching from zero.
+    /// </remarks>
     public bool HistogramStretchNoBlackPoint { get; set; }
 
-    /// <summary>Equalise the R, G and B histograms independently (<c>-hsrgb</c>).</summary>
+    /// <summary>Use a separate stretch gain for each of R, G and B (<c>-hsrgb</c>).</summary>
+    /// <remarks>
+    /// Without it the engine applies the smallest of the three channel gains to all channels. It does
+    /// not equalise the channels, despite the wording of the original help text.
+    /// </remarks>
     public bool HistogramStretchRgb { get; set; }
 
     /// <summary>Reject frames with more than this many overexposed pixels (<c>-oe=&lt;n&gt;</c>); <see langword="null"/> disables it.</summary>
