@@ -77,10 +77,12 @@ Open, in the order I would take them:
    Producer found: `FUN_1400af2d0` returns the score, inserted at 86600 via
    `FUN_1400b03e0(container, score, frameIndex)`. **Ghidra lost the return value** - it types the
    function `void` with three bare `return;` while the caller reads a `double`. Next step is
-   disassembly, not pseudo-C. Done (journal M11): one `ret`, returns `(xmm3 / xmm1) / K`, with
-   `xmm3 += (a-c)^2 + (b-c)^2`. Remaining: resolve `K` (0x1401813d0) and the branch constant
-   (0x140192d50) with a section-aware read - the current RVA mapping yields nonsense - then implement.
-   This blocks the Phase 4 exit criterion "kept-frame set **and order**".
+   disassembled (journal M12 - M11 was decoded from misparsed section headers and is void). The
+   metric is: crop a 10% margin, accumulate `(a-c)^2 + (b-c)^2` over neighbouring samples of the
+   blurred subsampled image, return `sum / count / 10.0`, or -1.0 when nothing exceeds the threshold;
+   the outer driver scales by `FUN_1400b00b0(...) / 3251250.0`. Constants all live in `.rdata`
+   (10.0 at RVA 0x120fd0, -1.0 at 0x132950, 3251250.0 at 0x13a2b0, 60000.0 at 0x13a2a8, -0.1 at
+   0x13a2b8). Next: implement in `QualityMetrics` and calibrate against the 30-frame Saturn scores.
 3. **Detection rejection reasons** (item 2) - `-chk` now logs the threshold; the object finder
    `FUN_140077560` returns -1 for "no object" and the per-reason counters are not reproduced.
 4. **Weighting and bounds** (item 3) - `-qw`, `-incqv`, `-freject`.

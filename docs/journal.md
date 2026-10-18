@@ -200,3 +200,29 @@ Open detail: the rip-relative divisor (`[rip+0x71d30]` at 0x1400af698 -> 0x14018
 constant (0x140192d50) decode as nonsense doubles through the current RVA mapping, so either the mapping
 for those sections is wrong or the divisor is written at runtime. Verify with a section-aware read
 before trusting any formula: `K` and the branch constant are the last unknowns.
+
+## M12 - CORRECTION: M11 was decoded from the wrong bytes; real constants recovered
+
+**M11 is void.** The script behind it unpacked the PE section header at `+12` instead of `+8`, so
+`VirtualAddress`/`SizeOfRawData`/`PointerToRawData` were shifted by one field and it disassembled
+garbage that happened to decode into a plausible-looking FP sequence. Lesson for the next session:
+after any PE parse, verify the prologue of a known function (`push rbx; push r14; sub rsp,0xd8` at
+RVA 0xaf2d0) before trusting a single instruction.
+
+Corrected results (section parse fixed, prologue verified):
+
+- `FUN_1400af2d0` - 425 instructions, `0x1400af2d0..0x1400af98e`, **one `ret` at 0x1400af98e**,
+  returns a `double` in `xmm0` taken from `xmm6`; if `r14d == 0` it is scaled by
+  `FUN_1400b00b0(...) / 3251250.0` (the constant at RVA 0x13a2b0; 3251250 = 255^2 * 50).
+- `FUN_1400aecf0` - the per-scale metric (382+ instructions, `ret` at 0x1400af2c9):
+  - crops a 10% margin on each side (`iVar12 = 1 - (int)(param_4 * -0.1)`);
+  - counts samples with `threshold << 8 <= sample` and marks their 3x3 neighbourhoods;
+  - accumulates `(a - c)^2 + (b - c)^2` over neighbouring 16-bit samples
+    (loads at 0x1400af0c8/0x1400af0d3/0x1400af0e7), five such blocks per iteration;
+  - returns `sum / count / 10.0` (divisor at RVA 0x120fd0 = **10.0**), or **-1.0** when the window
+    holds no above-threshold sample (constant at RVA 0x132950 = -1.0).
+- Neighbouring constants in `.rdata`: 0x13a2a8 = 60000.0, 0x13a2b8 = -0.1 (the crop fraction).
+
+So the quality score is a **mean squared neighbour difference**, scaled by 10 and then by the outer
+factor - not any of the global statistics ruled out in M7, which is consistent with the 1.31 vs ~1.0
+gap measured there.
