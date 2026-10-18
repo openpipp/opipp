@@ -58,3 +58,18 @@ Never derive an "oracle" from a directory you also write to. Recover a reference
 **the original's output against the original's plain output** (as above), or by running the original
 into a fresh directory each time. A directory that is byte-identical to our own output is a red flag,
 not a confirmation.
+
+## Measured variants (2026-10-18)
+
+| Variant | Exact shifts | L1 |
+|---|---|---|
+| ZNCC, +/-32 search (previous tracker) | 19/30 | - |
+| Port: raw mosaic, fixed window | 20/30 | 17 |
+| Port: debayer + luma, fixed window | 22/30 | 13 |
+| Port: debayer + luma, coarse seed + fine | 22/30 | 12 |
+| Port: debayer + luma, coarse seed without acceptance gates (C#) | 6 frames byte-identical | - |
+
+The coarse stage does not improve on seeding at the box for this fixture, which is why the port
+leaves it disabled until its percentile/brightness acceptance gates are reproduced. The residual
+8 frames are off by exactly one pixel in every variant, so the difference is in the score
+arithmetic, not in the search policy.
