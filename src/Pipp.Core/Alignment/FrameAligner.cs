@@ -170,16 +170,92 @@ public static class FrameAligner
     public static AlignmentOffset CentreOffset(Frame frame, int threshold)
     {
         ArgumentNullException.ThrowIfNull(frame);
-        if (Centroid(frame, threshold) is not { } centre)
+
+        // The engine does not use a centroid: it run-detects an object box and centres that box's
+        // origin. See PlanetCentring (recovered from FUN_140076ae0 / FUN_140077560) and
+        // notes/centring.md; this reproduces all 30 frames of the real capture pixel-exactly.
+        return PlanetCentring.CentreOffset(frame, threshold);
+    }
+
+    /// <summary>
+    /// Integer translation that fills vacated pixels with the frame's median sample, matching the
+    /// engine's AOI crop. <see cref="Shift"/> resamples and clamps instead, which is right for
+    /// stacking but not for centring.
+    /// </summary>
+    public static Frame ShiftWithBackground(Frame frame, AlignmentOffset offset)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+
+        int dx = (int)Math.Round(offset.Dx, MidpointRounding.AwayFromZero);
+        int dy = (int)Math.Round(offset.Dy, MidpointRounding.AwayFromZero);
+        if (dx == 0 && dy == 0)
         {
-            return AlignmentOffset.Zero;
+            return frame.Clone();
         }
 
-        int targetX = frame.Width / 2;
-        int targetY = frame.Height - 1 - (frame.Height / 2);
-        int dx = targetX - (int)Math.Round(centre.X, MidpointRounding.AwayFromZero);
-        int dy = targetY - (int)Math.Round(centre.Y, MidpointRounding.AwayFromZero);
-        return new AlignmentOffset(dx, dy);
+        int w = frame.Width, h = frame.Height, c = frame.Channels;
+        var dst = new Frame(w, h, c, frame.BitDepth)
+        {
+            Bayer = frame.Bayer,
+            Index = frame.Index,
+            SourceName = frame.SourceName,
+        };
+
+        ushort fill = MedianSample(frame);
+        Array.Fill(dst.Samples, fill);
+
+        for (int y = 0; y < h; y++)
+        {
+            int sy = y - dy;
+            if (sy < 0 || sy >= h)
+            {
+                continue;
+            }
+
+            for (int x = 0; x < w; x++)
+            {
+                int sx = x - dx;
+                if (sx < 0 || sx >= w)
+                {
+                    continue;
+                }
+
+                int src = ((sy * w) + sx) * c;
+                int d = ((y * w) + x) * c;
+                for (int ch = 0; ch < c; ch++)
+                {
+                    dst.Samples[d + ch] = frame.Samples[src + ch];
+                }
+            }
+        }
+
+        return dst;
+    }
+
+    /// <summary>Median sample value across all channels, used as the engine's background fill.</summary>
+    public static ushort MedianSample(Frame frame)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+
+        int levels = frame.BitDepth == 8 ? 256 : 65536;
+        var histogram = new int[levels];
+        foreach (ushort sample in frame.Samples)
+        {
+            histogram[Math.Min(sample, levels - 1)]++;
+        }
+
+        int half = frame.Samples.Length / 2;
+        int accumulated = 0;
+        for (int i = 0; i < levels; i++)
+        {
+            accumulated += histogram[i];
+            if (accumulated > half)
+            {
+                return (ushort)i;
+            }
+        }
+
+        return 0;
     }
 
     /// <summary>

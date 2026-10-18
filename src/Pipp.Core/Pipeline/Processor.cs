@@ -343,7 +343,7 @@ public sealed class Processor
                     var stacker = new FrameStacker(first.Width, first.Height, first.Channels, first.BitDepth, method);
                     foreach (var (frame, _, offset) in selected)
                     {
-                        stacker.Add(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.Shift(frame, offset));
+                        stacker.Add(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset));
                     }
                     var master = stacker.Result();
                     using var sink = FrameSinkFactory.Create(masterPath, master, 1, _settings.Fps);
@@ -361,7 +361,7 @@ public sealed class Processor
                     var gifFrames = new List<Frame>(selected.Count);
                     foreach (var (frame, _, offset) in selected)
                     {
-                        gifFrames.Add(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.Shift(frame, offset));
+                        gifFrames.Add(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset));
                         outputFrames++;
                     }
 
@@ -377,7 +377,7 @@ public sealed class Processor
                     using var sink = FrameSinkFactory.Create(outputPath, template, selected.Count, _settings.Fps);
                     foreach (var (frame, _, offset) in selected)
                     {
-                        sink.Write(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.Shift(frame, offset));
+                        sink.Write(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset));
                         outputFrames++;
                     }
                     outputs.Add(outputPath);
@@ -402,7 +402,7 @@ public sealed class Processor
                     int number = firstNumber;
                     foreach (var (frame, _, offset) in selected)
                     {
-                        var written = offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.Shift(frame, offset);
+                        var written = offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset);
                         string stem = _settings.RenumberFrames
                             ? number.ToString(numberFormat, CultureInfo.InvariantCulture)
                             : written.Index.ToString(numberFormat, CultureInfo.InvariantCulture);

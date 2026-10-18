@@ -130,6 +130,7 @@ internal static class Program
             cases.Add(new ParityCase("real-plain", ["-tif"], Input: "real"));
             cases.Add(new ParityCase("real-stretch", ["-tif", "-hs=204"], Input: "real"));
             cases.Add(new ParityCase("real-stretch-bp", ["-tif", "-hs=204", "-hs_bp"], Input: "real"));
+            cases.Add(new ParityCase("real-centre", ["-tif", "-ctr"], Input: "real"));
         }
 
         int failures = 0;
