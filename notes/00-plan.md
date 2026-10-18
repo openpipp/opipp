@@ -20,9 +20,9 @@ became a switch on the `pipp_core.exe` command line (152 emissions, full table i
 2. `ghidra/out/` — complete native decompilation corpus (all analyzed functions, C pseudocode + CSV index).
 3. `notes/` — evidence ledger, CLI spec, algorithm notes, provenance.
 4. `src/` — the modern replacement, **fully managed C# 13 / .NET 10**:
-   - `Pipp.Core` — formats + pipeline + algorithms (no native DLL).
-   - `Pipp.Cli` — headless engine, same switch vocabulary as `pipp_core.exe`.
-   - `Pipp.App` — WinForms parity UI (`net10.0-windows`), generated from the decompiled Designer code, calling the core in-process instead of spawning a process.
+   - `Opipp.Core` — formats + pipeline + algorithms (no native DLL).
+   - `Opipp.Cli` — headless engine, same switch vocabulary as `pipp_core.exe`.
+   - `Opipp.App` — WinForms parity UI (`net10.0-windows`), generated from the decompiled Designer code, calling the core in-process instead of spawning a process.
 5. `tests/` — xUnit golden/round-trip tests.
 
 ## 3. Modernization decisions (agreed with user)
@@ -30,12 +30,12 @@ became a switch on the `pipp_core.exe` command line (152 emissions, full table i
 - Shell: **.NET 10 WinForms**, reusing the decompiled layout for feature parity.
 - Engine: **managed C# only**. No `pipp_dll.dll`, no `pipp_core.exe`.
 - Video (AVI in/out) is the one place where an external native dependency is unavoidable for
-  compressed codecs; plan is `FFmpeg.AutoGen` (or `ffmpeg` CLI fallback) behind `Pipp.Core.Video`,
+  compressed codecs; plan is `FFmpeg.AutoGen` (or `ffmpeg` CLI fallback) behind `Opipp.Core.Video`,
   with pure-managed paths for uncompressed AVI. SER/FITS/BMP/TIFF/PNG are written managed.
 - Provenance: reconstruction of a closed-source freeware app. Repository is marked
   "reconstruction — publish only with the original author's permission" (see `notes/provenance.md`).
 
-## 4. Module map for `Pipp.Core`
+## 4. Module map for `Opipp.Core`
 
 ```
 Formats/     SerFile (v3/v4? header), FitsFile, AviFile, ImageFiles, RawDecode (later)

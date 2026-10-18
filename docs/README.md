@@ -17,12 +17,12 @@ Living documents live here; the research trail stays in [`../notes`](../notes).
 ```
 OPIPP/
 ├── src/
-│   ├── Pipp.Core/        formats, processing, pipeline, CLI model (the engine)
-│   ├── Pipp.Cli/         drop-in replacement for pipp_core.exe
-│   └── Pipp.App/         WinForms front-end (ported from the decompiled PIPP.exe)
+│   ├── Opipp.Core/        formats, processing, pipeline, CLI model (the engine)
+│   ├── Opipp.Cli/         drop-in replacement for pipp_core.exe
+│   └── Opipp.App/         WinForms front-end (ported from the decompiled PIPP.exe)
 ├── tests/                7 projects, 289 tests - formats, processing, CLI, end-to-end
 ├── tools/
-│   ├── Pipp.Parity/      oracle comparison harness
+│   ├── Opipp.Parity/      oracle comparison harness
 │   └── *.py              synthetic SER fixture generators
 ├── docs/                 this folder: roadmap, status, parity, switch matrix
 ├── notes/                research trail: CLI spec, algorithms, engine behaviour, provenance

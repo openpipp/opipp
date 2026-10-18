@@ -134,7 +134,7 @@ documented reconstruction. Evidence addresses are Ghidra image addresses in `bin
 
 ## Verified against the original engine (parity harness)
 
-`tools/Pipp.Parity` runs `bin/pipp_core.exe` and `Pipp.Cli.exe` over the same fixtures with the same
+`tools/Opipp.Parity` runs `bin/pipp_core.exe` and `Opipp.Cli.exe` over the same fixtures with the same
 switches and compares frame content by SHA-256. Current status: **9 of 9 cases match**.
 
 | Case | Switches | Result |

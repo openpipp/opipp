@@ -1,14 +1,14 @@
 # Parity harness
 
-`tools/Pipp.Parity` runs the original engine (`bin/pipp_core.exe`) and the managed engine
-(`src/Pipp.Cli`) over the same fixtures with the same switches, then compares the produced frames by
+`tools/Opipp.Parity` runs the original engine (`bin/pipp_core.exe`) and the managed engine
+(`src/Opipp.Cli`) over the same fixtures with the same switches, then compares the produced frames by
 SHA-256 of their samples.
 
 ```bash
 export DOTNET_ROOT="$HOME/.dotnet-sdk"; export PATH="$DOTNET_ROOT:$DOTNET_ROOT/tools:$PATH"
-dotnet build src/Pipp.Cli/Pipp.Cli.csproj            # rebuild BOTH consumers
-dotnet build tools/Pipp.Parity/Pipp.Parity.csproj
-dotnet run --project tools/Pipp.Parity --no-build    # prints ALL CASES MATCH or divergences
+dotnet build src/Opipp.Cli/Opipp.Cli.csproj            # rebuild BOTH consumers
+dotnet build tools/Opipp.Parity/Opipp.Parity.csproj
+dotnet run --project tools/Opipp.Parity --no-build    # prints ALL CASES MATCH or divergences
 ```
 
 Rebuilding only the harness leaves the CLI running a stale copy of the library, which looks exactly
@@ -24,8 +24,8 @@ means fifteen option sets, not "the engine matches".
 `samples/` holds a 4.8 GB third-party capture and is git-ignored, so the real-data cases are opt-in:
 
 ```bash
-dotnet run --project tools/Pipp.Parity --no-build -- --real
-dotnet run --project tools/Pipp.Parity --no-build -- --real --real-input path/to/capture.ser
+dotnet run --project tools/Opipp.Parity --no-build -- --real
+dotnet run --project tools/Opipp.Parity --no-build -- --real --real-input path/to/capture.ser
 ```
 
 They run the three stretch-sensitive option sets (`-tif`, `-hs=204`, `-hs=204 -hs_bp`) over the

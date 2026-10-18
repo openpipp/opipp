@@ -29,12 +29,12 @@ Run everything with:
 export DOTNET_ROOT="$HOME/.dotnet-sdk"; export PATH="$DOTNET_ROOT:$DOTNET_ROOT/tools:$PATH"
 cd "C:/Users/ilanp/Projects/OPIPP"
 dotnet test OPIPP.slnx --nologo
-dotnet build src/Pipp.Cli/Pipp.Cli.csproj && dotnet build tools/Pipp.Parity/Pipp.Parity.csproj
-dotnet run --project tools/Pipp.Parity --no-build              # expect: ALL CASES MATCH
-dotnet run --project tools/Pipp.Parity --no-build -- --real    # + 30 real Saturn frames
+dotnet build src/Opipp.Cli/Opipp.Cli.csproj && dotnet build tools/Opipp.Parity/Opipp.Parity.csproj
+dotnet run --project tools/Opipp.Parity --no-build              # expect: ALL CASES MATCH
+dotnet run --project tools/Opipp.Parity --no-build -- --real    # + 30 real Saturn frames
 ```
 
-Rebuild **both** consumers before a parity run - a stale `Pipp.Cli.exe` silently compares old output.
+Rebuild **both** consumers before a parity run - a stale `Opipp.Cli.exe` silently compares old output.
 
 ## Phase 4a item 1 - histogram stretch: DONE
 
@@ -127,7 +127,7 @@ Two smaller items found while doing the stretch, both recorded in `status.md`:
 Real-data check (repeatable):
 
 ```bash
-dotnet run --project tools/Pipp.Parity --no-build -- --real
+dotnet run --project tools/Opipp.Parity --no-build -- --real
 # real-plain / real-stretch / real-stretch-bp over samples/saturn30.ser, 30 frames each
 ```
 

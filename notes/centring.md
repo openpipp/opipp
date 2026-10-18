@@ -28,7 +28,7 @@ own `-tif -ctr` output, with the engine log giving `Calculated minpixel value: 1
   | `param_1[0x376]` | `+0xDD8` | right |
   | `param_1[0x377]` | `+0xDDC` | bottom (buffer row) |
 
-* `Pipp.Core.Frames.Frame` is **top-down**. Either flip when building the detector's luma plane
+* `Opipp.Core.Frames.Frame` is **top-down**. Either flip when building the detector's luma plane
   (recommended, the recipe below does it) or convert the finished box.
 
 ## 2. From the box to the offset
@@ -54,7 +54,7 @@ colour outside the source. `@XPOS` / `@YPOS` in `-gui` mode print exactly the tw
 above (`FUN_14007e8e0`, reading `0xDD0`/`0xDD8` and `0xDD4`/`0xDDC`), confirming the crop uses the
 same values.
 
-Translated to the **top-down** frame that `Pipp.Core` uses:
+Translated to the **top-down** frame that `Opipp.Core` uses:
 
 ```
 dx =  width/2 - xpos
@@ -175,14 +175,14 @@ same rule (section 6), which is a stronger check than the shift alone.
 
 ## 6. C# recipe
 
-Drop-in for `Pipp.Core.Alignment`. `Detect` expects an 8-bit luma plane in the engine's bottom-up
+Drop-in for `Opipp.Core.Alignment`. `Detect` expects an 8-bit luma plane in the engine's bottom-up
 order; `CentreOffset` returns the top-down offset the rest of the pipeline already uses
 (`AlignmentOffset`, positive X right, positive Y down).
 
 ```csharp
-using Pipp.Core.Frames;
+using Opipp.Core.Frames;
 
-namespace Pipp.Core.Alignment;
+namespace Opipp.Core.Alignment;
 
 /// <summary>Object box in the engine's bottom-up buffer row coordinates.</summary>
 public readonly record struct PlanetBox(int Left, int Right, int Top, int Bottom)
@@ -418,7 +418,7 @@ step 6). Feeding it a different processing stage changes the luma and therefore 
   **16/16** exact, **30/30** pixel-identical, threshold 17/19 → 8/16 (sharpness check).
 * C# port compiled and run (`dotnet run -c Release`, net10.0) against the same SER:
   **16/16** exact. The code block in section 6 is the compiled source, not a paraphrase.
-* `Pipp.Core.Alignment.DetectionThreshold.ComputeOrDefault` run against the same frames returns
+* `Opipp.Core.Alignment.DetectionThreshold.ComputeOrDefault` run against the same frames returns
   **18** (matching the engine log), so the existing threshold code plugs straight into the recipe.
 * Fill check: every out-of-frame pixel equals 3 and `median(frame) == 3` on all 30 frames.
 

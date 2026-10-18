@@ -13,15 +13,15 @@ preview, not a replacement for the original.
 | Size | 50,772,018 bytes (48.4 MiB) |
 | SHA-256 | `b5d62df7eb1840ce5ccc56b8b281a96f2b0144f9b78304bacae8bae9069c4063` |
 | Runtime | self-contained .NET 10, win-x64 — no .NET install needed |
-| Contents | `Pipp.App.exe` (GUI, managed), `Pipp.Cli.exe` (drop-in engine), `README-ALPHA.txt` |
+| Contents | `Opipp.App.exe` (GUI, managed), `Opipp.Cli.exe` (drop-in engine), `README-ALPHA.txt` |
 
 ## How it was built
 
 ```
 export DOTNET_ROOT="$HOME/.dotnet-sdk"; export PATH="$DOTNET_ROOT:$DOTNET_ROOT/tools:$PATH"
-dotnet publish src/Pipp.App -c Release -r win-x64 --self-contained true \
+dotnet publish src/Opipp.App -c Release -r win-x64 --self-contained true \
     -o dist/OPIPP-0.1.0-alpha-win-x64
-dotnet publish src/Pipp.Cli -c Release -r win-x64 --self-contained true \
+dotnet publish src/Opipp.Cli -c Release -r win-x64 --self-contained true \
     -o dist/OPIPP-0.1.0-alpha-win-x64
 ```
 
@@ -31,9 +31,9 @@ Version identity lives in `Directory.Build.props` (`Version=0.1.0-alpha`).
 
 | Check | Result |
 |---|---|
-| `Pipp.Cli.exe -help` | prints the switch reference |
+| `Opipp.Cli.exe -help` | prints the switch reference |
 | 30-frame conversion of `samples/saturn30.ser` | 30 TIFFs written |
-| `Pipp.App.exe` start | window opens, title `OPIPP 0.1.0-alpha - Open PIPP` |
+| `Opipp.App.exe` start | window opens, title `OPIPP 0.1.0-alpha - Open PIPP` |
 | Native DLL dependence | none — `pipp_dll.dll` is not used or shipped |
 | Test suite | 553 passing, 0 failing |
 | Parity harness | 29/29 cases, `ALL CASES MATCH` |

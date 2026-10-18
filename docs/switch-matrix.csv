@@ -100,7 +100,7 @@ switch,status,evidence
 -qmin,verified,wired and oracle-verified: quality log matches to six decimals
 -qold,executed,NOT oracle-verified: wired (algorithm + log label) but metric values/selection do not match the engine - documented gap
 -qpcnt,verified,Select() 643 — Full.
--qtotal,inert,none (default) — Collapsed to the default by Program.cs:167-172; `Pipp.Core.Quality.QualityAlgorithm` has no TotalPixel member.
+-qtotal,inert,none (default) — Collapsed to the default by Program.cs:167-172; `Opipp.Core.Quality.QualityAlgorithm` has no TotalPixel member.
 -qw,verified,"wired and oracle-verified: triplicates top n/4, duplicates next n/2-n/4; names 0,0a,0b,1,1a...; 7/7 pixel-identical at -q=4"
 -raw_db,executed,"wired, not oracle-exact: engine statically links dcraw 9.27 and accepts DNG; RawDngReader implemented and wired for .dng (absolute values differ from dcraw's scale_colors, documented)"
 -raw_hl,executed,"wired, not oracle-exact: dcraw highlight handling; our DNG reader honours white level, the full dcraw tone path is not reproduced"

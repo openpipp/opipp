@@ -13,12 +13,12 @@ inventory.
 | Solution | `OPIPP.slnx` (note: `.slnx`, not `.sln`) |
 | Build | `dotnet build OPIPP.slnx` - clean |
 | Tests | **553 passing, 0 failing** (7 projects) |
-| Managed code | `Pipp.Core` 11.8k lines, `Pipp.Cli` 0.3k, `Pipp.App` 14.5k, tests 5.5k |
+| Managed code | `Opipp.Core` 11.8k lines, `Opipp.Cli` 0.3k, `Opipp.App` 14.5k, tests 5.5k |
 | Reference artefacts | `decompiled/` 14,277 lines C#, `ghidra/out/` 4,229 functions |
 
 ## Parity
 
-`dotnet run --project tools/Pipp.Parity` → **ALL CASES MATCH** (18 cases: 15 verified, 2 deliberate
+`dotnet run --project tools/Opipp.Parity` → **ALL CASES MATCH** (18 cases: 15 verified, 2 deliberate
 divergences, 1 known gap; pixel content, directory layout and log text compared). Adding `--real`
 runs four more cases against the 30-frame Saturn capture in `samples/` (git-ignored), which also all
 match.
@@ -70,7 +70,7 @@ partial, `parsed-only` = no downstream property, `inert` = no effect (the one de
 five aliases, six rows). Oracle parity is the separate table above.
 
 Sharpest gaps: `-chk` never rejects a frame, `-ms` is not wired at all, `-qtotal` and `-bin_average`
-collapse to defaults, and six `PipelineSettings` properties have no producer (`Stack`, `PippLayout`,
+collapse to defaults, and six `PipelineSettings` properties have no producer (`Stack`, `OpippLayout`,
 `WriteLogFile`, `OverexposedThreshold`, `AlignmentSearchRadius`, `EngineVersion`).
 
 ## Work in flight

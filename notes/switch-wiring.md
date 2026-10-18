@@ -58,9 +58,9 @@ bare form works.
 - **Two `PipelineSettings` properties are dead:** `DebayerPattern` (set from `-db=<pattern>`, never
   read) and `LeadingZeros` (set from `-nlz`, never read; Processor 382 always pads).
 - **Three switches cannot change behaviour at all:** `-qtotal` (no `TotalPixel` in
-  `Pipp.Core.Quality.QualityAlgorithm`; Program collapses it to the default), `-gif` (no `.gif` branch
+  `Opipp.Core.Quality.QualityAlgorithm`; Program collapses it to the default), `-gif` (no `.gif` branch
   in `ChooseExtension` and no GIF writer), `-bin_average` (writes the default value).
-- **Six `PipelineSettings` properties have no producer:** `Stack`, `PippLayout`, `WriteLogFile`,
+- **Six `PipelineSettings` properties have no producer:** `Stack`, `OpippLayout`, `WriteLogFile`,
   `OverexposedThreshold`, `AlignmentSearchRadius`, `EngineVersion` — stacking and layout control are
   unreachable from the command line.
 - **The CSV is out of date** (see *Docs drift*): 22 of its 126 rows disagree with the code.
@@ -192,7 +192,7 @@ note marks a group (a) switch that is wired but incomplete.
 | 88 | `-qpcnt` | `QualityPercent` | yes | `KeepPercent` | Select() 643 | **a** | Full. |
 | 89 | `-qold` | `QualityAlgorithm` | yes | `QualityAlgorithm` | Run() 298 / log 495 | **a** | Full (Ninox). |
 | 90 | `-qhisto` | `QualityAlgorithm` | yes | `QualityAlgorithm` | Run() 298 / log 495 | **a** | Full (Histogram). |
-| 91 | `-qtotal` | `QualityAlgorithm` | yes | `QualityAlgorithm` | none (default) | **d** | Collapsed to the default by Program.cs:167-172; `Pipp.Core.Quality.QualityAlgorithm` has no TotalPixel member. |
+| 91 | `-qtotal` | `QualityAlgorithm` | yes | `QualityAlgorithm` | none (default) | **d** | Collapsed to the default by Program.cs:167-172; `Opipp.Core.Quality.QualityAlgorithm` has no TotalPixel member. |
 | 92 | `-qmin` | `QualityMinDownsample` | no | `—` | — | **b** | No PS property. |
 | 93 | `-qmax` | `QualityMaxDownsample` | no | `—` | — | **b** | No PS property. |
 | 94 | `-qinc` | `QualityIncrement` | no | `—` | — | **b** | No PS property. |
@@ -252,7 +252,7 @@ setting: validate-then-exit is a `Program.Main` branch (like `-help`), so it sho
 
 Defaults follow the GUI/PippOptions defaults (`PippOptions.cs` remarks), so a missing switch and an
 explicit GUI default produce the same pipeline. Enum types should be pipeline-owned (the pipeline
-namespace does not reference `Pipp.Core.Cli` today); mirror the CLI enum values rather than importing
+namespace does not reference `Opipp.Core.Cli` today); mirror the CLI enum values rather than importing
 `PippAviCodec`/`PippGifQuantisation` into `PipelineSettings`.
 
 | property | type | default | consuming stage | switches covered |
@@ -344,7 +344,7 @@ Two properties are prerequisites rather than pass-throughs:
 | `-help` | Handled by `Main`, prints `PippHelpText`, exits 0 (Program 33-37). No option, no settings. |
 | `-centre` | Alias of `-ctr`; the two labels share one `case` body (CommandLineParser 350-353). |
 | `-bin_average` | Sets `BinningCalculation = Average`, which is also the `null` default, so `BinningSum` stays false. Its only effect is to undo an earlier `-bin_sum`. |
-| `-qtotal` | `PippQualityAlgorithm.TotalPixel` is parsed, but `Pipp.Core.Quality.QualityAlgorithm` has no `TotalPixel` member and Program's switch (`167-172`) sends it to `PippDefault`. It also resets an earlier `-qold`/`-qhisto`. |
+| `-qtotal` | `PippQualityAlgorithm.TotalPixel` is parsed, but `Opipp.Core.Quality.QualityAlgorithm` has no `TotalPixel` member and Program's switch (`167-172`) sends it to `PippDefault`. It also resets an earlier `-qold`/`-qhisto`. |
 | `-gif` | `Formats = Gif` is mapped, but `ChooseExtension` (Program 228-239) has no `.gif` branch and `FrameSinkFactory.Extensions` (FrameIo 84) has no GIF writer. Output silently becomes `.ser`. |
 
 ### PipelineSettings properties with no producer
@@ -352,7 +352,7 @@ Two properties are prerequisites rather than pass-throughs:
 | property | type | default | read at | note |
 |---|---|---|---|---|
 | `Stack` | `StackMethod?` | null | Run 338 | no CLI switch; stacking is unreachable |
-| `PippLayout` | `bool` | true | Run 372 | no switch; `-osubdir` is the nearest concept |
+| `OpippLayout` | `bool` | true | Run 372 | no switch; `-osubdir` is the nearest concept |
 | `WriteLogFile` | `bool` | true | Run 403 | no switch; logs cannot be disabled |
 | `OverexposedThreshold` | `int` | 0 (→ frame max) | 548-551 | no switch; changes what `-oe` counts as overexposed |
 | `AlignmentSearchRadius` | `int` | 32 | Run 317 | no switch; fixed at 32 px |

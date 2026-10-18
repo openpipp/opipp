@@ -1,16 +1,16 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/Pipp.App/Pipp.App.csproj" />
-    <Project Path="src/Pipp.Cli/Pipp.Cli.csproj" />
-    <Project Path="src/Pipp.Core/Pipp.Core.csproj" />
+    <Project Path="src/Opipp.App/Opipp.App.csproj" />
+    <Project Path="src/Opipp.Cli/Opipp.Cli.csproj" />
+    <Project Path="src/Opipp.Core/Opipp.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/Pipp.Avi.Tests/Pipp.Avi.Tests.csproj" />
-    <Project Path="tests/Pipp.Cli.Tests/Pipp.Cli.Tests.csproj" />
-    <Project Path="tests/Pipp.Core.Tests/Pipp.Core.Tests.csproj" />
-    <Project Path="tests/Pipp.Fits.Tests/Pipp.Fits.Tests.csproj" />
-    <Project Path="tests/Pipp.Image.Tests/Pipp.Image.Tests.csproj" />
-    <Project Path="tests/Pipp.Images.Tests/Pipp.Images.Tests.csproj" />
-    <Project Path="tests/Pipp.Ser.Tests/Pipp.Ser.Tests.csproj" />
+    <Project Path="tests/Opipp.Avi.Tests/Opipp.Avi.Tests.csproj" />
+    <Project Path="tests/Opipp.Cli.Tests/Opipp.Cli.Tests.csproj" />
+    <Project Path="tests/Opipp.Core.Tests/Opipp.Core.Tests.csproj" />
+    <Project Path="tests/Opipp.Fits.Tests/Opipp.Fits.Tests.csproj" />
+    <Project Path="tests/Opipp.Image.Tests/Opipp.Image.Tests.csproj" />
+    <Project Path="tests/Opipp.Images.Tests/Opipp.Images.Tests.csproj" />
+    <Project Path="tests/Opipp.Ser.Tests/Opipp.Ser.Tests.csproj" />
   </Folder>
 </Solution>

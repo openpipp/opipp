@@ -1,17 +1,28 @@
 # OPIPP — Open PIPP
 
-**OPIPP** (pronounced "oh-pip", *Open PIPP*) is this project: an open, fully managed
-continuation of **PIPP (Planetary Imaging PreProcessor)**. The name marks what changed - the
-engine is rebuilt as readable C# - while keeping the original's initials so it stays obvious
-what it is a continuation of. Internally the namespaces remain `Pipp.*` and the drop-in engine
-binary is still `Pipp.Cli`, so nothing about the compatibility story changes.
+**OPIPP** (pronounced "oh-pip", *Open PIPP*) is an independent, fully managed continuation of
+**PIPP (Planetary Imaging PreProcessor)** by Chris Garry. The name keeps the original's initials so
+the lineage stays obvious, while everything in this repository — assemblies, namespaces, executables,
+projects — is `Opipp.*`.
 
-A reverse-engineered reconstruction of **PIPP (Planetary Imaging PreProcessor)** by Chris Garry,
-rebuilt as a managed **.NET 10 / C# 13** codebase.
+## Not affiliated with PIPP
 
-> **Provenance:** PIPP is closed-source freeware. This tree is a reconstruction for study and
-> modernization. Do **not** publish or distribute it without the original author's permission —
-> see [provenance](notes/provenance.md).
+OPIPP is an independent project. It is **not affiliated with, endorsed by, sponsored by, or supported
+by** Chris Garry or the PIPP project, and it is not an official PIPP release. "PIPP" names the
+original software; "OPIPP" names this independent continuation. Bug reports about the original belong
+with the original author, not here.
+
+## Fair use
+
+This project is a clean, managed reimplementation built for interoperability, research and
+modernization: it reads the same formats, accepts the same command-line vocabulary, and reproduces the
+original's behaviour so existing workflows keep working. Everything in `src/` is new, readable C# —
+none of the original binary is redistributed — and the project is published in the belief that this
+is fair use. The decompiled and Ghidra output under `decompiled/` and `ghidra/` are development
+reference artefacts; they are never shipped, never committed, and are git-ignored.
+
+> Provenance details, including what was and was not copied, are in
+> [notes/provenance.md](notes/provenance.md).
 
 ## What the original is
 
@@ -28,9 +39,9 @@ are documented in [notes/cli-spec.md](notes/cli-spec.md).
 ## Layout
 
 ```
-src/Pipp.Core   managed engine: formats, processing, quality, alignment, stacking, pipeline
-src/Pipp.Cli    drop-in replacement for pipp_core.exe
-src/Pipp.App    .NET 10 WinForms front-end ported from the decompiled UI
+src/Opipp.Core   managed engine: formats, processing, quality, alignment, stacking, pipeline
+src/Opipp.Cli    drop-in replacement for pipp_core.exe
+src/Opipp.App    .NET 10 WinForms front-end ported from the decompiled UI
 tests/          xUnit suites per subsystem + end-to-end pipeline tests
 tools/          parity harness against the original engine + fixture generators
 docs/           roadmap to feature parity, current status, parity guide, switch matrix
@@ -54,11 +65,11 @@ dotnet build OPIPP.slnx
 dotnet test OPIPP.slnx
 
 # headless engine (same switches as pipp_core.exe)
-dotnet run --project src/Pipp.Cli -- -help
-dotnet run --project src/Pipp.Cli -- -tif -q=50 -od=out capture.ser
+dotnet run --project src/Opipp.Cli -- -help
+dotnet run --project src/Opipp.Cli -- -tif -q=50 -od=out capture.ser
 
 # WinForms front-end
-dotnet run --project src/Pipp.App
+dotnet run --project src/Opipp.App
 ```
 
 ## Status
@@ -69,7 +80,7 @@ projects (formats 127, processing 80, CLI 77, pipeline 9).
 
 The CLI is a drop-in engine: it accepts the GUI's stdin protocol (switches and file paths, one per
 line) as well as a normal command line, and emits the original `@PROGRESS/@PFILE/...` tokens with
-`-gui`. `Pipp.App` now prefers `Pipp.Cli.exe` via `EngineLocator` and only falls back to the legacy
+`-gui`. `Opipp.App` now prefers `Opipp.Cli.exe` via `EngineLocator` and only falls back to the legacy
 `pipp_core.exe` when the managed engine is absent.
 
 | Area | State |
@@ -90,11 +101,11 @@ line) as well as a normal command line, and emits the original `@PROGRESS/@PFILE
 
 ### Parity against the original engine
 
-`tools/Pipp.Parity` runs `bin/pipp_core.exe` and `Pipp.Cli.exe` on the same synthetic capture with the
+`tools/Opipp.Parity` runs `bin/pipp_core.exe` and `Opipp.Cli.exe` on the same synthetic capture with the
 same switches and compares the produced frames by SHA-256 of their sample data:
 
 ```
-dotnet run --project tools/Pipp.Parity
+dotnet run --project tools/Opipp.Parity
 ```
 
 Current result: **9 of 9 cases match**, comparing pixel content, directory layout (`capture/1.tif`,
