@@ -278,3 +278,24 @@ Implication for parity: matching the quality log requires reproducing this initi
 carry-over of the box between frames, not a better sharpness formula. The next session should model
 the box life-cycle (full frame on the first frame, then per-frame detection + one-pixel expansion)
 and check the *ratios* rather than absolute scores.
+
+## M15 - GIF: the original writes an image-less file; ours writes a valid one
+
+Ran the engine with `-gif` on the 4-frame parity fixture:
+
+```
+bin/pipp_core.exe -gif -od=<dir> parity/capture.ser
+```
+
+It produces a single `capture.gif` at the output root (not in a per-name folder, unlike TIFF/PNG),
+820 bytes, header `GIF89a`, logical screen 32x24, 256-entry global colour table - and a block walk
+finds **no image descriptor at all**: only a NETSCAPE2.0 application extension, a comment extension,
+and the trailer. `ffprobe` reports the dimensions but the stream has no decodable frames.
+
+So the "GIF output" item is not a missing feature on our side; the shipped engine's GIF path is
+broken for this input class, in the same family as the 16-bit TIFF byte-swap. We now have a working
+writer (`GifWriter`, commit 8b6578a) verified against ffmpeg, so the sensible resolution is: write
+**valid** GIFs and record the divergence, rather than reproduce an empty file.
+
+Naming to match if we integrate it: one animated file at `<out>/<name>.gif` (no subfolder), 256-colour
+GCT, NETSCAPE2.0 loop extension, no per-frame graphic control extension.
