@@ -104,24 +104,23 @@ without `-hsrgb`. Next is the rest of Phase 4a: the quality metric's integer str
 - **Baseline JPEG decoder** (`JpegBaselineDecoder`): SOF0 with 4:4:4, 4:2:2 and 4:2:0 sampling,
   restart markers and 16-bit DQT; cross-checked against libjpeg (mean error ≤ 0.15, max ≤ 3/255,
   15 tests). Not wired to an input path yet.
-- **Surface tracker** (`SurfaceTracker`): zero-mean normalised cross-correlation with parabolic
-  sub-pixel refinement; gain/pedestal invariant, and rejects matches below 0.5 correlation
-  (16 tests). Not wired to `-en_surface_feature_tracking` yet.
+- **Surface tracker** (`SurfaceTracker`): the engine's own algorithm - 5x5 integer blur,
+  percentile-stretched template, per-candidate brightness/contrast LUT, SSD over the even-even
+  subsample, asymmetric `[-box/16, +box/16-1]` window. Wired to `-en_surface_feature_tracking`
+  through `-en_ss`; 23/30 frames of the real Saturn capture are byte-identical, the rest off by one
+  pixel (see `notes/tracking.md`).
 
 ## Known divergences (deliberate or open)
 
 | Divergence | Reason / next step |
 | --- | --- |
-| `-gui` token stream differs (`@PFILELAB` 0- vs 1-based, `@ANIM`/`@QSORT`/`@FNAMELAB`, ordering) | Phase 6, blocks dropping the native fallback |
-| Quality log scores differ (structure matches) | Phase 4, quality algorithm not parity-proven |
 | 16-bit TIFF samples are byte-swapped by the original under an `II` header (unreadable in ffmpeg) | We write spec-correct files; replicating a data-corrupting bug is not acceptable |
 | ~~Colour SER misread~~ | Fixed: PIPP uses ColorID **100 = RGB / 101 = BGR**, not 16/17. Writer now uses 100; reader still accepts the old ids |
 | Debayer interpolation differs by 1 LSB on ~37% of interior pixels (up to 3 at edges) | Our `-db -db=2` result vs the original on a synthetic RGGB mosaic. The old parity case only ran `-db=2`, which the engine treats as pattern-only, so this was never exercised. Next: compare our interpolation kernel against `FUN_14009f4e0`/`FUN_14009e5f0`/`FUN_14009fc30` |
+| Surface tracking: 23/30 frames byte-identical on the real Saturn fixture, 7 frames off by exactly 1 px | The engine's coarse stage is not reproduced faithfully (its reference capture and histogram scoring differ). Porting `FUN_1400a7ec0` and re-enabling the seed is the remaining work; see `notes/tracking.md` |
 | GIF output | Implemented and wired (`GifWriter` plus the `.gif` branch in `Processor`). The original writes an image-less GIF (only a NETSCAPE extension, a comment and the trailer), so we deliberately emit a valid animation. The wiring audit predates this and still classes `-gif` inert |
 | ~~Centring (`-ctr`) output differs~~ | Fixed: the engine centres the detected object box, not a weighted centroid (`notes/centring.md`). Whole-pixel translation with the vacated area filled by the frame median; 30/30 frames of the real capture are pixel-identical and the `real-centre` case matches |
 | ~~Detection threshold uses Otsu~~ | Fixed: `FUN_14009ab40` averages 3x3 blocks into a 1/3-scale image, averages the five *smallest* row maxima, then `T = m + (meanAbove-m)/4`. Exact on real frames (18 vs 18); synthetic discs come out one unit low because the engine rounds inside its luma lookups |
-| RAW/dcraw, animation, AOI, master saving, quality weighting | Parsed, not executed — Phases 2–5 |
-| `Pipp.App` still calls the native API for `Test Options` and calibration | Phase 6 |
 
 ## Environment notes
 

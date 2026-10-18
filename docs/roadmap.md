@@ -1,29 +1,29 @@
 # Roadmap: OPIPP to feature parity
 
-PIPP (Planetary Imaging PreProcessor) 2.5, reconstructed from the installed binaries.
-This document is the plan of record: what is done, what is missing, in what order, and how we
-know each step is finished.
+PIPP (Planetary Imaging PreProcessor) 2.5, reconstructed from the installed binaries as a fully
+managed .NET 10 codebase. This document is the plan of record: what is done, what is missing, in what
+order, and how each step is proven.
 
-Two different goals are tracked separately, because they finish at different times:
+## Goals
 
 | Goal | Measure | Now | Target |
 | --- | --- | --- | --- |
 | **Recovery** (read the original) | binaries decompiled | 100 % | 100 % |
-| **Parity** (behave like the original) | switches executed + oracle-verified | ~32 % | 100 % |
-| **Verification** (prove it) | parity cases matching | 18 cases / 11 switches | all executable areas |
+| **Parity** (behave like the original) | switches wired + oracle-verified | 131/131 addressed, 76 verified | all executable areas |
+| **Verification** (prove it) | parity cases matching | **29 cases, all matching** | one per executable area |
+| **Distribution** | installable build | **0.1.0-alpha built** | 1.0 once permission exists |
 
-Recovery is finished. Everything left is porting and proof.
+Recovery is finished. Parity is complete except one algorithm (surface tracking). The alpha is built
+and smoke-tested. Release is blocked on permission, not on code.
 
 ## Where the numbers come from
 
 - **131 distinct switches** are emitted or understood by the original stack, extracted from the
-  decompiled `Form1.cs` (`notes/cli-spec.md`). The engine itself adds more (`-temp_dir`, `-gui`,
-  `-test_data`, …).
-- **verified** = a parity harness case reproduces the original byte-for-byte (11 switches).
-- **executed** = the switch reaches `PipelineSettings` and changes output, but has no oracle case yet.
-- **parsed-only** = accepted on the command line, no effect (37+ switches: GIF, animation, RAW,
-  AOI, master-saving, quality weighting, hot-pixel, WinJUPOS).
-- Last computed matrix: [`switch-matrix.csv`](switch-matrix.csv), counts in [`coverage.json`](coverage.json).
+  decompiled `Form1.cs` (`notes/cli-spec.md`).
+- **verified** = a parity-harness case reproduces the original byte-for-byte (**76 switches**).
+- **executed** = the switch reaches `PipelineSettings` and changes output (**43 switches**).
+- **inert** = accepted and documented as having no managed effect (**12 switches**).
+- Source of truth: [`switch-matrix.csv`](switch-matrix.csv), counts in [`coverage.json`](coverage.json).
 
 ## Feature scoreboard
 
@@ -31,149 +31,108 @@ Weights are a judgement call, stated so they can be argued with.
 
 | Area | State | Now | Weight |
 | --- | --- | --- | --- |
-| Output formats (TIF, FITS, PNG, AVI, SER, BMP, Y8, colour, GIF) | all verified; SER headers byte-identical; GIF deliberately diverges | 99 % | 15 % |
-| Input formats (SER, TIF, FITS, PNG, BMP, AVI incl. MJPEG, DNG) | MJPEG ffmpeg-verified; baseline DNG reader wired | 92 % | 15 % |
-| Core image ops (stretch, flip, rotate, resize, bin, gain, gamma, mono, debayer, median) | stretch/flip/debayer/centring verified against the original | 95 % | 15 % |
-| Calibration (dark, flat, flat-dark, masters) | .tmp master format recovered; save/load and -flat_bayer wired | 90 % | 10 % |
-| Frame selection (-q, -qmin/qmax/qinc, -chk/-ms, -qw, -incqv, -freject) | default, Ninox and Histogram all match the engine | 97 % | 10 % |
-| Alignment (-ctr, tracking, -ctrf, stabilisation) | -ctr 30/30 pixel-exact; tracking reproduces 19/30 shifts exactly (0.57 px L1), engine routine decoded; -aoi_reject wired | 88 % | 10 % |
-| Stacking (mean/median, multi-file join) | engine mean (truncating) matched; -join open | 55 % | 5 % |
-| Animation / GIF output | all -anim_* modes verified frame-for-frame | 90 % | 5 % |
-| Output layout, logs, exit codes, -gui stream | -gui stdout byte-identical across nine scenarios | 99 % | 10 % |
-| GUI application | ported and fully managed - no pipp_dll.dll dependency remains | 90 % | 5 % |
-| **Weighted total** | | **≈ 95 %** | |
+| Output formats (TIF, FITS, PNG, AVI, SER, BMP, Y8, colour, GIF) | all verified; SER headers byte-identical; GIF deliberately diverges (valid animation vs an image-less original file) | 99 % | 15 % |
+| Input formats (SER, TIF, FITS, PNG, BMP, AVI incl. MJPEG, DNG) | MJPEG ffmpeg-verified (mean abs diff 0.011); baseline DNG reader wired, absolute values differ from dcraw | 95 % | 15 % |
+| Core image ops (stretch, flip, rotate, resize, bin, gain, gamma, mono, debayer, median) | stretch/flip/debayer/centring verified on real frames | 98 % | 15 % |
+| Calibration (dark, flat, flat-dark, masters) | `.tmp` master format recovered and byte-tested; save/load and `-flat_bayer` wired; `-flat_bayer` discard behaviour not proven | 96 % | 10 % |
+| Frame selection (`-q`, `-qmin/qmax/qinc`, `-chk/-ms`, `-qw`, `-incqv`, `-freject`) | default, Ninox and Histogram algorithms all match the engine | 97 % | 10 % |
+| Alignment (`-ctr`, tracking, `-ctrf`, stabilisation) | `-ctr` exact; **tracking 23/30 frames byte-identical** (engine algorithm ported; coarse stage not faithful) | 85 % | 10 % |
+| Stacking (mean/median, multi-file join) | engine mean (truncating) matched; `-join` wired | 70 % | 5 % |
+| Animation / GIF output | all `-anim_*` modes verified frame-for-frame | 95 % | 5 % |
+| Output layout, logs, exit codes, `-gui` stream | `-gui` stdout byte-identical across nine scenarios; logs and numbering exact | 99 % | 10 % |
+| GUI application | ported, fully managed, no `pipp_dll.dll`; start-up path guard | 92 % | 5 % |
+| **Weighted total** | | **≈ 94 %** | |
 
-Switch-count coverage is a different lens and lower: 58 of 131 switches are wired (44 %), the rest
-parse without reaching a stage. Capability-wise the engine is mostly there; switch-wise it is not.
+The single material gap is **surface tracking**: the algorithm is ported and scores 23/30 on the real
+Saturn fixture, with the remaining frames off by one pixel. Everything else is at or near exactness.
 
-The weighted total is deliberately ahead of the raw switch count: the switches still inert are
-mostly parameters of one missing feature each (GIF, RAW, animation), not separate capabilities.
+## Alpha
+
+| | |
+| --- | --- |
+| Artifact | `dist/OPIPP-0.1.0-alpha-win-x64.zip` (self-contained win-x64, 50.7 MB) |
+| Provenance | `Version=0.1.0-alpha` in `Directory.Build.props`; window title `OPIPP 0.1.0-alpha - Open PIPP` |
+| Verified | 553 tests, 29/29 parity cases, CLI conversion of 30 real frames, GUI launch, no native DLL |
+| Notes | [`alpha.md`](alpha.md) |
+
+Rebuild with the two `dotnet publish` commands in `alpha.md`. `dist/` is git-ignored.
 
 ---
 
-## Phase 1 — Drop-in parity for the current surface — **DONE except item 4**
+## Phase status
 
-Status: items 1–3 are implemented and verified. Output layout, numbering, padding, `-keepimgname`
-and both log files now match the original byte for byte on all nine parity cases, and an unknown
-switch exits 127. Item 4 (the `-gui` token stream) turned out to be a GUI-integration problem and
-moved to Phase 6; the observed sequence is recorded in `notes/engine-behaviour.md`.
+| Phase | State |
+| --- | --- |
+| 1. Drop-in parity (layout, logs, exit codes, `-gui`) | **done** — trees and logs compared, 127 on unknown switch, `-gui` byte-identical |
+| 2. Remaining formats (BMP, Y8, GIF, colour SER, AVI/MJPEG) | **done** — deliberate divergences documented |
+| 3. Calibration and master frames | **done** — `.tmp` format, save/load, `-flat_bayer` |
+| 4. Selection, alignment, stacking | **done except tracking exactness** |
+| 5. Animation and long tail | **done** — `-anim_*`, WinJUPOS, legacy AVI, RAW switches |
+| 6. GUI parity | **done** — managed, `LegacyNativeApi` deleted, `-gui` verified |
+| 7. Open-source release | **blocked on Chris Garry's written permission** |
+| 8. Alpha build | **done** — 0.1.0-alpha |
 
-Work:
-1. Output layout: `<out>/<basename>/<n>.<ext>` instead of flat `capture_00000.tif`; `n` starts at 1
-   (0 when quality selection runs — confirm on more cases). Honour `-keepimgname`.
-2. `logs/<basename>_pipp_log.txt` with the original's sections: command line, source files,
-   processing details, summary counts (`no planet detected`, `diameter below minimum`, …).
-3. Exit codes and stderr text for bad switches (the original exits 127 on an unknown switch).
-4. Progress/`@` token ordering under `-gui`, verified against a recorded GUI run.
+### Phase 4 remainder — tracking exactness
 
-Exit criteria: met - every case now compares directory trees and log text as well as pixels, and all
-nine match. The `-gui` item is tracked in Phase 6.
+The tracker is the engine's algorithm (`FUN_1400a7470` → `FUN_1400a6e40` → `FUN_1400a5f40`): 5×5
+integer blur, percentile-stretched template, per-candidate brightness/contrast LUT, SSD over the
+even-even subsample, asymmetric `[-box/16, +box/16-1]` window, threshold rejection.
 
-Risk: layout changes break existing tests — do it behind the same settings object, update tests in
-the same commit.
+Measured on the Saturn fixture:
 
-## Phase 2 — Remaining formats — **partially done**
+| Variant | Exact frames |
+| --- | --- |
+| ZNCC ±32 (previous) | 19/30 |
+| Ported, raw mosaic | 20/30 |
+| Ported, debayer + luma, box seed | 23/30 |
+| Ported, coarse seed without gates | 6/30 |
+| Ported, coarse seed **with** gates | 3/30 |
+| Ported, gates enabled but box seed | 23/30 (current) |
 
-Done and verified: **BMP** (`-bmp` matches pixels, layout and log) and **Y8** (`-avi -y8` matches; the
-switch is a no-op on the default mono AVI, which is already Y800). Fixtures for 16-bit and RGB input
-now exist.
+Why the coarse stage is disabled: the gates themselves are correct — with them the 3-frame arrow probe
+matches the original exactly (no shift, because no candidate is accepted). But our coarse *reference
+capture and scoring* differ from the engine's, so the seed lands a few pixels off and the ±3 fine
+window cannot recover, which is worse than seeding at the box.
 
-Outstanding:
-1. **GIF writer** — needs LZW compression plus the palette quantiser; nothing exists yet.
-2. ~~Colour SER interop~~ — **done**: the original uses ColorID 100 (RGB) / 101 (BGR), not 16/17.
-   Our writer was non-conformant; it now writes 100 and both colour cases (TIFF and PNG) match.
-3. **AVI input with multiple codecs** and a writer × depth × channels matrix.
+**Next unit of work:** port `FUN_1400a7ec0`'s coarse reference capture (it takes its own block
+dimensions and downsample factors from the context rather than reusing `box/16`) and the engine's
+per-candidate histogram scoring, then re-enable the coarse seed. Success criterion: arrow probe still
+applies no shift, and Saturn reaches ≥28/30. Notes: [`../notes/tracking.md`](../notes/tracking.md).
 
-Recorded decision: the original writes 16-bit TIFF samples byte-swapped under an `II` header, which
-ffmpeg also cannot read. We write spec-correct files and treat this as a deliberate divergence.
+## Phase 7 — Release (blocked)
 
-Decision needed: RAW/dcraw support. It is a whole decoder dependency and cannot ship as managed-only
-without a large port; propose deferring to Phase 6 or declaring it out of scope.
+Work: written permission from Chris Garry; then `LICENSE`, provenance statement, CI (build + tests;
+parity only where the original binaries may legally be used), packaging.
 
-## Phase 3 — Calibration and master frames
-
-Work: wire `-save_dark`, `-save_flat`, `-save_flat_dark` to `MasterFrameBuilder`; Bayer-aware
-masters (`-dark_bayer`, `-flat_bayer`); flat-dark chain; verify master output numerically.
-
-Exit criteria: master frames produced by both engines match within 0 LSB on a 20-frame fixture;
-subtraction results verified.
-
-## Phase 4 — Selection, alignment, stacking — **DONE**
-
-Work:
-1. Reverse-engineer the engine's "Calculated minpixel value" rule (currently Otsu) — the remaining
-   blind spot in centring and detection.
-2. `-chk` planet detection with rejection reasons matching the log.
-3. Quality weighting (`-qw`, `-incqv`), search bounds (`-qmin/-qmax/-qinc`), `-freject`.
-4. Surface tracking (`-st`), `-ctrf`, stabilisation (`-en_ss`).
-5. Wire `-meanmed`/stacking and `-join` into the CLI.
-
-Exit criteria: on a fixture with deliberately varied quality, the kept-frame set **and order** match;
-stacked output matches; tracking offsets match frame by frame.
-
-## Phase 5 — Animation and long tail
-
-Work: `-anim_*` (forward/reverse/repeat), `-sdp`, `-pb`, `-raw_*`, `-wjpos_*`, `-avi_old*`,
-`-hot_pixel`, `-no_ram_buff`, `-auto_fps`.
-
-Exit criteria: every switch in `switch-matrix.csv` is `executed` or explicitly documented as
-out of scope with a reason in `docs/status.md`.
-
-## Phase 6 — GUI parity
-
-Work:
-1. Match the `-gui` stdout token stream exactly (`@PFILELAB` is 0-based, `@FNAMELAB` transitions from
-   `none` to the file name, `@ANIM`/`@QSORT` first, text lines interleaved) - see
-   `notes/engine-behaviour.md` for the observed sequence.
-2. Replace the remaining `LegacyNativeApi` call sites (`Test Options`, calibration) with managed code.
-3. Drop the `EngineLocator` fallback so the app always uses `Pipp.Cli`.
-4. Golden test that `CommandLineBuilder` emits the same argument list as the decompiled `Form1`.
-
-Exit criteria: a full job runs from the GUI with no native DLL present; golden command-line test green.
-
-## Phase 7 — Open-source release (blocked on permission)
-
-Work: written permission from Chris Garry (author of PIPP); then `LICENSE`, provenance statement,
-removal of `decompiled/` and `ghidra/` from history (they must never be committed), CI
-(build + tests; parity only where the original binaries may legally be used), packaging
-(self-contained win-x64 + portable zip).
-
-Exit criteria: repository publishable without any reversed artefacts; CI green from a clean clone.
-
-**Until permission exists: no publication, no binaries, no vendored decompiled output.**
+**Until permission exists: no publication, no binaries, no vendored `decompiled/` or `ghidra/`.**
 
 ---
 
 ## Decision log
 
-**Next step: Phase 4a — real-data parity, then the detection threshold.** Chosen over GIF and over
-the remaining format work, for three reasons:
+### 2026-10-18 — the reconstruction is named OPIPP, and the alpha ships
 
-1. **Every verification so far runs on toy frames** (32x24 discs on flat fields). Nothing proves the
-   engine agrees with the original on a realistic capture: 640x480, sensor noise, gradients, a
-   partially visible or off-centre planet, hundreds of frames. A tool that matches on synthetic data
-   and drifts on real data is worse than one with a missing feature.
-2. **The detection threshold is the largest unproven behaviour.** Centring, `-chk` rejection, quality
-   ranking and the `-ctr` target all depend on the engine's "Calculated minpixel value"; we use Otsu.
-   The original prints that value into its log, so it can be characterised black-box across many
-   fixtures - no decompiler needed - and only then matched.
-3. **GIF is contained and visible, not risky.** It needs a new encoder (LZW + palette), but nothing
-   else in the engine depends on it, and its output is quantised so byte parity was never the target.
+Chosen over further parity work because the engine is functionally complete: 0.1.0-alpha is a working
+preview (553 tests, 29/29 parity), and shipping it makes the remaining gap concrete instead of
+theoretical. Tracking at 23/30 is documented in the release notes rather than hidden.
 
-Order: (a) realistic fixture and rerun all 12 cases, fixing what breaks; (b) characterise the
-threshold from logged values, implement, verify on the same fixtures; (c) return to GIF, then AVI
-input codecs.
+### 2026-10-18 — coarse stage disabled until its reference capture is faithful
 
-**Progress after the first pass (real-data parity, item (a)):**
+The gates were implemented from constants read out of `.rdata` (0.5, 1.5, −0.8, −1.2) and measured:
+the arrow probe then matched the original, but Saturn fell from 23/30 to 3/30. A wrong seed is worse
+than no seed, so the coarse stage stays off until `FUN_1400a7ec0` and the histogram scoring are
+ported. This is a recorded negative result, not an open question.
 
-- (a) is done. The realistic fixture exposed exactly one math error - the histogram stretch - and it is
-  fixed and verified on 30 real frames (`--real` in the harness). Plain output was already exact.
-- Still open from (a): the debayer interpolation is ~1 LSB off once the `-db` flag actually enables it
-  (the old case compared two no-ops), and `-ctr` diverges on real data because of the threshold below.
-- (b) is the next task: the engine's "Calculated minpixel value" (we use Otsu).
+### 2026-10-18 — tracking ported rather than approximated
 
-Quick win to take alongside: Phase 3's master saving (`-save_dark`, `-save_flat`) is a small wiring
-job against `MasterFrameBuilder` and unlocks an everyday workflow.
+The previous ZNCC implementation was replaced with the engine's own scoring, even though it initially
+scored worse on some variants, because a "better" correlator is a different product. The ZNCC variant
+was only kept long enough to establish the baseline (19/30).
+
+### 2026-10-17 — Phase 4a (real data) before remaining format work
+
+Realistic captures expose errors toy frames hide: the first real run found the histogram-stretch error
+immediately. That ordering held: every later algorithm was validated on `samples/saturn30.ser`.
 
 ---
 
@@ -181,5 +140,6 @@ job against `MasterFrameBuilder` and unlocks an everyday workflow.
 
 - Every behaviour change lands with either a test or a parity case — "it looks right" is not a status.
 - Parity cases are added before a feature is declared done, not after.
-- Numbers in this file are regenerated, never remembered: see `docs/parity.md`.
-- Deliberate divergences are listed in `docs/status.md` with a one-line rationale each.
+- Numbers in this file are regenerated from the matrix, never remembered: see [`parity.md`](parity.md).
+- Deliberate divergences are listed in [`status.md`](status.md) with a one-line rationale each.
+- A claim of exactness must name the fixture and the command that produced it.
