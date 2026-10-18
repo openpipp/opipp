@@ -182,6 +182,7 @@ internal static class Program
             MinSize = o.MinPlanetSize ?? 50,
             KeepImageNames = o.KeepImageFilenames,
             SurfaceTracking = o.SurfaceFeatureTracking,
+            EnableStabilisation = o.EnableStabilisation,
             AlignmentBox = o.AnchorFeatureX is int ax && o.AnchorFeatureY is int ay && o.AnchorFeatureWidth is int aw && o.AnchorFeatureHeight is int ah
                 ? new PixelRect(ax, ay, aw, ah)
                 : null,

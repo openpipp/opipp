@@ -77,6 +77,7 @@ public static class FrameAligner
     /// <param name="searchRadius">Maximum absolute shift searched, in pixels.</param>
     /// <param name="region">Box to correlate (PIPP's AFB); the whole frame when null.</param>
     /// <param name="minCorrelation">Peak score below which the frame is considered unalignable.</param>
+    /// <returns>The displacement, or null when the box is featureless or the peak is too weak.</returns>
     public static AlignmentOffset? EstimateTranslation(
         Frame reference,
         Frame moving,
@@ -94,6 +95,23 @@ public static class FrameAligner
         var movLuma = QualityMetrics.ToLuma(moving);
 
         var box = region?.Clamp(w, h) ?? new PixelRect(w / 4, h / 4, Math.Max(1, w / 2), Math.Max(1, h / 2));
+
+        // A featureless box correlates perfectly with itself at every offset (cosine similarity is
+        // scale-free), so an unguarded search would return the first candidate in the window. Reject
+        // it here: there is no translation to measure.
+        double sum = 0, sumSquares = 0;
+        for (int y = box.Y; y < box.Y + box.Height; y++)
+        {
+            for (int x = box.X; x < box.X + box.Width; x++)
+            {
+                double v = refLuma[(y * w) + x];
+                sum += v;
+                sumSquares += v * v;
+            }
+        }
+
+        double pixels = (double)box.Width * box.Height;
+        if (sumSquares - (sum * sum / pixels) <= 1e-9) return null;
 
         // Score every integer offset in the search window by NCC over the box.
         int r = Math.Max(1, searchRadius);
@@ -178,11 +196,17 @@ public static class FrameAligner
     }
 
     /// <summary>
-    /// Integer translation that fills vacated pixels with the frame's median sample, matching the
-    /// engine's AOI crop. <see cref="Shift"/> resamples and clamps instead, which is right for
-    /// stacking but not for centring.
+    /// Integer translation with a caller-chosen fill for the vacated border. The engine uses the
+    /// frame's median for <c>-ctr</c> and zero for surface-feature tracking; <see cref="Shift"/>
+    /// resamples and clamps instead, which is right for sub-pixel stacking but not for either.
     /// </summary>
-    public static Frame ShiftWithBackground(Frame frame, AlignmentOffset offset)
+    /// <param name="frame">Frame to translate.</param>
+    /// <param name="offset">Translation to apply, in pixels.</param>
+    /// <param name="fill">
+    /// Value written into vacated pixels; null uses <see cref="MedianSample"/>. The engine uses the
+    /// frame median for <c>-ctr</c> but zero for surface-feature tracking, so the caller picks.
+    /// </param>
+    public static Frame ShiftWithBackground(Frame frame, AlignmentOffset offset, ushort? fill = null)
     {
         ArgumentNullException.ThrowIfNull(frame);
 
@@ -201,8 +225,8 @@ public static class FrameAligner
             SourceName = frame.SourceName,
         };
 
-        ushort fill = MedianSample(frame);
-        Array.Fill(dst.Samples, fill);
+        ushort background = fill ?? MedianSample(frame);
+        Array.Fill(dst.Samples, background);
 
         for (int y = 0; y < h; y++)
         {

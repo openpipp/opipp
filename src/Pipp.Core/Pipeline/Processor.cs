@@ -183,8 +183,21 @@ public sealed class PipelineSettings
     /// <summary>Enable image centring.</summary>
     public bool Centre { get; set; }
 
-    /// <summary>Enable surface-feature tracking within <see cref="AlignmentBox"/>.</summary>
+    /// <summary>
+    /// Enable surface-feature tracking within <see cref="AlignmentBox"/> (<c>-en_surface_feature_tracking</c>).
+    /// </summary>
+    /// <remarks>
+    /// The reference is the first accepted frame; every later frame is correlated against it inside the
+    /// AFB and shifted by the negated measurement. A run without an <see cref="AlignmentBox"/> is a
+    /// no-op, which is what the engine does when the <c>-afb_*</c> quartet is absent.
+    /// </remarks>
     public bool SurfaceTracking { get; set; }
+
+    /// <summary>
+    /// Stabilise while tracking (<c>-en_ss</c>). The engine needs both switches: with only
+    /// <c>-en_surface_feature_tracking</c> its output is byte-identical to a plain run.
+    /// </summary>
+    public bool EnableStabilisation { get; set; }
 
     /// <summary>Alignment feature box (PIPP's AFB).</summary>
     public PixelRect? AlignmentBox { get; set; }
@@ -279,6 +292,11 @@ public sealed class Processor
                 int? detectionThreshold = null;
                 Frame? reference = null;
                 Frame? sample = null;
+
+                // Surface tracking zero-fills the vacated border in the engine; centring fills it with
+                // the frame's median. Stacking and the still/container writers all shift the same way.
+                bool stabilise = _settings.SurfaceTracking && _settings.EnableStabilisation;
+                ushort? shiftFill = stabilise && !_settings.Centre ? (ushort)0 : null;
                 int index = 0;
 
                 while (true)
@@ -378,14 +396,25 @@ public sealed class Processor
                         // than aligning frames to each other, so each frame is measured on its own.
                         offset = FrameAligner.CentreOffset(frame, detectionThreshold.Value);
                     }
-                    else if (_settings.SurfaceTracking)
+                    else if (stabilise)
                     {
+                        // The engine's GUI always emits the AFB quartet alongside the switch, and a run
+                        // without one leaves the frames untouched (verified on saturn30: the switch
+                        // alone is byte-identical to a plain run). Mirror that instead of guessing a box.
                         reference ??= frame;
-                        if (!ReferenceEquals(reference, frame))
+                        if (!ReferenceEquals(reference, frame) && _settings.AlignmentBox is { } box)
                         {
-                            var measured = FrameAligner.EstimateTranslation(
-                                reference, frame, _settings.AlignmentSearchRadius, _settings.AlignmentBox);
-                            offset = measured ?? AlignmentOffset.Zero;
+                            // Measure returns the displacement of the tracked content, i.e.
+                            // reference(box) == frame(box + offset), so aligning means shifting by -offset.
+                            // ZNCC is the feature-tracking measurement; the cosine aligner is only a
+                            // fallback for boxes too flat or too occluded for ZNCC to accept.
+                            var measured = SurfaceTracker.Measure(reference, frame, _settings.AlignmentSearchRadius, box)
+                                ?? FrameAligner.EstimateTranslation(reference, frame, _settings.AlignmentSearchRadius, box);
+
+                            if (measured is { } m)
+                            {
+                                offset = new AlignmentOffset(-m.Dx, -m.Dy);
+                            }
                         }
                     }
 
@@ -430,7 +459,7 @@ public sealed class Processor
                     var stacker = new FrameStacker(first.Width, first.Height, first.Channels, first.BitDepth, method);
                     foreach (var (frame, _, offset) in selected)
                     {
-                        stacker.Add(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset));
+                        stacker.Add(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset, shiftFill));
                     }
                     var master = stacker.Result();
                     using var sink = FrameSinkFactory.Create(masterPath, master, 1, _settings.Fps);
@@ -448,7 +477,7 @@ public sealed class Processor
                     var gifFrames = new List<Frame>(selected.Count);
                     foreach (var (frame, _, offset) in selected)
                     {
-                        gifFrames.Add(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset));
+                        gifFrames.Add(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset, shiftFill));
                         outputFrames++;
                     }
 
@@ -464,7 +493,7 @@ public sealed class Processor
                     using var sink = FrameSinkFactory.Create(outputPath, template, selected.Count, _settings.Fps);
                     foreach (var (frame, _, offset) in selected)
                     {
-                        sink.Write(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset));
+                        sink.Write(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset, shiftFill));
                         outputFrames++;
                     }
                     outputs.Add(outputPath);
@@ -494,7 +523,7 @@ public sealed class Processor
                     int number = firstNumber;
                     foreach (var (frame, _, offset) in selected)
                     {
-                        var written = offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset);
+                        var written = offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset, shiftFill);
                         string stem = _settings.RenumberFrames
                             ? number.ToString(numberFormat, CultureInfo.InvariantCulture)
                             : written.Index.ToString(numberFormat, CultureInfo.InvariantCulture);

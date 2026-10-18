@@ -26,6 +26,12 @@ public enum StackMethod
 /// It also accepts an optional frame to subtract from every input (used for flat-darks).
 /// This class reproduces that contract: same geometry checks, optional subtraction, mean/median
 /// output, and a hard cap on retained frames for median mode.
+/// <para>
+/// Rounding and accumulation follow the native stacker exactly: its per-pixel accumulator is a
+/// 32-bit integer and the final average is an unsigned integer division, so every fractional mean
+/// truncates toward zero (10 and 11 average to 10). The accumulator here is 64-bit, which produces
+/// the same samples for any run the native 32-bit accumulator does not overflow.
+/// </para>
 /// </remarks>
 public sealed class FrameStacker
 {
@@ -143,9 +149,12 @@ public sealed class FrameStacker
         switch (_method)
         {
             case StackMethod.Mean:
+                // The engine's master-frame stacker (pipp_dll!stack_frames, FUN_180086110) divides its
+                // per-pixel accumulator by the frame count with unsigned integer division, so a .5
+                // average truncates: two frames of 10 and 11 average to 10, not 11. Match that exactly.
                 for (int i = 0; i < outSamples.Length; i++)
                 {
-                    outSamples[i] = (ushort)((_sum[i] + _count / 2) / _count);
+                    outSamples[i] = (ushort)(_sum[i] / _count);
                 }
                 break;
 
