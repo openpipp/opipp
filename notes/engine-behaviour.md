@@ -120,3 +120,30 @@ Notes:
 - `@ANIM` and `@QSORT` are emitted up front with `0`.
 - Our engine currently emits `@PROGRESS`, `@FNUM`, `@FCNT` and orders the tokens differently.
   Matching this stream is a prerequisite for dropping the `EngineLocator` fallback in the GUI.
+
+## Real-data findings (Strata Saturn SER, 640x640 8-bit bayer, 8984 frames)
+
+Sample: `samples/2022-10-25-0055_2.ser` (third-party evaluation data, git-ignored; a 30-frame subset
+is used for parity runs). Results on frames 1/15/30:
+
+| Case | Result |
+| --- | --- |
+| `-tif` (plain) | **pixel-identical** |
+| `-tif -db=2` (debayer) | **pixel-identical** |
+| `-tif -hs=204` | diverges |
+| `-tif -ctr -ms=5` | diverges |
+
+### The stretch gain is image-dependent, not a constant 2.04
+
+Measured on the real frame: input 23 -> 53, 46 -> 106, 69 -> 159, 92 -> 212, i.e. a **gain of 2.3043**
+with zero intercept, against 2.04 on the synthetic fixture. Same switch, same code path, different
+gain - so `-hs=204` is not simply "multiply by 2.04". The synthetic fixture (min 38, max 255) hid
+this because its histogram is degenerate.
+
+Implication: the formula recorded earlier is only valid for fixtures with that value range. The
+correct rule must involve a per-frame statistic (black point, percentile or maximum). This is the
+first item of Phase 4a: sweep `-hs` on this real frame and fit the gain against the frame's
+histogram, then re-verify both fixtures.
+
+Centring also diverges on the real planet, as predicted: our Otsu threshold is not the engine's
+"Calculated minpixel value".

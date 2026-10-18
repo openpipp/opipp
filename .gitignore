@@ -13,6 +13,9 @@ obj/
 /decompiled/
 /ghidra/
 
+# Real captures used for testing (large, third-party, evaluation use only)
+/samples/
+
 # Parity harness scratch and outputs
 /parity/
 *.raw

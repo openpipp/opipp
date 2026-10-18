@@ -141,6 +141,31 @@ Exit criteria: repository publishable without any reversed artefacts; CI green f
 
 ---
 
+## Decision log
+
+**Next step: Phase 4a — real-data parity, then the detection threshold.** Chosen over GIF and over
+the remaining format work, for three reasons:
+
+1. **Every verification so far runs on toy frames** (32x24 discs on flat fields). Nothing proves the
+   engine agrees with the original on a realistic capture: 640x480, sensor noise, gradients, a
+   partially visible or off-centre planet, hundreds of frames. A tool that matches on synthetic data
+   and drifts on real data is worse than one with a missing feature.
+2. **The detection threshold is the largest unproven behaviour.** Centring, `-chk` rejection, quality
+   ranking and the `-ctr` target all depend on the engine's "Calculated minpixel value"; we use Otsu.
+   The original prints that value into its log, so it can be characterised black-box across many
+   fixtures - no decompiler needed - and only then matched.
+3. **GIF is contained and visible, not risky.** It needs a new encoder (LZW + palette), but nothing
+   else in the engine depends on it, and its output is quantised so byte parity was never the target.
+
+Order: (a) realistic fixture and rerun all 12 cases, fixing what breaks; (b) characterise the
+threshold from logged values, implement, verify on the same fixtures; (c) return to GIF, then AVI
+input codecs.
+
+Quick win to take alongside: Phase 3's master saving (`-save_dark`, `-save_flat`) is a small wiring
+job against `MasterFrameBuilder` and unlocks an everyday workflow.
+
+---
+
 ## Working agreements
 
 - Every behaviour change lands with either a test or a parity case — "it looks right" is not a status.
