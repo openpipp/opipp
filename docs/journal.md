@@ -349,3 +349,36 @@ Six parallel subagents produced (all verified, written up in `notes/`):
 - **`SurfaceTracker.cs`** + 16 tests - zero-mean normalised cross-correlation with parabolic
   sub-pixel refinement, gain/pedestal invariant, returns null below 0.5 correlation.
 - **`notes/centring.md`** (459 lines) - the rule implemented in M16.
+
+## M18 - Quality and detection: exact parity (`d3aaa0a`)
+
+**Quality (`EngineQuality`, stateful).** The score now matches the engine to six decimals. Three
+corrections were needed beyond the first reading of the recovered loop:
+
+1. the stencil neighbour is the row **above** in image coordinates (the engine's buffer is bottom-up);
+2. the subsample grid and the reused mask are indexed bottom-up, which is what reproduces the
+   cross-frame scribbles - the mask buffer is allocated non-clearing and reused, the bug that makes
+   the first frame score 1.3255x higher;
+3. the box finder returns last-good/first-good rows, not one past.
+
+Verified: `saturn30 -q=10` quality log is byte-identical across all ten rows (1065.667424,
+813.334568, 808.547235, ...), the four-identical-frames fixture reproduces 1065.667424 /
+803.964973 x3, and `-chk -q=30` matches all 30 rows.
+
+**Detection (`PlanetDetector`).** Implements `FUN_140077560`: 4-tap horizontal running sum against
+`4 * threshold`, runs longer than 9 pixels, seed row then interval-overlap growth, bottom-up order,
+8-bit and 16-bit luma paths. Returns `Found` / `NoObject` / `PartialObject` / `TooSmall`; `-chk` now
+rejects and counts all three reasons and `-ms` is wired.
+
+The engine's **default minimum size is 50**, not the GUI's 15 (bisected: a 49-pixel object is
+rejected, a 50-pixel one accepted). Oracle parity: `-chk` keeps 30/30 with no discards, `-mp=200`
+gives 30 "no planet", `-ms=999` gives 30 "diameter below minimum", and a synthetic partial fixture
+reports exactly one partial.
+
+**MJPEG input (`22bc802`).** `AviReader` recognises MJPG and decodes chunks with the baseline JPEG
+decoder; a 3-frame 64x48 MJPG AVI matches ffmpeg to mean 0.011 / max 2 of 255.
+
+**Switch matrix refreshed** to 131 rows from the audit: 28 verified, 30 executed, 68 parsed-only,
+5 inert. The `-gif` row was corrected after GIF output was wired.
+
+372 tests, 22 parity cases (18 synthetic + 4 real), all matching.

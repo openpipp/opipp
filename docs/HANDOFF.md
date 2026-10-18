@@ -16,8 +16,8 @@ be published or committed. No `LICENSE` until the author's permission is obtaine
 | --- | --- |
 | Repo | `C:\Users\ilanp\Projects\PIPP-RE` (git, local only, HEAD `093eea2`) |
 | Build | `dotnet build PIPP.slnx` - clean |
-| Tests | **343 passing, 0 failing** (7 projects) |
-| Parity | **18 synthetic cases + 4 real-data cases** (`--real`), all matching; GIF is a deliberate divergence |
+| Tests | **372 passing, 0 failing** (7 projects) |
+| Parity | **18 synthetic + 4 real-data cases** (`--real`), all matching; GIF is a deliberate divergence |
 | Managed code | Core 11.8k lines, Cli 0.3k, App 14.5k, tests 5.5k |
 | Reference | `decompiled/` 14,277 lines C#; `ghidra/out/pipp_core.c` 4,229 functions |
 | Real data | `samples/` 4.8 GB (git-ignored, evaluation-use third-party capture) |
@@ -65,7 +65,8 @@ Evidence (all pixel-exact against `bin/pipp_core.exe`):
 
 ## Phase 4 status
 
-Done: the detection threshold (item 1) - recovered, exact on real frames, committed.
+Done: detection threshold (item 1), centring (item 2b, 30/30 pixel-exact), quality scoring (item 3,
+six decimals), detection and `-chk`/`-ms` (item 2). All committed and covered by parity cases.
 
 Open, in the order I would take them:
 
