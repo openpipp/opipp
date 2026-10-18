@@ -99,11 +99,18 @@ public class GuiTranscriptTests
     private static string FindRepoRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "PIPP.slnx")))
+        // Accept any solution name at the root: the project was renamed from PIPP to OPIPP, and a
+        // hard-coded file name turns a harmless rename into a wall of test failures.
+        static bool IsRepoRoot(string path) =>
+            Directory.Exists(Path.Combine(path, "src", "Pipp.Core")) &&
+            Directory.EnumerateFiles(path, "*.slnx").Any();
+
+        while (directory is not null && !IsRepoRoot(directory.FullName))
         {
             directory = directory.Parent;
         }
 
-        return directory?.FullName ?? throw new InvalidOperationException("PIPP.slnx not found above the test output");
+        return directory?.FullName
+            ?? throw new InvalidOperationException("repository root (src/Pipp.Core next to a .slnx) not found above the test output");
     }
 }

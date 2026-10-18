@@ -9,8 +9,8 @@ inventory.
 | Item | Value |
 | --- | --- |
 | SDK | .NET 10.0.402, local only (`~/.dotnet-sdk`) |
-| Solution | `PIPP.slnx` (note: `.slnx`, not `.sln`) |
-| Build | `dotnet build PIPP.slnx` - clean |
+| Solution | `OPIPP.slnx` (note: `.slnx`, not `.sln`) |
+| Build | `dotnet build OPIPP.slnx` - clean |
 | Tests | **343 passing, 0 failing** (7 projects) |
 | Managed code | `Pipp.Core` 11.8k lines, `Pipp.Cli` 0.3k, `Pipp.App` 14.5k, tests 5.5k |
 | Reference artefacts | `decompiled/` 14,277 lines C#, `ghidra/out/` 4,229 functions |

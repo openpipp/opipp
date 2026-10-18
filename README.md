@@ -1,4 +1,10 @@
-# PIPP — decompiled, reconstructed, modernized
+# OPIPP — Open PIPP
+
+**OPIPP** (pronounced "oh-pip", *Open PIPP*) is this project: an open, fully managed
+continuation of **PIPP (Planetary Imaging PreProcessor)**. The name marks what changed - the
+engine is rebuilt as readable C# - while keeping the original's initials so it stays obvious
+what it is a continuation of. Internally the namespaces remain `Pipp.*` and the drop-in engine
+binary is still `Pipp.Cli`, so nothing about the compatibility story changes.
 
 A reverse-engineered reconstruction of **PIPP (Planetary Imaging PreProcessor)** by Chris Garry,
 rebuilt as a managed **.NET 10 / C# 13** codebase.
@@ -44,8 +50,8 @@ Resuming work: [docs/HANDOFF.md](docs/HANDOFF.md) · progress and what comes nex
 Requires the .NET 10 SDK (`dotnet --version` ≥ 10.0).
 
 ```bash
-dotnet build PIPP.slnx
-dotnet test PIPP.slnx
+dotnet build OPIPP.slnx
+dotnet test OPIPP.slnx
 
 # headless engine (same switches as pipp_core.exe)
 dotnet run --project src/Pipp.Cli -- -help

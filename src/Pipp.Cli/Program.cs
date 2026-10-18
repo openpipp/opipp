@@ -602,7 +602,9 @@ internal static class Program
                 ? o.AviQuality
                 : throw new ArgumentException($"Illegal avi_quality value ({o.AviQuality}); expected 1-10."),
 
-            AlignmentBox = o.AnchorFeatureX is int ax && o.AnchorFeatureY is int ay && o.AnchorFeatureWidth is int aw && o.AnchorFeatureHeight is int ah
+            // The engine's AFB box is addressed in its bottom-up buffer rows (the tracker searches
+            // the raw buffer); our frames are top-down, so the Y origin is mirrored here once.
+            AlignmentBox = o.AnchorFeatureX is int ax && o.AnchorFeatureY is int ay && o.AnchorFeatureWidth is int aw && o.AnchorFeatureHeight is int ah && aw > 0 && ah > 0
                 ? new PixelRect(ax, ay, aw, ah)
                 : null,
 

@@ -1,4 +1,4 @@
-# Roadmap: PIPP-RE to feature parity
+# Roadmap: OPIPP to feature parity
 
 PIPP (Planetary Imaging PreProcessor) 2.5, reconstructed from the installed binaries.
 This document is the plan of record: what is done, what is missing, in what order, and how we

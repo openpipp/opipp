@@ -331,8 +331,8 @@ public class OutputOptionTests
     }
 
     [Theory]
-    [InlineData(QualityAlgorithm.Ninox, "PIPP Old")]
-    [InlineData(QualityAlgorithm.Histogram, "PIPP Histogram")]
+    [InlineData(QualityAlgorithm.Ninox, "Old (As taken from Ninox)")]
+    [InlineData(QualityAlgorithm.Histogram, "Histogram")]
     public void QualityAlgorithmSwitch_IsNamedInTheLog(QualityAlgorithm algorithm, string label)
     {
         string dir = TempDir();

@@ -1251,8 +1251,8 @@ public sealed class Processor
 
     private static string QualityAlgorithmLabel(QualityAlgorithm algorithm) => algorithm switch
     {
-        QualityAlgorithm.Histogram => "PIPP Histogram",
-        QualityAlgorithm.Ninox => "PIPP Old",
+        QualityAlgorithm.Histogram => "Histogram",
+        QualityAlgorithm.Ninox => "Old (As taken from Ninox)",
         _ => "PIPP Default",
     };
 

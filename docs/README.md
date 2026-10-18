@@ -15,7 +15,7 @@ Living documents live here; the research trail stays in [`../notes`](../notes).
 ## Repository layout
 
 ```
-PIPP-RE/
+OPIPP/
 ├── src/
 │   ├── Pipp.Core/        formats, processing, pipeline, CLI model (the engine)
 │   ├── Pipp.Cli/         drop-in replacement for pipp_core.exe

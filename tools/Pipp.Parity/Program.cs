@@ -104,6 +104,9 @@ internal static class Program
             // the centring transform itself
             new ParityCase("centre", ["-tif", "-ctr", "-ms=5"], Input: "big"),
             new ParityCase("quality", ["-tif", "-q=2"], Mode: CompareMode.SetEquality),
+            // The two alternative metrics: Ninox must match numerically, Histogram keeps +inf scores.
+            new ParityCase("quality-old", ["-tif", "-q=2", "-qold"], Mode: CompareMode.SetEquality),
+            new ParityCase("quality-histo", ["-tif", "-q=2", "-qhisto"], Mode: CompareMode.SetEquality),
             new ParityCase("bmp-out", ["-bmp"]),
             // Newly wired switch surfaces, locked in so they cannot regress silently.
             new ParityCase("range", ["-tif", "-sf=2", "-f=2"]),

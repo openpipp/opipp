@@ -14,8 +14,8 @@ be published or committed. No `LICENSE` until the author's permission is obtaine
 
 | Item | Value |
 | --- | --- |
-| Repo | `C:\Users\ilanp\Projects\PIPP-RE` (git, local only, HEAD `093eea2`) |
-| Build | `dotnet build PIPP.slnx` - clean |
+| Repo | `C:\Users\ilanp\Projects\OPIPP` (git, local only, HEAD `093eea2`) |
+| Build | `dotnet build OPIPP.slnx` - clean |
 | Tests | **481 passing, 0 failing** (7 projects) |
 | Parity | **18 synthetic + 4 real-data cases** (`--real`), all matching; GIF is a deliberate divergence |
 | Switches | **113 of 131 wired** (76 verified / 37 executed), 6 documented skips, 12 inert |
@@ -27,8 +27,8 @@ Run everything with:
 
 ```bash
 export DOTNET_ROOT="$HOME/.dotnet-sdk"; export PATH="$DOTNET_ROOT:$DOTNET_ROOT/tools:$PATH"
-cd "C:/Users/ilanp/Projects/PIPP-RE"
-dotnet test PIPP.slnx --nologo
+cd "C:/Users/ilanp/Projects/OPIPP"
+dotnet test OPIPP.slnx --nologo
 dotnet build src/Pipp.Cli/Pipp.Cli.csproj && dotnet build tools/Pipp.Parity/Pipp.Parity.csproj
 dotnet run --project tools/Pipp.Parity --no-build              # expect: ALL CASES MATCH
 dotnet run --project tools/Pipp.Parity --no-build -- --real    # + 30 real Saturn frames
@@ -147,7 +147,7 @@ dotnet run --project tools/Pipp.Parity --no-build -- --real
   byte-swapped under an `II` header (ffmpeg cannot read them either - we deliberately diverge).
 - **SER colour** uses ColorID **100 = RGB, 101 = BGR**; 16/17 are bayer/mono ids in PIPP's dialect.
 - **Quality selection** numbers outputs from 0, plain runs from 1, padded to the frame count.
-- `PIPP.slnx`, not `.sln`.
+- `OPIPP.slnx`, not `.sln`.
 
 ## Where to read next
 
