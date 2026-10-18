@@ -39,6 +39,9 @@ public sealed record ProcessingReport
     /// <summary>Frames dropped because the object was below the minimum size.</summary>
     public int DiscardedTooSmall { get; init; }
 
+    /// <summary>Frames dropped because the tracked displacement pushed the AOI off the frame.</summary>
+    public int DiscardedNoAoi { get; init; }
+
     /// <summary>Input files processed.</summary>
     public int FilesProcessed { get; init; }
 
@@ -179,6 +182,9 @@ public sealed class PipelineSettings
     public Frame? MasterDark { get; set; }
 
     /// <summary>Master flat frame; frames are divided by it and rescaled by its mean.</summary>
+    /// <summary>Normalise each Bayer phase separately when dividing by the flat (<c>-flat_bayer</c>).</summary>
+    public bool FlatHasBayer { get; set; }
+
     public Frame? MasterFlat { get; set; }
 
     /// <summary>
@@ -279,6 +285,14 @@ public sealed class PipelineSettings
     /// buffer (verified), so this implementation always performs the intended crop instead.
     /// </summary>
     public bool AreaOfInterestCrop { get; set; }
+
+    /// <summary>
+    /// Discard frames whose tracked displacement would carry <see cref="AreaOfInterest"/> outside the
+    /// frame (<c>-aoi_reject</c>). Recovered from the engine's fine tracker (<c>FUN_1400a5f40</c>):
+    /// the comparison is between the <em>moved AOI rectangle</em> and the frame, not between the AFB
+    /// box and the AOI, and a rejection is reported as <c>no_aoi</c>.
+    /// </summary>
+    public bool AreaOfInterestReject { get; set; }
 
     /// <summary>Resize target; a dimension of -1 keeps the aspect ratio.</summary>
     public (int Width, int Height)? Resize { get; set; }
@@ -462,7 +476,7 @@ public sealed class Processor
         var failed = new List<string>();
         int inputFrames = 0, outputFrames = 0, discardedQuality = 0,
             discardedNoObject = 0, discardedPartial = 0, discardedTooSmall = 0,
-            discardedNoFeature = 0, discardedStart = 0, discardedInputDrop = 0, discardedOutputDrop = 0,
+            discardedNoFeature = 0, discardedNoAoi = 0, discardedStart = 0, discardedInputDrop = 0, discardedOutputDrop = 0,
             filesProcessed = 0;
 
         // One metric instance for the whole run: the engine's mask buffer lives in its work image
@@ -495,6 +509,7 @@ public sealed class Processor
             int partialBefore = discardedPartial;
             int tooSmallBefore = discardedTooSmall;
             int noFeatureBefore = discardedNoFeature;
+            int noAoiBefore = discardedNoAoi;
             int inputDropBefore = discardedInputDrop;
             int outputDropBefore = discardedOutputDrop;
             int outputBefore = outputFrames;
@@ -684,6 +699,21 @@ public sealed class Processor
 
                             if (measured is { } m)
                             {
+                                // -aoi_reject (engine FUN_1400a5f40): the measurement moves the AOI
+                                // rectangle with the tracked content, and the frame is discarded when
+                                // the moved rectangle no longer fits in the frame. The test is on the
+                                // AOI itself, not on the AFB box, so a full-frame AOI rejects every
+                                // frame that moves at all (or even one that does not: its right edge
+                                // lands on W, one past the last column).
+                                if (_settings.AreaOfInterestReject && _settings.AreaOfInterest is PixelRect aoi &&
+                                    MovesAreaOfInterestOutsideFrame(aoi, frame.Width, frame.Height, m))
+                                {
+                                    discardedNoAoi++;
+                                    SaveRejected(frame, "no_aoi", index, rejectedDirectory, rejectedDigits);
+                                    _protocol?.WriteLine($"  Frame {index} rejected: no AOI found");
+                                    continue;
+                                }
+
                                 offset = new AlignmentOffset(-m.Dx, -m.Dy);
                             }
                             else if (_settings.AnchorFeatureReject)
@@ -723,6 +753,7 @@ public sealed class Processor
                             0,
                             0,
                             0,
+                            0,
                             accepted.Count > 0 ? accepted[0].Frame : null,
                             null,
                             []);
@@ -750,6 +781,7 @@ public sealed class Processor
                             discardedPartial - partialBefore,
                             discardedTooSmall - tooSmallBefore,
                             discardedNoFeature - noFeatureBefore,
+                            discardedNoAoi - noAoiBefore,
                             window.Start,
                             discardedInputDrop - inputDropBefore,
                             discardedOutputDrop - outputDropBefore,
@@ -1042,6 +1074,7 @@ public sealed class Processor
                         discardedPartial - partialBefore,
                         discardedTooSmall - tooSmallBefore,
                         discardedNoFeature - noFeatureBefore,
+                        discardedNoAoi - noAoiBefore,
                         window.Start,
                         discardedInputDrop - inputDropBefore,
                         discardedOutputDrop - outputDropBefore,
@@ -1063,6 +1096,7 @@ public sealed class Processor
             DiscardedNoObject = discardedNoObject,
             DiscardedPartialObject = discardedPartial,
             DiscardedTooSmall = discardedTooSmall,
+            DiscardedNoAoi = discardedNoAoi,
             FilesProcessed = filesProcessed,
             FailedFiles = failed,
             OutputFiles = outputs,
@@ -1088,6 +1122,7 @@ public sealed class Processor
         int droppedPartial,
         int droppedTooSmall,
         int droppedNoFeature,
+        int droppedNoAoi,
         int discardedForStart,
         int discardedByInputDrop,
         int discardedByOutputDrop,
@@ -1150,6 +1185,10 @@ public sealed class Processor
         {
             text.Append("  Frames discarded with no AFB found: ").Append(droppedNoFeature.ToString(CultureInfo.InvariantCulture)).Append((char)13).Append((char)10);
         }
+        if (droppedNoAoi > 0)
+        {
+            text.Append("  Frames discarded with no AOI found: ").Append(droppedNoAoi.ToString(CultureInfo.InvariantCulture)).Append((char)13).Append((char)10);
+        }
         if (droppedTooSmall > 0)
         {
             text.Append("  Frames discarded with planet diameter below minimum: ").Append(droppedTooSmall.ToString(CultureInfo.InvariantCulture)).Append((char)13).Append((char)10);
@@ -1202,7 +1241,7 @@ public sealed class Processor
                 quality.Append((position + 1).ToString(CultureInfo.InvariantCulture)).Append('\t')
                     .Append((entry.Frame.Index + 1).ToString(CultureInfo.InvariantCulture)).Append('\t')
                     .Append((position + 1).ToString(CultureInfo.InvariantCulture)).Append('\t')
-                    .Append(entry.Score.ToString("0.000000", CultureInfo.InvariantCulture)).Append('\t')
+                    .Append(FormatQuality(entry.Score)).Append('\t')
                     .Append(percent.ToString(CultureInfo.InvariantCulture)).Append("%\r\n");
             }
 
@@ -1286,7 +1325,9 @@ public sealed class Processor
                 // -flat_dark: the flat-dark is removed from the flat before normalisation.
                 flat = Calibration.SubtractDark(flat, _settings.MasterFlatDark);
             }
-            frame = Calibration.DivideFlat(frame, flat);
+            frame = _settings.FlatHasBayer
+                ? Calibration.DivideFlatBayer(frame, flat)
+                : Calibration.DivideFlat(frame, flat);
         }
 
         // 4. linear processing
@@ -1963,6 +2004,23 @@ public sealed class Processor
         return output;
     }
 
+    /// <summary>
+    /// True when translating <paramref name="aoi"/> by the measured content displacement would push
+    /// it outside the frame — the engine's <c>-2</c> ("no AOI") result. The engine compares the
+    /// <em>moved</em> AOI rectangle with the frame (FUN_1400a5f40: <c>base.x - aoi.x</c> through
+    /// <c>frameW + base.x - aoi.x - aoi.w - 1</c>), and uses the same whole-pixel displacement the
+    /// shift stage applies.
+    /// </summary>
+    private static bool MovesAreaOfInterestOutsideFrame(PixelRect aoi, int width, int height, AlignmentOffset measured)
+    {
+        int dx = (int)Math.Round(measured.Dx, MidpointRounding.AwayFromZero);
+        int dy = (int)Math.Round(measured.Dy, MidpointRounding.AwayFromZero);
+        return aoi.X + dx < 0
+            || aoi.Y + dy < 0
+            || (long)aoi.X + dx + aoi.Width > width
+            || (long)aoi.Y + dy + aoi.Height > height;
+    }
+
     /// <summary>Renders the <c>-sdp</c> detection overlay when that switch is on.</summary>
     private Frame ApplyOverlay(Frame frame, int? detectionThreshold)
     {
@@ -1978,6 +2036,13 @@ public sealed class Processor
     /// Extracts one colour plane as a one-channel frame; a mono frame is cloned for every channel,
     /// which is what the engine's <c>-rgb</c> does with mono input (three identical files).
     /// </summary>
+    /// <summary>Formats a quality score the way the engine's printf does, including <c>1.#INF00</c>.</summary>
+    private static string FormatQuality(double score) =>
+        double.IsPositiveInfinity(score) ? "1.#INF00"
+        : double.IsNegativeInfinity(score) ? "-1.#INF00"
+        : double.IsNaN(score) ? "-1.#IND00"
+        : score.ToString("0.000000", CultureInfo.InvariantCulture);
+
     private static Frame ExtractChannel(Frame frame, int channel)
     {
         if (frame.Channels == 1)
@@ -1992,7 +2057,12 @@ public sealed class Processor
             samples[i] = frame.Samples[(i * 3) + channel];
         }
 
-        return new Frame(frame.Width, frame.Height, 1, frame.BitDepth, samples);
+        return new Frame(frame.Width, frame.Height, 1, frame.BitDepth, samples)
+        {
+            Index = frame.Index,
+            SourceName = frame.SourceName,
+            Bayer = frame.Bayer,
+        };
     }
 
     private void Report(int percent, string? file, int frameIndex, int frameCount, string message)

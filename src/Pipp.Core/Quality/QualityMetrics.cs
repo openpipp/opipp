@@ -27,15 +27,44 @@ public enum QualityAlgorithm
 /// the frame's own computed detection threshold, i.e. it reproduces PIPP's <em>frame 1</em>.
 /// </para>
 /// <para>
-/// The other two estimators remain reconstructions: the original scores are computed on a
-/// downsampled region (see PIPP's <c>-qmin/-qmax/-qinc</c>), and its subsampler projects colour
-/// pixels to Rec.601 luma with the weights observed in <c>pipp_core!FUN_1400af990</c>
-/// (0.299 R + 0.587 G + 0.114 B over BGR-ordered samples). Their formulas are deterministic and
-/// exposure-normalised so that sorting behaviour is stable.
+/// <see cref="QualityAlgorithm.Ninox"/> (<c>-qold</c>) is the same sweep with unweighted strides,
+/// an absolute-difference metric and no exposure factor — see <see cref="NinoxQuality"/>. Its mask
+/// is reused across calls as well, so <see cref="Compute"/> keeps one instance per thread, i.e. per
+/// run in the CLI. Call <see cref="ResetRunState"/> to start a new run in the same process.
+/// </para>
+/// <para>
+/// <see cref="QualityAlgorithm.Histogram"/> (<c>-qhisto</c>) is algorithm 2 in
+/// <c>pipp_core!FUN_1400af2d0</c>: <c>bright50SumSquares / ((boxBottom-boxTop)*(boxRight-boxLeft))</c>
+/// with 32-bit box arithmetic. The engine returns early for this algorithm, before the box
+/// initialisation, so a run without object detection divides by the all-zero box: every score is
+/// <c>+inf</c> (the engine's log prints <c>1.#INF00</c>). The same happens in PIPP itself, so this
+/// is reproduced rather than corrected.
 /// </para>
 /// </remarks>
 public static class QualityMetrics
 {
+    /// <summary>The Ninox instance of the current run (one per thread, which is one per CLI run).</summary>
+    [ThreadStatic]
+    private static NinoxQuality? _ninox;
+
+    /// <summary>The run's threshold, computed once from the first scored frame like the engine.</summary>
+    [ThreadStatic]
+    private static int? _ninoxThreshold;
+
+    /// <summary>The work image's object box, written by the finder and read by algorithms 1 and 2.</summary>
+    [ThreadStatic]
+    private static int _detectedLeft;
+    [ThreadStatic]
+    private static int _detectedTop;
+    [ThreadStatic]
+    private static int _detectedRight;
+    [ThreadStatic]
+    private static int _detectedBottom;
+
+    /// <summary>True when the finder wrote (or cleared) the box since the last Ninox score.</summary>
+    [ThreadStatic]
+    private static bool _detectionPending;
+
     /// <summary>Computes a quality score; larger is better.</summary>
     public static double Compute(Frame frame, QualityAlgorithm algorithm)
     {
@@ -43,8 +72,8 @@ public static class QualityMetrics
         return algorithm switch
         {
             QualityAlgorithm.PippDefault => ComputeDefault(frame),
-            QualityAlgorithm.Ninox => LaplacianVariance(ToLuma(frame), frame.Width, frame.Height),
-            QualityAlgorithm.Histogram => HistogramEntropy(ToLuma(frame), frame.BitDepth),
+            QualityAlgorithm.Ninox => ComputeNinox(frame),
+            QualityAlgorithm.Histogram => ComputeHistogram(frame),
             _ => throw new ArgumentOutOfRangeException(nameof(algorithm)),
         };
     }
@@ -58,6 +87,85 @@ public static class QualityMetrics
     {
         var engine = new EngineQuality();
         return engine.Score(frame, DetectionThreshold.ComputeOrDefault(frame));
+    }
+
+    /// <summary>
+    /// Ninox on the run's single mask-reusing instance. The threshold is computed from the first
+    /// frame and then reused, matching the engine's <c>image[4]</c>.
+    /// </summary>
+    private static double ComputeNinox(Frame frame)
+    {
+        _ninox ??= new NinoxQuality();
+        _ninoxThreshold ??= DetectionThreshold.ComputeOrDefault(frame);
+        return _ninox.Score(frame, _ninoxThreshold.Value);
+    }
+
+    /// <summary>
+    /// Algorithm 2's whole body: the bright-50 sum divided by the box area, with the engine's
+    /// 32-bit <c>(bottom-top)*(right-left)</c>. With no detection the box is all-zero, so the
+    /// division is by zero and the score is <c>+inf</c> (NaN for an all-black frame).
+    /// </summary>
+    private static double ComputeHistogram(Frame frame)
+    {
+        double bright = EngineQuality.Bright50Squares(frame);
+        int area = (_detectedBottom - _detectedTop) * (_detectedRight - _detectedLeft);
+        return bright / area;
+    }
+
+    /// <summary>
+    /// Forgets the per-run Ninox mask, threshold and detected box. Call between runs when the same
+    /// process hosts more than one; the CLI's one run per process does not need it.
+    /// </summary>
+    public static void ResetRunState()
+    {
+        _ninox = null;
+        _ninoxThreshold = null;
+        ClearDetectedBoxState();
+        _detectionPending = false;
+    }
+
+    /// <summary>Records the finder's box for the algorithms that share the engine's work image.</summary>
+    internal static void NoteDetectedBox(int left, int top, int right, int bottom)
+    {
+        _detectedLeft = left;
+        _detectedTop = top;
+        _detectedRight = right;
+        _detectedBottom = bottom;
+        _detectionPending = true;
+    }
+
+    /// <summary>Records the finder's all-zero failure box.</summary>
+    internal static void NoteDetectionCleared()
+    {
+        ClearDetectedBoxState();
+        _detectionPending = true;
+    }
+
+    /// <summary>
+    /// Hands the pending detection box to the Ninox instance once, so its own box life-cycle starts
+    /// from what the finder wrote this frame. False when the finder has not run.
+    /// </summary>
+    internal static bool TryTakeDetectedBox(out int left, out int top, out int right, out int bottom)
+    {
+        left = _detectedLeft;
+        top = _detectedTop;
+        right = _detectedRight;
+        bottom = _detectedBottom;
+        if (!_detectionPending)
+        {
+            return false;
+        }
+
+        _detectionPending = false;
+        return true;
+    }
+
+    private static void ClearDetectedBoxState()
+    {
+        _detectedLeft = 0;
+        _detectedTop = 0;
+        _detectedRight = 0;
+        _detectedBottom = 0;
     }
 
     /// <summary>
@@ -81,59 +189,10 @@ public static class QualityMetrics
         return luma;
     }
 
-    /// <summary>Variance of the 3x3 Laplacian response.</summary>
-    private static double LaplacianVariance(ushort[] luma, int w, int h)
-    {
-        if (w < 3 || h < 3) return 0;
-        double sum = 0, sumSq = 0;
-        long n = 0;
-
-        for (int y = 1; y < h - 1; y++)
-        {
-            for (int x = 1; x < w - 1; x++)
-            {
-                int i = y * w + x;
-                int lap = 4 * luma[i] - luma[i - 1] - luma[i + 1] - luma[i - w] - luma[i + w];
-                sum += lap;
-                sumSq += (double)lap * lap;
-                n++;
-            }
-        }
-
-        if (n == 0) return 0;
-        double mean = sum / n;
-        return sumSq / n - mean * mean;
-    }
-
-    /// <summary>Shannon entropy of a 64-bin luma histogram, in bits.</summary>
-    private static double HistogramEntropy(ushort[] luma, int bitDepth)
-    {
-        const int bins = 64;
-        var hist = new long[bins];
-        int max = bitDepth == 8 ? 255 : 65535;
-        double scale = (bins - 1) / (double)max;
-
-        foreach (var v in luma)
-        {
-            int b = (int)(v * scale);
-            if (b >= bins) b = bins - 1;
-            hist[b]++;
-        }
-
-        double total = luma.Length;
-        double entropy = 0;
-        foreach (var c in hist)
-        {
-            if (c == 0) continue;
-            double p = c / total;
-            entropy -= p * Math.Log2(p);
-        }
-        return entropy;
-    }
-
     /// <summary>
-    /// Converts raw scores to PIPP's "percent of best" ordering, preserving input order in
-    /// <see cref="QualityEntry.Index"/>.
+    /// Converts raw scores to PIPP's "percent of best" ordering, preserving input order for equal
+    /// scores (the engine's quality log keeps source order when every value is identical, e.g. the
+    /// all-<c>+inf</c> <c>-qhisto</c> table).
     /// </summary>
     public static QualityEntry[] Rank(IReadOnlyList<double> scores)
     {
@@ -147,10 +206,18 @@ public static class QualityMetrics
         var entries = new QualityEntry[scores.Count];
         for (int i = 0; i < scores.Count; i++)
         {
-            double pct = best <= 0 ? 0 : scores[i] / best * 100.0;
+            // The engine computes (int)(score/best*100). With best = +inf that ratio is NaN and the
+            // MSVC cast lands on 0, which is why its -qhisto log shows 0% for every frame.
+            double ratio = best > 0 ? scores[i] / best * 100.0 : 0.0;
+            double pct = double.IsNaN(ratio) ? 0.0 : ratio;
             entries[i] = new QualityEntry(i, scores[i], pct);
         }
-        Array.Sort(entries, (a, b) => b.PercentOfBest.CompareTo(a.PercentOfBest));
+
+        Array.Sort(entries, (a, b) =>
+        {
+            int byQuality = b.PercentOfBest.CompareTo(a.PercentOfBest);
+            return byQuality != 0 ? byQuality : a.Index.CompareTo(b.Index);
+        });
         return entries;
     }
 }

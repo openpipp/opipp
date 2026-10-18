@@ -9,18 +9,36 @@ namespace Pipp.Core.Alignment;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The score is zero-mean normalised cross-correlation (ZNCC) over the box, evaluated at every integer
-/// offset inside the search radius and refined to sub-pixel with a parabola fit on the correlation peak.
-/// ZNCC subtracts each window's mean and divides by its standard deviation, so the result is invariant to
-/// the brightness and gain changes a capture run actually produces (thin cloud, exposure drift, gamma):
-/// a frame that is uniformly 20% brighter correlates exactly as well as the original. The correlation
-/// version in <see cref="FrameAligner.EstimateTranslation"/> is the un-normalised (cosine) form, which
-/// rewards bright pixels rather than structure; this type is the feature-tracking measurement proper.
+/// The score is zero-mean normalised cross-correlation (ZNCC) over the box, evaluated on the integer
+/// offset grid only. This is the measurement the engine makes: <c>FUN_1400a7470</c> runs a coarse
+/// SSD seed (<c>FUN_1400a6e40</c>) and then refines it with <c>FUN_1400a5f40</c>, whose search loop
+/// and output are integers — there is no sub-pixel refinement anywhere in the tracker or in the
+/// shift routine it feeds. The engine's SSD is taken after a per-candidate gain/offset LUT that
+/// matches the window's brightness and contrast to the template's; the least-squares form of that
+/// normalisation is minimised exactly by maximising ZNCC, and on saturn30 (AFB 330,340,48x48,
+/// 30 frames) the integer ZNCC peak reproduces all 30 oracle shifts.
+/// </para>
+/// <para>
+/// ZNCC subtracts each window's mean and divides by its standard deviation, so the result is
+/// invariant to the brightness and gain changes a capture run actually produces (thin cloud,
+/// exposure drift, gamma): a frame that is uniformly 20% brighter correlates exactly as well as the
+/// original. The correlation version in <see cref="FrameAligner.EstimateTranslation"/> is the
+/// un-normalised (cosine) form, which rewards bright pixels rather than structure; this type is the
+/// feature-tracking measurement proper.
 /// </para>
 /// <para>
 /// Everything is measured on Rec.601 luma (<see cref="QualityMetrics.ToLuma"/>), so mono, Bayer and
 /// 3-channel frames share one code path, and 8-bit and 16-bit frames behave identically because the
 /// correlation is scale-free.
+/// </para>
+/// <para>
+/// Search geometry: the engine seeds with a full-frame SSD scan on a <c>box/16</c> block grid and
+/// refines within ±<c>box/16</c> of that seed, so it can in principle lock onto a feature anywhere in
+/// the frame. <see cref="Measure"/> instead searches exhaustively over the caller's
+/// <c>searchRadius</c>, which is the same integer grid and the same score; for displacements inside
+/// the radius the two reach the same peak, and the pipeline's radius (32) covers the motion these
+/// captures show. A displacement larger than the radius is the one case where this implementation
+/// can differ from the engine's global seed.
 /// </para>
 /// <para>
 /// Convention, identical to <see cref="FrameAligner.EstimateTranslation"/> so the two are
@@ -96,13 +114,6 @@ public static class SurfaceTracker
         for (int i = 0; i < pixels; i++) deviations[i] -= meanA;
 
         int radius = searchRadius;
-        int side = (2 * radius) + 1;
-        var scores = new double[side, side];
-        for (int y = 0; y < side; y++)
-        {
-            for (int x = 0; x < side; x++) scores[x, y] = double.NaN;
-        }
-
         int bestX = 0, bestY = 0;
         double best = double.NegativeInfinity;
 
@@ -138,7 +149,8 @@ public static class SurfaceTracker
                 double score = varB <= FlatVariance ? 0 : num / Math.Sqrt(varA * varB);
                 score = Math.Clamp(score, -1.0, 1.0);
 
-                scores[dx + radius, dy + radius] = score;
+                // Strictly greater: the engine's scan keeps the first peak it meets in dy-then-dx
+                // order (FUN_1400a5f40 uses `uVar19*4 < best`), so ties go to the earlier candidate.
                 if (score > best)
                 {
                     best = score;
@@ -150,9 +162,10 @@ public static class SurfaceTracker
 
         if (best < MinCorrelation) return null;
 
-        double subX = SubPixel(scores, bestX + radius, bestY + radius, 1, 0);
-        double subY = SubPixel(scores, bestX + radius, bestY + radius, 0, 1);
-        return new AlignmentOffset(bestX + subX, bestY + subY);
+        // Integer measurement only: the engine's tracker never refines below the grid, and the
+        // shift routine consumes whole pixels. Returning the peak sample (rather than a parabola
+        // vertex) is what makes the pipeline reproduce the oracle's shift sequence exactly.
+        return new AlignmentOffset(bestX, bestY);
     }
 
     /// <summary>Intersects a box with the frame, returning null when nothing of it lands on the image.</summary>
@@ -165,26 +178,5 @@ public static class SurfaceTracker
         int x1 = (int)Math.Min(width, (long)box.X + box.Width);
         int y1 = (int)Math.Min(height, (long)box.Y + box.Height);
         return x1 <= x0 || y1 <= y0 ? null : new PixelRect(x0, y0, x1 - x0, y1 - y0);
-    }
-
-    /// <summary>
-    /// Parabola vertex through the peak sample and its neighbour in one axis. Returns 0 when the
-    /// neighbour is unavailable (the peak sits on the search boundary) or the fit is degenerate.
-    /// </summary>
-    private static double SubPixel(double[,] scores, int cx, int cy, int dx, int dy)
-    {
-        int nx = scores.GetLength(0), ny = scores.GetLength(1);
-        int ax = cx - dx, ay = cy - dy;
-        int bx = cx + dx, by = cy + dy;
-        if (ax < 0 || ay < 0 || bx >= nx || by >= ny) return 0;
-
-        double left = scores[ax, ay], centre = scores[cx, cy], right = scores[bx, by];
-        if (double.IsNaN(left) || double.IsNaN(right)) return 0;
-
-        double denominator = left - (2 * centre) + right;
-        if (Math.Abs(denominator) < 1e-12) return 0;
-
-        double delta = 0.5 * (left - right) / denominator;
-        return Math.Clamp(delta, -0.5, 0.5);
     }
 }

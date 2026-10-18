@@ -2,7 +2,6 @@ using System;
 using System.ComponentModel;
 using System.Drawing;
 using System.IO;
-using System.Text;
 using System.Windows.Forms;
 
 namespace PIPP_Application;
@@ -29,33 +28,32 @@ public class cFileInfoBox : Form
 		InitializeComponent();
 		file_infoRTB.Font = new Font("Courier New", 8f);
 		file_infoRTB.MaxLength = int.MaxValue;
-		string text = Path.Combine(Path.GetTempPath(), "pipp_" + Guid.NewGuid().ToString() + ".txt");
-		if (Path.GetExtension(filename).ToLower() == ".ser")
+		string extension = Path.GetExtension(filename).ToLower();
+		Show();
+		if (extension == ".ser")
 		{
-			Show();
 			file_infoRTB.Text = "Please Wait: Analysing SER File";
-			Invalidate();
-			Update();
-			LegacyNativeApi.ser_info(Encoding.Default.GetString(Encoding.UTF8.GetBytes(filename)), Encoding.Default.GetString(Encoding.UTF8.GetBytes(text)));
 		}
-		else if (Path.GetExtension(filename).ToLower() == ".avi")
+		else if (extension == ".avi")
 		{
-			Show();
 			file_infoRTB.Text = "Please Wait: Analysing AVI File";
-			Invalidate();
-			Update();
-			LegacyNativeApi.avi_info(Encoding.Default.GetString(Encoding.UTF8.GetBytes(filename)), Encoding.Default.GetString(Encoding.UTF8.GetBytes(text)));
 		}
 		else
 		{
-			Show();
 			file_infoRTB.Text = "Please Wait: Analysing FITS File";
-			Invalidate();
-			Update();
-			LegacyNativeApi.fits_info(Encoding.Default.GetString(Encoding.UTF8.GetBytes(filename)), Encoding.Default.GetString(Encoding.UTF8.GetBytes(text)));
 		}
-		file_infoRTB.Text = File.ReadAllText(text, Encoding.UTF8);
-		File.Delete(text);
+		Invalidate();
+		Update();
+		try
+		{
+			// Managed replacement for c_dll.ser_info/avi_info/fits_info: the report is built from
+			// Pipp.Core's metadata probes instead of being written to a temporary file by the DLL.
+			file_infoRTB.Text = ManagedEngineApi.DescribeFile(filename);
+		}
+		catch (Exception ex)
+		{
+			file_infoRTB.Text = "Unable to read file information:\r\n" + ex.Message;
+		}
 	}
 
 	private void button1_Click(object sender, EventArgs e)

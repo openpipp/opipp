@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Text;
 using Pipp.Core.Formats;
 using Pipp.Core.Frames;
+using Pipp.Core.Pipeline;
 
 namespace Pipp.Ser.Tests;
 
@@ -601,7 +602,233 @@ public class SerTests
         Assert.Equal((long)file.Length, info.FileSizeBytes!.Value);
     }
 
+    // ---------- engine-compatible output headers ----------
+
+    [Fact]
+    public void Parse_ToBytes_PreservesSpacePaddedTextFieldsByteForByte()
+    {
+        // SharpCap-style headers pad the 40-byte text fields with spaces rather than NULs. Reading
+        // trims them for display, but re-serializing must reproduce the original bytes exactly.
+        var bytes = new byte[HeaderSize];
+        Encoding.ASCII.GetBytes("LUCAM-RECORDER", bytes);
+        WriteInt32(bytes, 14, 0x1234);
+        WriteInt32(bytes, 18, 8);
+        WriteInt32(bytes, 22, 0);
+        WriteInt32(bytes, 26, 640);
+        WriteInt32(bytes, 30, 480);
+        WriteInt32(bytes, 34, 8);
+        WriteInt32(bytes, 38, 3);
+        FillWithSpacePadding(bytes, 42, "Observer");
+        FillWithSpacePadding(bytes, 82, "ZWO ASI183MC");
+        FillWithSpacePadding(bytes, 122, "telescope");
+        BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(162), 638022417177322949);
+        BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(170), 638022561177322949);
+
+        SerHeader header = SerHeader.Parse(bytes);
+
+        Assert.Equal("Observer", header.Observer);
+        Assert.Equal("ZWO ASI183MC", header.Telescope);
+        Assert.Equal("telescope", header.Instrument);
+        Assert.Equal(640, header.Width);
+        Assert.Equal(bytes, header.ToBytes());
+        Assert.Equal(bytes, header.Clone().ToBytes());
+    }
+
+    [Fact]
+    public void CreateOutput_CarriesCaptureMetadata_AndResetsEngineIgnoredFields()
+    {
+        SerHeader source = MakeSpacePaddedSource();
+
+        SerHeader output = SerHeader.CreateOutput(320, 240, 1, 8, 5, source);
+
+        Assert.Equal(0, output.LuId);                 // the engine always writes LuID 0
+        Assert.Equal((int)SerColorId.BayerRggb, output.ColorId);
+        Assert.False(output.LittleEndian);            // the engine always writes big-endian samples
+        Assert.Equal(320, output.Width);
+        Assert.Equal(240, output.Height);
+        Assert.Equal(8, output.BitDepth);
+        Assert.Equal(5, output.FrameCount);
+        Assert.Equal(0, output.LocalTimeTicks);       // the engine zeroes both timestamps
+        Assert.Equal(0, output.UtcTicks);
+        Assert.Equal(0, output.LocalTimeUtcOffsetMinutes);
+
+        // Text fields are copied as raw bytes, so the source's space padding survives.
+        byte[] outputBytes = output.ToBytes();
+        Assert.Equal(source.ToBytes().AsSpan(42, 40).ToArray(), outputBytes.AsSpan(42, 40).ToArray());
+        Assert.Equal(source.ToBytes().AsSpan(82, 40).ToArray(), outputBytes.AsSpan(82, 40).ToArray());
+        Assert.Equal(source.ToBytes().AsSpan(122, 40).ToArray(), outputBytes.AsSpan(122, 40).ToArray());
+        Assert.Equal("Observer", output.Observer);
+        Assert.Equal("ZWO ASI183MC", output.Telescope);
+        Assert.Equal("telescope", output.Instrument);
+    }
+
+    [Theory]
+    [InlineData(1, 0)]    // non-SER mono input falls back to ColorID 0
+    [InlineData(3, 101)]  // colour output is BGR 101, never RGB 100
+    public void CreateOutput_WithoutSource_UsesEngineFallbacks(int channels, int expectedColorId)
+    {
+        SerHeader output = SerHeader.CreateOutput(64, 48, channels, 8, 1, source: null);
+
+        Assert.Equal(expectedColorId, output.ColorId);
+        Assert.Equal(0, output.LuId);
+        Assert.False(output.LittleEndian);
+        Assert.Equal(string.Empty, output.Observer);
+        Assert.Equal(string.Empty, output.Telescope);
+        Assert.Equal(string.Empty, output.Instrument);
+        Assert.Equal(0, output.LocalTimeTicks);
+        Assert.Equal(0, output.UtcTicks);
+    }
+
+    [Theory]
+    [InlineData(100, 1, 0)]     // colour source split into channels -> plain mono (engine writes 100; not reproduced)
+    [InlineData(101, 1, 0)]
+    [InlineData(8, 1, 8)]       // Bayer id carries through a mono output
+    [InlineData(8, 3, 101)]     // debayered output is BGR
+    [InlineData(0, 3, 101)]
+    public void CreateOutput_ColorIdFollowsOutputChannelsAndSource(int sourceColorId, int channels, int expected)
+    {
+        var source = new SerHeader { ColorId = sourceColorId, Width = 32, Height = 24, BitDepth = 8, FrameCount = 4 };
+
+        Assert.Equal(expected, SerHeader.CreateOutput(32, 24, channels, 8, 4, source).ColorId);
+    }
+
+    [Theory]
+    [InlineData(8, 8)]
+    [InlineData(12, 16)]  // the engine re-labels every two-byte sample depth as 16
+    [InlineData(16, 16)]
+    public void CreateOutput_NormalisesBitDepthTo8Or16(int sourceDepth, int expected)
+    {
+        var source = new SerHeader { ColorId = 0, Width = 32, Height = 24, BitDepth = sourceDepth, FrameCount = 1 };
+
+        SerHeader output = SerHeader.CreateOutput(32, 24, 1, sourceDepth, 1, source);
+
+        Assert.Equal(expected, output.BitDepth);
+        Assert.Equal(expected <= 8 ? 1 : 2, output.BytesPerSample);
+    }
+
+    [Fact]
+    public void Writer_WritesBigEndianSamples_WhenHeaderIsBigEndian()
+    {
+        using var temp = new TempSer();
+        var header = new SerHeader
+        {
+            Width = 2,
+            Height = 1,
+            BitDepth = 16,
+            FrameCount = 1,
+            ColorId = (int)SerColorId.Mono,
+            LittleEndian = false,
+        };
+        var frame = new Frame(2, 1, 1, 16, new ushort[] { 0x1234, 0x00FF });
+
+        WriteFrames(temp.Path, header, frame);
+
+        byte[] all = File.ReadAllBytes(temp.Path);
+        Assert.Equal(0, BinaryPrimitives.ReadInt32LittleEndian(all.AsSpan(22))); // header says big-endian
+        Assert.Equal(new byte[] { 0x12, 0x34, 0x00, 0xFF }, all[HeaderSize..]);
+
+        using var reader = new SerReader(temp.Path);
+        Assert.True(reader.IsBigEndian);
+        Assert.Equal(frame.Samples, reader.ReadFrame()!.Samples);
+    }
+
+    [Fact]
+    public void Writer_WritesBigEndianBgrSamples_WhenHeaderIsBigEndian()
+    {
+        using var temp = new TempSer();
+        var header = new SerHeader
+        {
+            Width = 1,
+            Height = 1,
+            BitDepth = 16,
+            FrameCount = 1,
+            ColorId = (int)SerColorId.Bgr,
+            LittleEndian = false,
+        };
+        var frame = new Frame(1, 1, 3, 16, new ushort[] { 0x0102, 0x0304, 0x0506 }); // R, G, B
+
+        WriteFrames(temp.Path, header, frame);
+
+        byte[] all = File.ReadAllBytes(temp.Path);
+        Assert.Equal(new byte[] { 0x05, 0x06, 0x03, 0x04, 0x01, 0x02 }, all[HeaderSize..]);
+        Assert.Equal(frame.Samples, new SerReader(temp.Path).ReadFrame()!.Samples);
+    }
+
+    [Fact]
+    public void FrameSinkFactory_CarriesSourceHeaderMetadata_IntoSerOutput()
+    {
+        using var source = new TempSer();
+        SerHeader sourceHeader = MakeSpacePaddedSource();
+        sourceHeader.Width = 4;
+        sourceHeader.Height = 3;
+        sourceHeader.FrameCount = 2;
+        WriteFrames(source.Path, sourceHeader, MakeFrame(4, 3, 1, 8, 1), MakeFrame(4, 3, 1, 8, 2));
+
+        using var output = new TempSer();
+        var template = new Frame(4, 3, 1, 8) { SourceName = source.Path };
+        using (IFrameSink sink = FrameSinkFactory.Create(output.Path, template, frameCountHint: 1))
+            sink.Write(template);
+
+        SerHeader written = SerProbe.Probe(output.Path).Header;
+        Assert.Equal(0, written.LuId);
+        Assert.Equal((int)SerColorId.BayerRggb, written.ColorId);
+        Assert.False(written.LittleEndian);
+        Assert.Equal(1, written.FrameCount);
+        Assert.Equal("Observer", written.Observer);
+        Assert.Equal("ZWO ASI183MC", written.Telescope);
+        Assert.Equal("telescope", written.Instrument);
+        Assert.Equal(0, written.LocalTimeTicks);
+        Assert.Equal(0, written.UtcTicks);
+    }
+
+    [Fact]
+    public void FrameSinkFactory_UsesFallbacks_WhenTemplateHasNoSerSource()
+    {
+        using var output = new TempSer();
+        var template = new Frame(4, 3, 3, 8) { SourceName = null };
+
+        using (IFrameSink sink = FrameSinkFactory.Create(output.Path, template, frameCountHint: 1))
+            sink.Write(template);
+
+        SerHeader written = SerProbe.Probe(output.Path).Header;
+        Assert.Equal((int)SerColorId.Bgr, written.ColorId);
+        Assert.False(written.LittleEndian);
+        Assert.Equal(0, written.LuId);
+        Assert.Equal(string.Empty, written.Observer);
+        Assert.Equal(0, written.LocalTimeTicks);
+    }
+
     // ---------- helpers ----------
+
+    /// <summary>A header whose text fields are padded with spaces, like SharpCap writes them.</summary>
+    private static SerHeader MakeSpacePaddedSource()
+    {
+        var bytes = new byte[HeaderSize];
+        Encoding.ASCII.GetBytes("LUCAM-RECORDER", bytes);
+        WriteInt32(bytes, 14, 0x1234);   // LuID the engine discards
+        WriteInt32(bytes, 18, (int)SerColorId.BayerRggb);
+        WriteInt32(bytes, 22, 1);        // little-endian in the source
+        WriteInt32(bytes, 26, 640);
+        WriteInt32(bytes, 30, 480);
+        WriteInt32(bytes, 34, 8);
+        WriteInt32(bytes, 38, 30);
+        FillWithSpacePadding(bytes, 42, "Observer");
+        FillWithSpacePadding(bytes, 82, "ZWO ASI183MC");
+        FillWithSpacePadding(bytes, 122, "telescope");
+        BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(162), 638022417177322949);
+        BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(170), 638022561177322949);
+        return SerHeader.Parse(bytes);
+    }
+
+    private static void WriteInt32(byte[] buffer, int offset, int value) =>
+        BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(offset), value);
+
+    private static void FillWithSpacePadding(byte[] buffer, int offset, string value)
+    {
+        for (int i = 0; i < SerHeader.TextLength; i++)
+            buffer[offset + i] = (byte)' ';
+        Encoding.ASCII.GetBytes(value, buffer.AsSpan(offset, value.Length));
+    }
 
     private static Frame MakeFrame(int width, int height, int channels, int bitDepth, int seed)
     {

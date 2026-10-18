@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Windows.Forms;
 
 namespace PIPP_Application;
@@ -383,49 +382,43 @@ public class c_filelist : ListView
 			}
 			if (!image_extensions.Contains(extension) && !video_extensions.Contains(extension) && !extension.StartsWith("ser") && !source.Contains(extension))
 			{
-				if (LegacyNativeApi.raw_decode_check(text2) != 0)
-				{
-					num5++;
-					text = text + text2 + "\n";
-					continue;
-				}
-				flag = true;
-				if (extension.Length > 0)
-				{
-					cPersistentData.raw_file_extensions = cPersistentData.raw_file_extensions + "," + extension;
-					MessageBoxEx.Show("'." + extension + "' has been added to the list of raw image file extensions", "Added Raw File Extension", MessageBoxButtons.OK, MessageBoxIcon.Asterisk, 10000u);
-				}
+				// The native UI called raw_decode_check here: dcraw either recognised the unknown
+				// extension as a camera RAW file (and it was added to raw_file_extensions) or the file
+				// was rejected. Pipp.Core has no RAW decoder, so every unknown extension is rejected.
+				// Known raw extensions still reach this list through raw_file_extensions, but the
+				// managed engine cannot decode them either.
+				num5++;
+				text = text + text2 + "\n";
+				continue;
 			}
 			int num6 = 1;
 			if (video_extensions.Contains(extension))
 			{
-				StringBuilder stringBuilder = new StringBuilder(5);
-				int fps_rate = 0;
-				int fps_scale = 0;
-				int colour = 0;
-				int bayer_pattern = -1;
-				num6 = LegacyNativeApi.video_check(Encoding.Default.GetString(Encoding.UTF8.GetBytes(text2)), ref num2, ref num3, ref fps_rate, ref fps_scale, stringBuilder, ref colour, ref bayer_pattern);
-				avi_bayer_pattern = bayer_pattern;
-				num4 = ((fps_scale <= 0) ? ((double)fps_rate) : ((double)fps_rate / (double)fps_scale));
-				num4 = Math.Round(num4, 2, MidpointRounding.AwayFromZero);
+				VideoProbe video;
+				num6 = ManagedEngineApi.TryProbeVideo(text2, out video) ? video.FrameCount : 0;
 				if (num6 < 1)
 				{
+					// Only AVI is implemented by the managed reader; MOV/MP4/MKV/... needed the
+					// native helper's FFmpeg probe (and the managed engine cannot process them).
 					num5++;
 					text = text + text2 + "\n";
 					continue;
 				}
-				if (extension.ToString() == "avi" && stringBuilder.ToString().StartsWith("BY8"))
+				num2 = video.Width;
+				num3 = video.Height;
+				num4 = ((video.FpsScale <= 0) ? ((double)video.FpsRate) : ((double)video.FpsRate / (double)video.FpsScale));
+				num4 = Math.Round(num4, 2, MidpointRounding.AwayFromZero);
+				avi_bayer_pattern = video.BayerPattern;
+				if (extension.ToString() == "avi" && video.Codec.StartsWith("BY8", StringComparison.Ordinal))
 				{
 					by8_avi_added = true;
 				}
-				extension = string.Concat(extension, " (", stringBuilder, ")");
+				extension = string.Concat(extension, " (", video.Codec, ")");
 			}
 			else if (extension.StartsWith("ser"))
 			{
-				StringBuilder stringBuilder2 = new StringBuilder(5);
-				int fps_rate2 = 0;
-				int fps_scale2 = 0;
-				num6 = LegacyNativeApi.ser_check(Encoding.Default.GetString(Encoding.UTF8.GetBytes(text2)), ref num2, ref num3, ref fps_rate2, ref fps_scale2, stringBuilder2);
+				SerFileProbe ser;
+				num6 = ManagedEngineApi.TryProbeSer(text2, out ser) ? ser.FrameCount : 0;
 				if (num6 < 1)
 				{
 					DialogResult dialogResult = MessageBoxEx.Show("File: " + text2 + " has no frames and will not be added\n\nDo you want to show the SER file details for this file?", "Add Source Files", MessageBoxButtons.YesNo, MessageBoxIcon.Asterisk, 10000u);
@@ -437,12 +430,14 @@ public class c_filelist : ListView
 					}
 					continue;
 				}
-				num4 = ((fps_scale2 <= 0) ? 0.0 : ((double)fps_rate2 / (double)fps_scale2));
+				num2 = ser.Width;
+				num3 = ser.Height;
+				num4 = ((ser.FpsScale <= 0) ? 0.0 : ((double)ser.FpsRate / (double)ser.FpsScale));
 				num4 = Math.Round(num4, 2, MidpointRounding.AwayFromZero);
-				extension = string.Concat(extension, " (", stringBuilder2, ")");
+				extension = string.Concat(extension, " (", ser.ColourId, ")");
 				if (num < 0)
 				{
-					switch (stringBuilder2.ToString())
+					switch (ser.ColourId)
 					{
 					case "GBRG":
 						num = 0;

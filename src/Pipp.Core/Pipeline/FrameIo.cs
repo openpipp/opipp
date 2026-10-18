@@ -7,7 +7,7 @@ namespace Pipp.Core.Pipeline;
 public static class FrameSourceFactory
 {
     /// <summary>Supported input extensions, lowercase, with the leading dot.</summary>
-    public static readonly string[] Extensions = [".ser", ".fits", ".fit", ".fts", ".avi", ".bmp", ".tif", ".tiff", ".png"];
+    public static readonly string[] Extensions = [".ser", ".fits", ".fit", ".fts", ".avi", ".bmp", ".tif", ".tiff", ".png", ".dng"];
 
     /// <summary>Returns true when the path has an extension this pipeline can decode.</summary>
     public static bool IsSupported(string path) =>
@@ -30,6 +30,7 @@ public static class FrameSourceFactory
             ".bmp" => new SingleFrameSource(new BmpReader(path)),
             ".tif" or ".tiff" => new SingleFrameSource(new TiffReader(path)),
             ".png" => new SingleFrameSource(new PngReader(path)),
+            ".dng" => new SingleFrameSource(new RawDngReader(path)),
             _ => throw new NotSupportedException($"unsupported input format '{ext}'"),
         };
     }
@@ -108,8 +109,13 @@ public static class FrameSinkFactory
         string ext = Path.GetExtension(path).ToLowerInvariant();
         return ext switch
         {
-            ".ser" => new SerWriter(path, template.Width, template.Height, template.Channels, template.BitDepth,
-                frameCountHint, template.Bayer),
+            ".ser" => new SerWriter(path, SerHeader.CreateOutput(
+                template.Width, template.Height, template.Channels, template.BitDepth, frameCountHint,
+                // The engine carries the input capture metadata onto its SER output. The template
+                // frame's SourceName is the input file (Processor sets it from the input unit), so
+                // reading that file's header reproduces the carry-across without threading the
+                // source through every sink call site.
+                SerHeader.TryReadFromSource(template.SourceName), template.Bayer)),
             ".fits" or ".fit" => new FitsWriter(path),
             ".avi" => new AviWriter(path, template.Width, template.Height, new AviWriterOptions
             {

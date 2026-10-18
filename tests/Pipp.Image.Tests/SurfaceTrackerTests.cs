@@ -18,7 +18,7 @@ public class SurfaceTrackerTests
     // ---------------------------------------------------------------- fixtures
 
     /// <summary>8-bit mono frame holding a soft-edged disc; coverage is anti-aliased so the profile
-    /// across the peak is smooth enough for the sub-pixel fit to have a well-defined answer.</summary>
+    /// across the peak is smooth and the correlation peak is unambiguous on the integer grid.</summary>
     private static Frame Disc(int width, int height, double cx, double cy, double radius,
                               int background = Background, int peak = Peak)
     {
@@ -127,30 +127,35 @@ public class SurfaceTrackerTests
     {
         // The convention matches FrameAligner.EstimateTranslation: positive X means the tracked
         // content sits further right in `frame`. Shifting the reference by (7, -5) therefore has to
-        // come back as (7, -5), not the negated "shift to apply" form.
+        // come back as (7, -5), not the negated "shift to apply" form. The engine's tracker is
+        // integer-only, so an integer translation is returned exactly, not as a fitted approximation.
         var reference = Disc(96, 96, 48, 48, 12);
         var frame = FrameAligner.Shift(reference, new AlignmentOffset(7, -5));
 
         var offset = Measured(reference, frame, 12, Box(48, 48, 16));
 
         Assert.Equal((7, -5), offset.Round());
-        Assert.InRange(offset.Dx, 6.7, 7.3);
-        Assert.InRange(offset.Dy, -5.3, -4.7);
+        Assert.Equal(7.0, offset.Dx);
+        Assert.Equal(-5.0, offset.Dy);
     }
 
     [Fact]
-    public void Measure_HalfPixelTranslation_RefinesBelowOnePixel()
+    public void Measure_HalfPixelTranslation_QuantisesToTheIntegerGrid()
     {
-        // A bilinearly shifted disc puts the correlation peak at 2.5 / -1.5; the integer grid alone
-        // could only offer 2 or 3, so a result this close to the half pixel can only come from the
-        // parabola fit on the peak and its neighbours.
+        // The engine never refines below one pixel: FUN_1400a5f40 searches integer offsets and its
+        // output feeds a whole-pixel memcpy shift. A bilinear shift of 2.5 / -1.5 must therefore come
+        // back as 2 or 3 (and -2 or -1), never as a fraction. This is the property that made the
+        // pipeline reproduce the oracle's shift sequence: the old parabola fit reported a fractional
+        // peak and the rounded shift landed one pixel away from the engine's.
         var reference = Disc(96, 96, 48, 48, 12);
         var frame = FrameAligner.Shift(reference, new AlignmentOffset(2.5, -1.5));
 
         var offset = Measured(reference, frame, 8, Box(48, 48, 16));
 
-        Assert.InRange(offset.Dx, 2.2, 2.8);
-        Assert.InRange(offset.Dy, -1.8, -1.2);
+        Assert.Equal(Math.Round(offset.Dx), offset.Dx);
+        Assert.Equal(Math.Round(offset.Dy), offset.Dy);
+        Assert.InRange(offset.Dx, 2.0, 3.0);
+        Assert.InRange(offset.Dy, -2.0, -1.0);
     }
 
     [Fact]
@@ -209,7 +214,7 @@ public class SurfaceTrackerTests
     public void Measure_ColourAndMonoFramesAgree()
     {
         // R=G=B projects to the same luma sample, so the colour and mono paths must measure the same
-        // sub-pixel displacement - including the mixed case of a colour reference against a mono frame.
+        // integer displacement - including the mixed case of a colour reference against a mono frame.
         var reference = Disc(96, 96, 48, 48, 12);
         var frame = FrameAligner.Shift(reference, new AlignmentOffset(-6, 4));
         var box = Box(48, 48, 16);
@@ -229,7 +234,7 @@ public class SurfaceTrackerTests
     public void Measure_SixteenBitFramesMatchEightBitFrames()
     {
         // Correlation is scale-free: multiplying every sample by 257 changes neither the peak nor the
-        // parabola fit, so a 16-bit re-encode has to report the same offset as the 8-bit original.
+        // integer grid, so a 16-bit re-encode has to report the same offset as the 8-bit original.
         var reference = Disc(96, 96, 48, 48, 12);
         var frame = FrameAligner.Shift(reference, new AlignmentOffset(4, 6));
         var box = Box(48, 48, 16);

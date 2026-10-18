@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using Pipp.Core.Alignment;
 using Pipp.Core.Cli;
 using Pipp.Core.Diagnostics;
@@ -7,6 +8,8 @@ using Pipp.Core.Frames;
 using Pipp.Core.Pipeline;
 using Pipp.Core.Processing;
 using Pipp.Core.Quality;
+
+[assembly: InternalsVisibleTo("Pipp.Cli.Tests")]
 
 namespace Pipp.Cli;
 
@@ -22,7 +25,7 @@ internal sealed class DelegateProgress(Action<PipelineProgress> handler) : IProg
 
 internal static class Program
 {
-    private static int Main(string[] args)
+    internal static int Main(string[] args)
     {
         // The WinForms front-end launches the engine with no argv and writes the option lines
         // followed by the input file paths to stdin (see Form1.send_arguments_to_pipp_process).
@@ -85,7 +88,23 @@ internal static class Program
         // The log echoes the switch list only; input paths appear under "Source image files".
         settings.LogArguments = effectiveArgs.Where(a => !inputs.Contains(a, StringComparer.Ordinal)).ToArray();
 
-        var protocol = options.Gui ? new EngineProtocolWriter(Console.Out) : null;
+        // -gui drives the WinForms front-end: the transcript is a fixed token/text protocol, not
+        // the console report, and it has to match pipp_core.exe byte-for-byte (see GuiTranscript).
+        if (options.Gui)
+        {
+            try
+            {
+                return RunGui(inputs, settings);
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException)
+            {
+                Console.Error.WriteLine($"Error: {ex.Message}");
+                return 1;
+            }
+        }
+
+        // The console path never emits protocol tokens; -gui returned above with its own transcript.
+        EngineProtocolWriter? protocol = null;
         // Progress<T> posts callbacks to the thread pool, which reorders the percentage lines;
         // the pipeline reports from a single thread, so invoke the handler inline.
         var progress = new DelegateProgress(p =>
@@ -129,6 +148,255 @@ internal static class Program
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// Runs the pipeline in the WinForms engine protocol (<c>-gui</c>). The original prints a fixed
+    /// preamble, a per-input estimate block, one progress token per frame and a summary; the
+    /// front-end consumes exactly that sequence, so <see cref="GuiTranscript"/> owns all formatting.
+    /// </summary>
+    private static int RunGui(IReadOnlyList<string> inputs, PipelineSettings settings)
+    {
+        var transcript = new GuiTranscript(Console.Out);
+        int fileCount = inputs.Count;
+        transcript.Begin(fileCount);
+
+        var probes = new List<InputProbe>(fileCount);
+        foreach (string input in inputs) probes.Add(Probe(input, settings));
+
+        bool qualityRan = settings.KeepFrames is not null || settings.KeepPercent is not null;
+        string format = FormatLabel(settings.OutputExtension);
+        string directory = OutputDirectoryText(settings);
+        string qualityLabel = QualityLabel(settings.QualityAlgorithm);
+        bool animation = (settings.OutputExtension.Equals(".avi", StringComparison.OrdinalIgnoreCase) ||
+                          settings.OutputExtension.Equals(".gif", StringComparison.OrdinalIgnoreCase)) &&
+                         settings.Animation.IsActive;
+        bool aviAnimation = settings.OutputExtension.Equals(".avi", StringComparison.OrdinalIgnoreCase);
+        int zeroOutputs = 0;
+
+        // -join presents every container as one stream: one estimate, one "Processing N frames",
+        // one summary, but the name/progress tokens advance when the stream crosses an input.
+        if (settings.JoinMode && fileCount > 1)
+        {
+            int totalFrames = probes.Sum(p => p.Frames);
+            transcript.BeginJoin(inputs, totalFrames);
+            int buffers = qualityRan ? BufferCount(settings, totalFrames) : 0;
+            var reporter = new JoinedProgress(transcript, probes, inputs, buffers);
+            var processor = new Processor(settings, new DelegateProgress(reporter.Report), null);
+            ProcessingReport report = processor.Run(inputs);
+
+            transcript.Complete();
+            if (qualityRan) transcript.Quality(report.OutputFrames);
+            if (animation) transcript.Animation(AnimationFrameCount(totalFrames, settings.Animation), aviAnimation);
+            transcript.Summary(
+                report,
+                FrameType(probes[0], settings),
+                format,
+                directory,
+                settings.EngineVersion,
+                qualityLabel,
+                qualityRan,
+                probes[0].DetectionThreshold,
+                settings.Centre || settings.CheckForPlanet || report.DiscardedNoObject > 0);
+
+            if (report.OutputFrames == 0)
+            {
+                Console.Error.WriteLine($"Error: All frames have been discarded from {report.InputFrames} input frames");
+                zeroOutputs++;
+            }
+
+            return zeroOutputs > 0 ? -1 : 0;
+        }
+
+        // Batch mode is one independent run per input: the original prints an estimate block and a
+        // summary for every file, and progress percentages restart at 0 for each.
+        for (int index = 0; index < fileCount; index++)
+        {
+            InputProbe probe = probes[index];
+            int processFrames = WindowLimit(probe.Frames, settings);
+            transcript.BeginBatchFile(index + 1, fileCount, inputs[index], probe.Frames, processFrames);
+
+            int buffers = qualityRan ? BufferCount(settings, probe.Frames) : 0;
+            var reporter = new SingleFileProgress(transcript, buffers);
+            var processor = new Processor(settings, new DelegateProgress(reporter.Report), null);
+            ProcessingReport report = processor.Run([inputs[index]]);
+
+            transcript.Complete();
+            if (qualityRan) transcript.Quality(report.OutputFrames);
+            if (animation) transcript.Animation(AnimationFrameCount(probe.Frames, settings.Animation), aviAnimation);
+            transcript.Summary(
+                report,
+                FrameType(probe, settings),
+                format,
+                directory,
+                settings.EngineVersion,
+                qualityLabel,
+                qualityRan,
+                probe.DetectionThreshold,
+                settings.Centre || settings.CheckForPlanet || report.DiscardedNoObject > 0);
+
+            if (report.OutputFrames == 0)
+            {
+                Console.Error.WriteLine($"Error: All frames have been discarded from {report.InputFrames} input frames");
+                zeroOutputs++;
+            }
+        }
+
+        return zeroOutputs > 0 ? -1 : 0;
+    }
+
+    /// <summary>The frame count, channel count and detection threshold a GUI run reports up front.</summary>
+    private sealed record InputProbe(int Frames, bool Colour, int? DetectionThreshold);
+
+    private static InputProbe Probe(string path, PipelineSettings settings)
+    {
+        try
+        {
+            using IFrameSource source = FrameSourceFactory.Open(path, settings.SerBitDepth);
+            int frames = source.FrameCount;
+            bool colour = source.Channels == 3;
+            Frame? first = source.ReadFrame();
+            int? threshold = first is null
+                ? null
+                : settings.MinPixelValue ?? DetectionThreshold.ComputeOrDefault(first);
+            return new InputProbe(frames, colour, threshold);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException)
+        {
+            // The engine still prints the estimate block and then fails the open; the caller emits
+            // the error, so a zero estimate keeps the transcript shape.
+            return new InputProbe(0, false, null);
+        }
+    }
+
+    private static string FrameType(InputProbe probe, PipelineSettings settings) =>
+        settings.ForceColour || (!settings.ForceMono && probe.Colour) ? "Colour" : "Monochrome";
+
+    /// <summary>
+    /// The input frame window's exclusive limit, mirroring the pipeline's <c>-sf</c>/<c>-f</c>/
+    /// <c>-ctrf</c>/<c>-ifd</c> rules, so "Processing N frames" shows what is actually read.
+    /// </summary>
+    private static int WindowLimit(int total, PipelineSettings settings)
+    {
+        int frames = settings.FrameCount;
+        int start = settings.FramesFromCentre
+            ? Math.Max(0, (total - frames) / 2)
+            : (settings.StartFrame ?? 1) - 1;
+        int limit = total > 0 ? total : int.MaxValue;
+        if (frames != 0)
+        {
+            bool honour = settings.InputFrameDrop <= 0 ||
+                          (frames - 1) % (settings.InputFrameDrop + 1) == 0;
+            if (honour) limit = total > 0 ? Math.Min(start + frames, total) : start + frames;
+        }
+
+        return Math.Max(0, limit);
+    }
+
+    /// <summary>
+    /// Number of images the animation writers emit for one input: forward block, reverse block
+    /// (the shared frame counted once), extra last-frame copies and whole-play repeats.
+    /// </summary>
+    private static int AnimationFrameCount(int sourceFrames, AnimationOptions animation)
+    {
+        if (sourceFrames <= 0) return 0;
+        int length = 0;
+        if (animation.Forward) length += sourceFrames + animation.ForwardLastFrameRepeats;
+        if (animation.Reverse) length += sourceFrames + animation.ReverseLastFrameRepeats;
+        if (animation.Forward && animation.Reverse) length -= 1;
+        return length * (animation.AllRepeats + 1);
+    }
+
+    /// <summary>Number of frames quality selection keeps in RAM; the engine caps it at the input size.</summary>
+    private static int BufferCount(PipelineSettings settings, int totalFrames)
+    {
+        if (totalFrames <= 0) return Math.Max(1, settings.KeepFrames ?? 1);
+        if (settings.KeepFrames is int keep) return Math.Clamp(keep, 1, totalFrames);
+        if (settings.KeepPercent is double percent)
+            return Math.Clamp((int)Math.Round(totalFrames * Math.Clamp(percent, 0, 100) / 100.0), 1, totalFrames);
+        return 1;
+    }
+
+    private static string OutputDirectoryText(PipelineSettings settings)
+    {
+        string root = settings.OutputDirectory;
+        if (!string.IsNullOrWhiteSpace(settings.OutputSubdirectory))
+        {
+            string sub = settings.OutputSubdirectory!;
+            root = Path.IsPathRooted(sub) ? sub : Path.Combine(root, sub);
+        }
+
+        string directory = root.Replace('\\', '/');
+        return directory.EndsWith('/') ? directory : directory + "/";
+    }
+
+    private static string FormatLabel(string extension) => extension.ToLowerInvariant() switch
+    {
+        ".tif" or ".tiff" => "TIF",
+        ".fits" or ".fit" => "FITS",
+        ".png" => "PNG",
+        ".avi" => "AVI",
+        ".ser" => "SER",
+        ".bmp" => "BMP",
+        ".gif" => "GIF",
+        _ => extension.TrimStart('.').ToUpperInvariant(),
+    };
+
+    private static string QualityLabel(QualityAlgorithm algorithm) => algorithm switch
+    {
+        QualityAlgorithm.Histogram => "PIPP Histogram",
+        QualityAlgorithm.Ninox => "PIPP Old",
+        _ => "PIPP Default",
+    };
+
+    /// <summary>Translates pipeline progress into the batch-mode token sequence.</summary>
+    private sealed class SingleFileProgress(GuiTranscript transcript, int buffers)
+    {
+        private bool _bufferNoticeWritten;
+
+        public void Report(PipelineProgress progress)
+        {
+            if (progress.File is null || progress.FrameCount <= 0) return; // unit start / run complete
+            if (!_bufferNoticeWritten && buffers > 0 && progress.FrameIndex >= 2)
+            {
+                transcript.BufferNotice(buffers);
+                _bufferNoticeWritten = true;
+            }
+
+            transcript.Frame(progress.FrameIndex, progress.FrameCount);
+        }
+    }
+
+    /// <summary>Translates joined-stream progress, inserting the per-input name/progress updates.</summary>
+    private sealed class JoinedProgress(
+        GuiTranscript transcript,
+        IReadOnlyList<InputProbe> probes,
+        IReadOnlyList<string> files,
+        int buffers)
+    {
+        private int _nextFile = 1;
+        private int _boundary = probes.Count > 0 ? probes[0].Frames : 0;
+        private bool _bufferNoticeWritten;
+
+        public void Report(PipelineProgress progress)
+        {
+            if (progress.File is null || progress.FrameCount <= 0) return;
+
+            while (_nextFile < probes.Count && progress.FrameIndex > _boundary)
+            {
+                transcript.FileTransition(_nextFile + 1, probes.Count, files[_nextFile]);
+                _boundary += probes[_nextFile].Frames;
+                _nextFile++;
+            }
+
+            if (!_bufferNoticeWritten && buffers > 0 && progress.FrameIndex >= 2)
+            {
+                transcript.BufferNotice(buffers);
+                _bufferNoticeWritten = true;
+            }
+
+            transcript.Frame(progress.FrameIndex, progress.FrameCount);
+        }
     }
 
     /// <summary>Reads one argument per line from a redirected stdin, as the GUI protocol does.</summary>
@@ -277,6 +545,8 @@ internal static class Program
             // it), and -aoi_crop is the switch that changes the delivered frame size.
             AreaOfInterest = BuildAoi(o),
             AreaOfInterestCrop = o.AreaOfInterestCrop,
+            AreaOfInterestReject = o.AreaOfInterestReject,
+            FlatHasBayer = o.FlatHasBayer,
 
             // -qw duplicates the top quarter twice and the next quarter once.
             QualityWeighting = o.QualityWeighting,
@@ -375,7 +645,10 @@ internal static class Program
             if (string.IsNullOrWhiteSpace(candidate) || !File.Exists(candidate)) continue;
             try
             {
-                return PgmFile.Read(candidate);
+                // The engine's masters are its private .tmp container (recovered in
+                // Formats/MasterTmpFile); PGM is only the legacy fallback.
+                bool isTmp = Path.GetExtension(candidate).Equals(".tmp", StringComparison.OrdinalIgnoreCase);
+                return isTmp ? MasterTmpFile.Read(candidate) : PgmFile.Read(candidate);
             }
             catch (Exception ex) when (ex is InvalidDataException or IOException)
             {

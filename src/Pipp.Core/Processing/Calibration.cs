@@ -71,6 +71,60 @@ public static class Calibration
     }
 
     /// <summary>
+    /// Flat division for a Bayer mosaic (<c>-flat_bayer</c>): each of the four mosaic phases is
+    /// normalised by its own mean instead of the frame-wide mean, so the CFA's sensitivity
+    /// differences cancel. Measured against the engine: a constant-100 input under a flat whose
+    /// phases are R=100/G=150/G=150/B=200 gives 150/100/100/75 without the switch and a flat 100
+    /// with it.
+    /// </summary>
+    public static Frame DivideFlatBayer(Frame frame, Frame flat)
+    {
+        ValidatePair(frame, flat, nameof(flat));
+        if (frame.Channels != 1 || flat.Channels != 1)
+        {
+            return DivideFlat(frame, flat);
+        }
+
+        var dst = frame.Clone();
+        var s = frame.Samples;
+        var f = flat.Samples;
+        var o = dst.Samples;
+        int w = frame.Width, h = frame.Height;
+
+        var sum = new double[4];
+        var count = new double[4];
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                int p = ((y & 1) << 1) | (x & 1);
+                sum[p] += f[(y * w) + x];
+                count[p]++;
+            }
+        }
+
+        for (int p = 0; p < 4; p++)
+        {
+            sum[p] = count[p] > 0 ? sum[p] / count[p] : 1.0;
+        }
+
+        int max = frame.BitDepth == 8 ? 255 : 65535;
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                int i = (y * w) + x;
+                int p = ((y & 1) << 1) | (x & 1);
+                double denom = f[i] <= 0 ? 1.0 : f[i];
+                double v = s[i] * sum[p] / denom;
+                o[i] = (ushort)Math.Clamp((int)Math.Round(v), 0, max);
+            }
+        }
+
+        return dst;
+    }
+
+    /// <summary>
     /// Builds a master frame from a set of calibration frames (mean), which is what the GUI's
     /// <c>stack_frames</c> call produces before handing the result to the engine.
     /// </summary>

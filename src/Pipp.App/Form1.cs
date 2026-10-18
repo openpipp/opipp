@@ -14,15 +14,12 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Xml.Serialization;
 using PIPP_Application.Properties;
+using Pipp.Core.Pipeline;
 
 namespace PIPP_Application;
 
 public class Form1 : Form
 {
-	public delegate void gui_progress_delegate(int progress);
-
-	public delegate void gui_print_delegate(string text);
-
 	private int flat_dark_frames_stacked;
 
 	private int flat_frames_stacked;
@@ -90,10 +87,6 @@ public class Form1 : Form
 	private string master_flat_dark_pgm_file = "";
 
 	private string master_flat_tmp_file = "";
-
-	private gui_progress_delegate gui_progress_callback;
-
-	private gui_print_delegate gui_print_callback;
 
 	private Stopwatch stopwatch;
 
@@ -1580,11 +1573,9 @@ public class Form1 : Form
 		if (image_filelist.Items.Count > 0)
 		{
 			wjpos_filename2LAB.Text = image_filelist.Items[0].Text;
-			StringBuilder stringBuilder = new StringBuilder(100);
-			LegacyNativeApi.date_time_check(image_filelist.Items[0].Text, datetimeTB.Text, stringBuilder);
-			if (stringBuilder.Length > 0)
+			if (ManagedEngineApi.TryExtractDateTime(image_filelist.Items[0].Text, datetimeTB.Text, out string extracted))
 			{
-				wjpos_extracted2LAB.Text = stringBuilder.ToString();
+				wjpos_extracted2LAB.Text = extracted;
 				wjpos_extracted2LAB.ForeColor = Color.Black;
 			}
 			else
@@ -2898,19 +2889,10 @@ public class Form1 : Form
 
 	private void aboutToolStripMenuItem_Click(object sender, EventArgs e)
 	{
-		// Version strings come from the native library; fall back to a placeholder when it is absent so the
-		// About dialog still opens (the dialog displays both strings verbatim).
-		string dcrawVersion = "not available (pipp_dll.dll)";
-		string pippVersion = "not available (pipp_dll.dll)";
-		if (LegacyNativeApi.IsAvailable)
-		{
-			StringBuilder stringBuilder = new StringBuilder(20);
-			LegacyNativeApi.get_dcraw_version(stringBuilder);
-			dcrawVersion = stringBuilder.ToString();
-			StringBuilder stringBuilder2 = new StringBuilder(32);
-			LegacyNativeApi.get_pipp_version(stringBuilder2);
-			pippVersion = stringBuilder2.ToString();
-		}
+		// Both strings are supplied by the managed engine metadata (see ManagedEngineApi); the
+		// About dialog displays them verbatim.
+		string dcrawVersion = ManagedEngineApi.DcrawVersion;
+		string pippVersion = ManagedEngineApi.PippVersion;
 		if (helpinfo == null)
 		{
 			helpinfo = new infodialog(pippVersion, dcrawVersion);
@@ -4242,15 +4224,6 @@ public class Form1 : Form
 		use_ram_buffersMenuItem.Checked = cPersistentData.use_ram_buffers;
 		Thread thread = new Thread(CheckForNewVersion);
 		thread.Start();
-		gui_progress_callback = set_dark_frame_progress;
-		gui_print_callback = gui_print;
-		// The native library is optional for the ported UI: without pipp_dll.dll there is nothing to
-		// register these callbacks with, but the window must still open (see LegacyNativeApi).
-		if (LegacyNativeApi.IsAvailable)
-		{
-			LegacyNativeApi.set_progress_fn(gui_progress_callback);
-			LegacyNativeApi.set_gui_print_fn(gui_print_callback);
-		}
 	}
 
 	public void set_dark_frame_progress(int progress)
@@ -4298,14 +4271,6 @@ public class Form1 : Form
 		Invoke((MethodInvoker)(() =>
 		{
 			flat_stackingLAB.Text = progress + "%";
-		}));
-	}
-
-	public void gui_print(string text)
-	{
-		Invoke((MethodInvoker)(() =>
-		{
-			pipp_process_handle_received_string(ref text);
 		}));
 	}
 
@@ -4408,7 +4373,6 @@ public class Form1 : Form
 			{
 				outputTB.AppendText("\r\nPROCESSING COMPLETE\r\n");
 			}
-			LegacyNativeApi.set_abort_request(0);
 			pipp_output_received = true;
 			set_testrun_details();
 		}
@@ -4786,7 +4750,6 @@ public class Form1 : Form
 	private void start_processing()
 	{
 		arg_list2 = new List<string>();
-		LegacyNativeApi.set_abort_request(0);
 		if (test_run)
 		{
 			if (image_filelist.Items.Count == 0)
@@ -4865,9 +4828,7 @@ public class Form1 : Form
 			((Control)tabPage3).Enabled = false;
 			((Control)tabPage5).Enabled = false;
 			((Control)tabPage4).Enabled = false;
-			StringBuilder stringBuilder = new StringBuilder(32);
-			LegacyNativeApi.get_pipp_version(stringBuilder);
-			outputTB.AppendText(stringBuilder.ToString() + "\r\n\r\n");
+			outputTB.AppendText(ManagedEngineApi.PippVersion + "\r\n\r\n");
 			error_data = "";
 			Task.Factory.StartNew(() =>
 			{
@@ -4881,8 +4842,6 @@ public class Form1 : Form
 		arg_list2.Add("-temp_dir=" + temp_directory);
 		if (dark_filelist.Items.Count > 0 && dark_frame_subtractionCB.Checked)
 		{
-			gui_progress_callback = set_dark_frame_progress;
-			LegacyNativeApi.set_progress_fn(gui_progress_callback);
 			Invoke((MethodInvoker)(() =>
 			{
 				outputTB.AppendText("Processing Dark Frames \r\n");
@@ -4917,7 +4876,8 @@ public class Form1 : Form
 				list.Add("");
 				master_dark_tmp_file = Path.Combine(temp_directory, "pipp_master_dark.tmp");
 				master_dark_pgm_file = Path.Combine(temp_directory, "pipp_master_dark.pgm");
-				int num = LegacyNativeApi.stack_frames(list.ToArray(), "", master_dark_tmp_file, master_dark_pgm_file, required_frames);
+				// Managed master-dark stacker: no native stack_frames call.
+				int num = MasterFrameBuilder.Build(list, null, master_dark_tmp_file, master_dark_pgm_file, required_frames, set_dark_frame_progress);
 				if (num >= 0)
 				{
 					dark_frames_stacked = required_frames;
@@ -4936,8 +4896,6 @@ public class Form1 : Form
 		}
 		if (flat_dark_filelist.Items.Count > 0 && flat_dark_frame_subtractionCB.Checked && flat_filelist.Items.Count > 0 && flat_frame_calibrationCB.Checked)
 		{
-			gui_progress_callback = set_flat_dark_frame_progress;
-			LegacyNativeApi.set_progress_fn(gui_progress_callback);
 			Invoke((MethodInvoker)(() =>
 			{
 				outputTB.AppendText("Processing Flat Dark Frames \r\n");
@@ -4972,7 +4930,7 @@ public class Form1 : Form
 					list2.Add(item2);
 				}
 				list2.Add("");
-				int num2 = LegacyNativeApi.stack_frames(list2.ToArray(), "", master_flat_dark_tmp_file, master_flat_dark_pgm_file, required_frames2);
+				int num2 = MasterFrameBuilder.Build(list2, null, master_flat_dark_tmp_file, master_flat_dark_pgm_file, required_frames2, set_flat_dark_frame_progress);
 				if (num2 >= 0)
 				{
 					flat_dark_frames_stacked = required_frames2;
@@ -4996,8 +4954,6 @@ public class Form1 : Form
 		}
 		if (flat_filelist.Items.Count > 0 && flat_frame_calibrationCB.Checked)
 		{
-			gui_progress_callback = set_flat_frame_progress;
-			LegacyNativeApi.set_progress_fn(gui_progress_callback);
 			Invoke((MethodInvoker)(() =>
 			{
 				outputTB.AppendText("Processing Flat Frames \r\n");
@@ -5031,7 +4987,8 @@ public class Form1 : Form
 				}
 				list3.Add("");
 				master_flat_tmp_file = Path.Combine(temp_directory, "pipp_master_flat.tmp");
-				int num3 = LegacyNativeApi.stack_frames(list3.ToArray(), master_flat_dark_tmp_file, master_flat_tmp_file, "", required_frames3);
+				string subtract = string.IsNullOrEmpty(master_flat_dark_tmp_file) ? null : master_flat_dark_tmp_file;
+				int num3 = MasterFrameBuilder.Build(list3, subtract, master_flat_tmp_file, null, required_frames3, set_flat_frame_progress);
 				if (num3 >= 0)
 				{
 					flat_frames_stacked = required_frames3;
@@ -5125,7 +5082,7 @@ public class Form1 : Form
 
 	private void cancel_processing()
 	{
-		LegacyNativeApi.set_abort_request(1);
+		// There is no in-process native engine to abort: cancellation terminates the engine process.
 		processed_killed = true;
 		if (!pipp_process.HasExited)
 		{

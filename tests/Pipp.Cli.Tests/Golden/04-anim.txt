@@ -1,0 +1,44 @@
+@PFILE=0
+@PFILELAB=File 0 of 1
+@FNAMELAB=none
+@ANIM=0
+@QSORT=0
+Processing: (Batch mode)
+  Input file:
+    {REPO}\parity\capture.ser
+  Estimating input frames:
+    Total input frames: 4
+@FNAMELAB=capture.ser
+@PFILE=100
+@PFILELAB=File 1 of 1
+  Processing 4 frames:
+@PROGRESS=0
+@PFRAMELAB=4
+@QSFRAMESLAB=0
+@QSORT=0
+@ANIM=0
+@PROGRESS=0
+
+@PROGRESS=25
+
+@PROGRESS=50
+
+@PROGRESS=75
+
+@PROGRESS=100
+@ANIM=14
+@ANIM=28
+@ANIM=42
+@ANIM=57
+@ANIM=71
+@ANIM=85
+@ANIM=100
+@ANIM=100
+  Summary:
+    PIPP version: v2.5.9
+    Total input frames: 4
+    Total output frames: 7
+    Output Frame Type: Monochrome
+    Output Frame Format: AVI
+    Output Directory: {OUT}/ 
+ 

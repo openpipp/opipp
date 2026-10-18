@@ -42,6 +42,9 @@ public sealed class EngineQuality
     private readonly int _qmax;
     private readonly int _qinc;
 
+    /// <summary>True for the Ninox variant (<c>-qold</c>): unweighted strides, absolute-difference metric.</summary>
+    private readonly bool _ninox;
+
     /// <summary>Mask buffer (<c>image+0xc48</c>): grow-only, never cleared.</summary>
     private byte[] _mask = [];
 
@@ -56,6 +59,17 @@ public sealed class EngineQuality
     /// <param name="qmax">Largest stride (<c>-qmax</c>), at least <paramref name="qmin"/> for any work to happen.</param>
     /// <param name="qinc">Stride step (<c>-qinc</c>), at least 1.</param>
     public EngineQuality(int qmin = 3, int qmax = 5, int qinc = 1)
+        : this(qmin, qmax, qinc, ninox: false)
+    {
+        // The Processor creates one EngineQuality per run, so this is the run boundary for the
+        // ambient state the stateless entry points (QualityMetrics) keep: the Ninox mask and the
+        // finder's box. The internal Ninox instance does not reset here (it would discard the
+        // detection box that is about to be measured).
+        QualityMetrics.ResetRunState();
+    }
+
+    /// <summary>Creates the PIPP Default or the Ninox (<c>-qold</c>) metric over the same stride sweep.</summary>
+    internal EngineQuality(int qmin, int qmax, int qinc, bool ninox)
     {
         if (qmin < 1) throw new ArgumentOutOfRangeException(nameof(qmin), "the engine divides by qmin²");
         if (qinc < 1) throw new ArgumentOutOfRangeException(nameof(qinc), "a step below one cannot advance the sweep");
@@ -64,6 +78,7 @@ public sealed class EngineQuality
         _qmin = qmin;
         _qmax = qmax;
         _qinc = qinc;
+        _ninox = ninox;
     }
 
     /// <summary>Smallest stride measured.</summary>
@@ -84,6 +99,13 @@ public sealed class EngineQuality
     /// </summary>
     public void SetDetectedBox(int left, int top, int right, int bottom)
     {
+        ApplyDetectedBox(left, top, right, bottom);
+        QualityMetrics.NoteDetectedBox(left, top, right, bottom);
+    }
+
+    /// <summary>Installs the finder's box without telling the ambient run state (used by the Ninox delegate).</summary>
+    internal void ApplyDetectedBox(int left, int top, int right, int bottom)
+    {
         _boxLeft = left;
         _boxTop = top;
         _boxRight = right;
@@ -97,6 +119,7 @@ public sealed class EngineQuality
         _boxTop = 0;
         _boxRight = 0;
         _boxBottom = 0;
+        QualityMetrics.NoteDetectionCleared();
     }
 
     /// <summary>
@@ -150,8 +173,9 @@ public sealed class EngineQuality
 
             double metric = Measure(plane, width, left, bufferTop, stride, nCols, nRows, threshold8);
 
-            // 32-bit integer division: 1 at qmin, 0 at every larger stride.
-            int weight = (_qmin * _qmin) / (stride * stride);
+            // 32-bit integer division: 1 at qmin, 0 at every larger stride. Ninox sums every
+            // measured stride unweighted (the engine skips this multiply when algorithm == 1).
+            int weight = _ninox ? 1 : (_qmin * _qmin) / (stride * stride);
             total += weight * metric;
 
             // Skip strides that reproduce the same geometry: the engine keeps the smallest one.
@@ -164,7 +188,8 @@ public sealed class EngineQuality
             stride = next;
         }
 
-        return Math.Sqrt(total) * Bright50Squares(frame) / BrightScale;
+        double root = Math.Sqrt(total);
+        return _ninox ? root : root * Bright50Squares(frame) / BrightScale;
     }
 
     /// <summary>
@@ -273,6 +298,7 @@ public sealed class EngineQuality
         byte[] mask = _mask;
 
         int above = 0;
+        double sumAbove = 0.0;
         for (int y = ct; y < nRows - ct; y++)
         {
             int p = (y * nCols) + cl;
@@ -284,6 +310,7 @@ public sealed class EngineQuality
                 }
 
                 above++;
+                sumAbove += blurred[p];
                 int q = p - nCols;
                 mask[q - 1] = 1;
                 mask[q] = 1;
@@ -303,9 +330,11 @@ public sealed class EngineQuality
             return -1.0;                       // constant at 0x140132950 in the engine
         }
 
-        // 5. Mean squared difference to the neighbouring pixel one step further into the bottom-up
+        // 5. Mean difference to the neighbouring pixel one step further into the bottom-up
         //    buffer (the row ABOVE in image coordinates) and one column to the right, over every
-        //    marked pixel — including marks the previous frame left behind.
+        //    marked pixel — including marks the previous frame left behind. The default metric uses
+        //    squared differences and divides by 10; Ninox (algorithm 1) sums absolute differences
+        //    and normalises by the mean of the above-threshold samples times 50.
         double sum = 0.0;
         int marked = 0;
         for (int y = ct; y < nRows - ct; y++)
@@ -321,19 +350,28 @@ public sealed class EngineQuality
                 int c = blurred[p];
                 int up = c - blurred[p + nCols];
                 int right = c - blurred[p + 1];
-                sum += ((double)up * up) + ((double)right * right);
+                sum += _ninox
+                    ? Math.Abs(up) + Math.Abs(right)
+                    : ((double)up * up) + ((double)right * right);
                 marked++;
             }
         }
 
-        return marked > 0 ? sum / marked / 10.0 : -1.0;
+        if (marked == 0 || above == 0)
+        {
+            return -1.0;
+        }
+
+        return _ninox
+            ? sum / marked * 50.0 / (sumAbove / above)
+            : sum / marked / 10.0;
     }
 
     /// <summary>
     /// Sum of the squares of the 50 brightest 8-bit samples (<c>FUN_1400b00b0</c>): a 256-bin
     /// histogram walked from bin 255 down, taking at most fifty samples.
     /// </summary>
-    private static double Bright50Squares(Frame frame)
+    internal static double Bright50Squares(Frame frame)
     {
         var histogram = new int[256];
         var samples = frame.Samples;

@@ -4,9 +4,11 @@ using Pipp.Core.Frames;
 namespace Pipp.Core.Formats;
 
 /// <summary>
-/// Writes SER v3 files: a 178-byte header followed by packed frames. Sample data is always written
-/// little-endian. When the header's frame count is 0 the writer back-patches the real count on dispose
-/// (requires a seekable stream). Supports mono, Bayer and RGB/BGR frames at 8..16 bits per sample.
+/// Writes SER v3 files: a 178-byte header followed by packed frames. Sample byte order follows the
+/// header's <see cref="SerHeader.LittleEndian"/> flag: little-endian when true, big-endian when false
+/// (the engine always writes big-endian, so <see cref="SerHeader.CreateOutput"/> produces that).
+/// When the header's frame count is 0 the writer back-patches the real count on dispose (requires a
+/// seekable stream). Supports mono, Bayer and RGB/BGR frames at 8..16 bits per sample.
 /// </summary>
 public sealed class SerWriter : IFrameSink
 {
@@ -18,6 +20,7 @@ public sealed class SerWriter : IFrameSink
     private readonly int _expectedFrameBitDepth;
     private readonly int _pixelCount;
     private readonly bool _writeBgr;
+    private readonly bool _littleEndian;
     private readonly byte[] _frameBuffer;
 
     private bool _disposed;
@@ -47,7 +50,6 @@ public sealed class SerWriter : IFrameSink
         _stream = stream;
         _ownsStream = ownsStream;
         _header = header.Clone();
-        _header.LittleEndian = true;
 
         try
         {
@@ -59,6 +61,7 @@ public sealed class SerWriter : IFrameSink
             _bytesPerSample = _header.BitDepth <= 8 ? 1 : 2;
             _expectedFrameBitDepth = _bytesPerSample == 1 ? 8 : 16;
             _writeBgr = _header.ColorId == (int)SerColorId.Bgr;
+            _littleEndian = _header.LittleEndian;
             _pixelCount = checked(_header.Width * _header.Height);
             _frameBuffer = new byte[checked(_pixelCount * _header.Channels * _bytesPerSample)];
 
@@ -192,17 +195,25 @@ public sealed class SerWriter : IFrameSink
                 {
                     int s = p * 3;
                     int b = p * 6;
-                    BinaryPrimitives.WriteUInt16LittleEndian(destination[b..], samples[s + 2]);
-                    BinaryPrimitives.WriteUInt16LittleEndian(destination[(b + 2)..], samples[s + 1]);
-                    BinaryPrimitives.WriteUInt16LittleEndian(destination[(b + 4)..], samples[s]);
+                    WriteSample(destination[b..], samples[s + 2]);
+                    WriteSample(destination[(b + 2)..], samples[s + 1]);
+                    WriteSample(destination[(b + 4)..], samples[s]);
                 }
             }
             else
             {
                 for (int i = 0; i < samples.Length; i++)
-                    BinaryPrimitives.WriteUInt16LittleEndian(destination[(i * 2)..], samples[i]);
+                    WriteSample(destination[(i * 2)..], samples[i]);
             }
         }
+    }
+
+    private void WriteSample(Span<byte> destination, ushort value)
+    {
+        if (_littleEndian)
+            BinaryPrimitives.WriteUInt16LittleEndian(destination, value);
+        else
+            BinaryPrimitives.WriteUInt16BigEndian(destination, value);
     }
 
     private static byte ClampToByte(ushort value) => value > byte.MaxValue ? byte.MaxValue : (byte)value;

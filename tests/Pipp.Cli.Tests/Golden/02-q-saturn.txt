@@ -1,0 +1,97 @@
+@PFILE=0
+@PFILELAB=File 0 of 1
+@FNAMELAB=none
+@ANIM=0
+@QSORT=0
+Processing: (Batch mode)
+  Input file:
+    {REPO}\samples\saturn30.ser
+  Estimating input frames:
+    Total input frames: 30
+@FNAMELAB=saturn30.ser
+@PFILE=100
+@PFILELAB=File 1 of 1
+  Processing 30 frames:
+@PROGRESS=0
+@PFRAMELAB=30
+@QSFRAMESLAB=0
+@QSORT=0
+@ANIM=0
+@PROGRESS=0
+
+    Using 2 RAM buffers for quality selection
+@PROGRESS=3
+
+@PROGRESS=6
+
+@PROGRESS=10
+
+@PROGRESS=13
+
+@PROGRESS=16
+
+@PROGRESS=20
+
+@PROGRESS=23
+
+@PROGRESS=26
+
+@PROGRESS=30
+
+@PROGRESS=33
+
+@PROGRESS=36
+
+@PROGRESS=40
+
+@PROGRESS=43
+
+@PROGRESS=46
+
+@PROGRESS=50
+
+@PROGRESS=53
+
+@PROGRESS=56
+
+@PROGRESS=60
+
+@PROGRESS=63
+
+@PROGRESS=66
+
+@PROGRESS=70
+
+@PROGRESS=73
+
+@PROGRESS=76
+
+@PROGRESS=80
+
+@PROGRESS=83
+
+@PROGRESS=86
+
+@PROGRESS=90
+
+@PROGRESS=93
+
+@PROGRESS=96
+
+@PROGRESS=100
+@QSFRAMESLAB=2
+  Quality processing:
+@QSORT=0
+@QSORT=50
+@QSORT=100
+    Reordered 2 images
+  Summary:
+    PIPP version: v2.5.9
+    Total input frames: 30
+    Frames discarded by quality: 28
+    Total output frames: 2
+    Quality Algorithm: PIPP Default
+    Output Frame Type: Monochrome
+    Output Frame Format: TIF
+    Output Directory: {OUT}/ 
+ 

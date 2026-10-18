@@ -105,6 +105,13 @@ internal static class Program
             new ParityCase("centre", ["-tif", "-ctr", "-ms=5"], Input: "big"),
             new ParityCase("quality", ["-tif", "-q=2"], Mode: CompareMode.SetEquality),
             new ParityCase("bmp-out", ["-bmp"]),
+            // Newly wired switch surfaces, locked in so they cannot regress silently.
+            new ParityCase("range", ["-tif", "-sf=2", "-f=2"]),
+            // SER output: headers now carry the engine's metadata rules (ColorID, BE flag, strings).
+            new ParityCase("ser-out", ["-ser"]),
+            new ParityCase("drop", ["-tif", "-drop=2"]),
+            new ParityCase("qw", ["-tif", "-q=2", "-qw"], Mode: CompareMode.SetEquality),
+            new ParityCase("anim", ["-avi", "-anim_fwd", "-anim_rev"]),
             new ParityCase("y8-out", ["-avi", "-y8"]),
             // The original writes a GIF with no image descriptor at all (only a NETSCAPE extension,
             // a comment block and the trailer), so there is nothing to compare pixels against; we

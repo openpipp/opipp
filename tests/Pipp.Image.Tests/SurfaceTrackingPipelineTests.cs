@@ -47,14 +47,18 @@ public class SurfaceTrackingPipelineTests
     }
 
     private static (string Input, Frame[] Frames) WriteCapture(string directory, int frames)
+        => WriteCapture(directory, frames, f => (3 * f, -2 * f));
+
+    private static (string Input, Frame[] Frames) WriteCapture(
+        string directory, int frames, Func<int, (int Dx, int Dy)> displacement)
     {
         var source = Texture(1234);
         var built = new Frame[frames];
         built[0] = source;
         for (int f = 1; f < frames; f++)
         {
-            // A different displacement per frame, all well inside the AFB and the search radius.
-            built[f] = Translate(source, 3 * f, -2 * f);
+            var (dx, dy) = displacement(f);
+            built[f] = Translate(source, dx, dy);
         }
 
         string path = Path.Combine(directory, "capture.ser");
@@ -108,6 +112,81 @@ public class SurfaceTrackingPipelineTests
 
             // Frames 1..3 really are translated: they must not match the reference.
             Assert.NotEqual(source[0].Samples, source[1].Samples);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Tracking_AoiReject_DiscardsFramesWhoseShiftPushesTheAoiOutOfTheFrame()
+    {
+        // The engine's -aoi_reject test (FUN_1400a5f40) is not "is the AFB inside the AOI": it
+        // translates the AOI rectangle by the measured displacement and rejects the frame when the
+        // moved rectangle no longer fits. With a 60-pixel-wide AOI at x=0 in a 64-pixel frame, one
+        // pixel of headroom is lost to the inclusive right edge, so dx <= 4 is allowed:
+        // frame 2 measures (3,-2) and passes, frames 3 (6,-4) and 4 (9,-6) are discarded.
+        string directory = Path.Combine(Path.GetTempPath(), "pipp-st-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var (input, _) = WriteCapture(directory, 4);
+            string outputDirectory = Path.Combine(directory, "out");
+            Directory.CreateDirectory(outputDirectory);
+            var settings = new PipelineSettings
+            {
+                OutputDirectory = outputDirectory,
+                OutputExtension = ".ser",
+                SurfaceTracking = true,
+                EnableStabilisation = true,
+                AlignmentBox = new PixelRect(16, 16, 32, 32),
+                AreaOfInterest = new PixelRect(0, 8, 60, 40),
+                AreaOfInterestReject = true,
+            };
+
+            var report = new Processor(settings).Run([input]);
+
+            Assert.Equal(2, report.OutputFrames);
+            Assert.Equal(2, report.DiscardedNoAoi);
+            var output = ReadAll(report.OutputFiles.Single());
+            Assert.Equal(2, output.Length);
+
+            string log = File.ReadAllText(Path.Combine(outputDirectory, "logs", "capture_pipp_log.txt"));
+            Assert.Contains("Frames discarded with no AOI found: 2", log);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Tracking_WithoutAoiReject_KeepsFramesThatLeaveTheAoi()
+    {
+        // Same capture, same AOI, but -aoi_reject off: the engine still measures the AOI as a -2
+        // result but only the switch turns it into a discard, so all four frames are delivered.
+        string directory = Path.Combine(Path.GetTempPath(), "pipp-st-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var (input, _) = WriteCapture(directory, 4);
+            string outputDirectory = Path.Combine(directory, "out");
+            Directory.CreateDirectory(outputDirectory);
+            var settings = new PipelineSettings
+            {
+                OutputDirectory = outputDirectory,
+                OutputExtension = ".ser",
+                SurfaceTracking = true,
+                EnableStabilisation = true,
+                AlignmentBox = new PixelRect(16, 16, 32, 32),
+                AreaOfInterest = new PixelRect(0, 8, 60, 40),
+            };
+
+            var report = new Processor(settings).Run([input]);
+
+            Assert.Equal(4, report.OutputFrames);
+            Assert.Equal(0, report.DiscardedNoAoi);
         }
         finally
         {
