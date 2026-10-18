@@ -403,12 +403,14 @@ public class ProcessingTests
     [InlineData(MonoMode.Blue, 41)]
     [InlineData(MonoMode.Green, 20)]
     [InlineData(MonoMode.Red, 10)]
-    [InlineData(MonoMode.All, 23)]        // 71 / 3 truncates
-    [InlineData(MonoMode.RedGreen, 15)]   // 30 / 2
-    [InlineData(MonoMode.RedBlue, 25)]    // 51 / 2 truncates
-    [InlineData(MonoMode.GreenBlue, 30)]  // 61 / 2 truncates
+    [InlineData(MonoMode.All, 19)]        // trunc(0.299*10 + 0.587*20 + 0.114*41) = trunc(19.404)
+    [InlineData(MonoMode.RedGreen, 16)]   // trunc(14.73 / 0.886) = trunc(16.625)
+    [InlineData(MonoMode.RedBlue, 18)]    // trunc(7.664 / 0.413) = trunc(18.56)
+    [InlineData(MonoMode.GreenBlue, 23)]  // trunc(16.414 / 0.701) = trunc(23.415)
     public void MonoConvert_EveryMode_UsesDocumentedChannelMapping(MonoMode mode, int expected)
     {
+        // Weights bisected against pipp_core.exe with a 1,056-combination RGB grid: modes 3-6 are
+        // Rec.601 luma (and luma-weighted two-channel pairs), not plain averages.
         var source = Rgb(1, 1, 10, 20, 41);
 
         var result = MonoConvert.Apply(source, mode);
@@ -439,7 +441,8 @@ public class ProcessingTests
 
         var result = MonoConvert.Apply(source, MonoMode.All);
 
-        AssertValues(result, 20, 101);
+        // Rec.601 luma per pixel: trunc(18.15) and trunc(100.815); the engine uses the same weights.
+        AssertValues(result, 18, 100);
     }
 
     // ------------------------------------------------------- histogram stretch

@@ -380,8 +380,10 @@ public sealed record PippOptions
 
     /// <summary>Convert colour to monochrome using channel selection 0-6 (<c>-convmono=&lt;n&gt;</c>); <see langword="null"/> disables it.</summary>
     /// <remarks>
-    /// Channel selections: 0 = RG&amp;B, 1 = R, 2 = G, 3 = B, 4 = R&amp;G, 5 = R&amp;B, 6 = G&amp;B.
-    /// The GUI's combo order maps onto these values through a lookup table.
+    /// Selections verified against the engine: 0 = blue only, 1 = green only, 2 = red only,
+    /// 3 = Rec.601 luma of R, G and B, 4 = luma-weighted R&amp;G, 5 = R&amp;B, 6 = G&amp;B. The
+    /// two-channel modes divide by the sum of the same weights (0.886, 0.413, 0.701), so they are
+    /// not plain averages. The GUI's combo order maps onto these values through a lookup table.
     /// </remarks>
     public int? ConvertToMono { get; set; }
 
@@ -588,8 +590,12 @@ public sealed record PippOptions
     /// <remarks>GUI default: <see cref="PippAviCodec.Dib"/>.</remarks>
     public PippAviCodec AviCodec { get; set; } = PippAviCodec.Dib;
 
-    /// <summary>AVI codec quality, 1-100 (<c>-avi_quality=&lt;n&gt;</c>).</summary>
-    /// <remarks>GUI default: 10.</remarks>
+    /// <summary>AVI codec quality, 1-10 (<c>-avi_quality</c>).</summary>
+    /// <remarks>
+    /// The GUI default is 10. The engine's parser rejects 0 and anything above 10; this model's
+    /// parser is deliberately permissive (1-100) for round-tripping, and the pipeline enforces the
+    /// engine's 1-10 range. Only the FMP4 codec uses the value.
+    /// </remarks>
     public int AviQuality { get; set; } = 10;
 
     /// <summary>Legacy AVI layout (<c>-avi_old</c> / <c>-avi_old4</c>).</summary>
@@ -621,8 +627,14 @@ public sealed record PippOptions
     /// <remarks>GUI default: 5, enabled.</remarks>
     public int GifTransparentPixelTolerance { get; set; } = 5;
 
-    /// <summary>GIF colour-table bit depth, 6-8; 8 selects the engine default (<c>-gif_col_tbl_depth=&lt;n&gt;</c>).</summary>
-    /// <remarks>GUI default: 8 (the bit-depth override is unchecked).</remarks>
+    /// <summary>GIF colour-table bit depth, 4-8 (<c>-gif_col_tbl_depth</c>).</summary>
+    /// <remarks>
+    /// GUI default: 8 (the bit-depth override is unchecked). The engine's parser accepts 4..8 — its
+    /// bounds check reads the transparent-pixel field by mistake, so depths above 8 are accepted and
+    /// then crash the writer (verified: 9 and 12 segfault). Values of 4..8 size the global colour
+    /// table to 16/32/64/128/256 entries. This model's parser is permissive (1-8) for round-tripping;
+    /// the pipeline enforces the engine's 4..8 range.
+    /// </remarks>
     public int GifColorTableDepth { get; set; } = 8;
 
     /// <summary>GIF lossy-compression strength; 0 disables it (<c>-gif_lossy_comp=&lt;n&gt;</c>).</summary>

@@ -447,3 +447,33 @@ output-drop and no-AFB counters and is written even when nothing was prepared.
 Verified: 411 tests, 22/22 parity cases, and a 44-case differential sweep of which 42 are byte- or
 pixel-identical (the two exceptions are an all-discarded label and the non-deterministic quality
 percentages). Spot-check: `-f=5` gives five files, all five pixel-identical to the oracle.
+
+## M21 - GIF/AVI options, master saving, RGB split, and a real mono bug
+
+Batch of option switches, each checked against the oracle first:
+
+- **`-gif_col_tbl_depth`** - global colour table is `2^depth` entries with a `256/entries` ramp and packed
+  byte `0xF0 | (depth-1)`; header and palette are byte-identical for depths 4-8. Depths 9 and 12
+  **segfault the engine**.
+- **`-gif_trns_pxl_tol`** - `-1` leaves palette entry 1 at `(1,1,1)`; enabling forces it black.
+- **`-gif_quant_type` / `-gif_border_tol` / `-gif_lossy_comp`** - no observable engine effect, because the
+  engine's GIF writer is a stub that emits **zero image descriptors**. Two quantisers (Kohonen SOM+Lloyd
+  and median cut) are implemented live and deterministic, but they cannot be verified against a writer
+  that writes no pixels.
+- **`-avi_codec` / `-avi_quality`** - the engine has exactly three handlers: `DIB `, `ULRG`, `FMP4`. There
+  is **no MJPEG encoder in 2.5.9 at all** (even though our reader decodes MJPEG AVIs). ULRG/FMP4 need
+  Ut Video / MPEG-4 encoders, so ours rejects them with a clear exception instead of writing mislabelled
+  DIB data. Quality is accepted 1-10 only; DIB ignores it and writes `dwQuality = 0xFFFFFFFF`.
+- **`-save_dark` / `-save_flat`** - masters go to `<od>/[sub/]logs/pipp_master_dark.tif` and
+  `pipp_master_flat.tif`, with a genuine engine quirk: a **mono** flat master is written as
+  `pipp_master_flat_dark.tif`. Pixels identical.
+- **`-rgb` / `-rgbsplit`** - stills produce `<r|g|b>_<stem>`, SER/AVI produce `r_<name>..ser` (the engine
+  really does double the dot). Two engine bugs found and not reproduced: `-rgb -keepimgname` writes
+  **no files at all**, and a one-plane split SER is stamped ColorID 100 (RGB) where we write 0.
+- **`-convmono` was wrong in our tree.** Modes 3-6 were plain channel averages; the engine uses Rec.601
+  weights (`0.299/0.587/0.114`) and the same weights on channel pairs divided by 0.886/0.413/0.701.
+  Bisected over 1,056 8-bit and 300 16-bit oracle outputs with **zero mismatches**; the existing test
+  expectation encoded the wrong behaviour and was corrected (`(10,20,41)` -> 19, not 23). Spot-check:
+  `-convmono=3` on the colour fixture is 4/4 pixel-identical.
+- **`-qold` / `-qhisto`** - wired (algorithm choice and log label) but the metric values and selection do
+  not match; recorded as a documentation gap, not claimed as parity.

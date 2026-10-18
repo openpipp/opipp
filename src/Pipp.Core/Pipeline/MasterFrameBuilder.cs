@@ -96,8 +96,7 @@ public static class MasterFrameBuilder
 
             if (!string.IsNullOrWhiteSpace(tiffPath))
             {
-                using var tiff = new TiffWriter(tiffPath!, master.Width, master.Height, master.Channels, master.BitDepth);
-                tiff.Write(master);
+                WriteMaster(master, tiffPath!);
             }
 
             if (!string.IsNullOrWhiteSpace(pgmPath))
@@ -115,5 +114,30 @@ public static class MasterFrameBuilder
         {
             return -1;
         }
+    }
+
+    /// <summary>
+    /// Writes one master frame as a TIFF in the engine's master layout: the frame's own geometry,
+    /// channel count and bit depth, uncompressed, one strip.
+    /// </summary>
+    /// <param name="master">Master frame to write.</param>
+    /// <param name="tiffPath">Destination path; parent directories are created when missing.</param>
+    /// <remarks>
+    /// Used both by <see cref="Build"/> (the <c>-dark_tmp</c>/<c>-flat_tmp</c> handoff) and by the
+    /// processor's <c>-save_dark</c>/<c>-save_flat</c> stage, which emits
+    /// <c>logs/pipp_master_dark.tif</c> and friends next to the output.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="master"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="tiffPath"/> is empty.</exception>
+    public static void WriteMaster(Frame master, string tiffPath)
+    {
+        ArgumentNullException.ThrowIfNull(master);
+        ArgumentException.ThrowIfNullOrWhiteSpace(tiffPath);
+
+        string? directory = Path.GetDirectoryName(Path.GetFullPath(tiffPath));
+        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+
+        using var tiff = new TiffWriter(tiffPath, master.Width, master.Height, master.Channels, master.BitDepth);
+        tiff.Write(master);
     }
 }

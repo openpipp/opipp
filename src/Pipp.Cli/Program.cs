@@ -134,6 +134,26 @@ internal static class Program
 
     private static PipelineSettings Map(PippOptions o)
     {
+        // The engine's parser accepts narrower ranges for the GIF options than this model's parser
+        // does; enforce them here so a command line the original rejects fails with its wording.
+        if (o.GifColorTableDepth is < 4 or > 8)
+            throw new ArgumentException($"Illegal gif_col_tbl_depth value ({o.GifColorTableDepth}); expected 4-8.");
+        if (o.GifBorderTolerance is < -1 or > 50)
+            throw new ArgumentException($"Illegal gif_border_tol value ({o.GifBorderTolerance}); expected -1-50.");
+        if (o.GifTransparentPixelTolerance is < -1 or > 50)
+            throw new ArgumentException($"Illegal gif_trns_pxl_tol value ({o.GifTransparentPixelTolerance}); expected -1-50.");
+        if (o.GifLossyCompression is < 0 or > 50)
+            throw new ArgumentException($"Illegal gif_lossy_comp value ({o.GifLossyCompression}); expected 0-50.");
+
+        // Only DIB is implementable for AVI output; fail before any frame is processed rather than
+        // half-way through a run. (The writer repeats this check for API callers.)
+        if (o.AviCodec != PippAviCodec.Dib && ChooseExtension(o.Formats) == ".avi")
+        {
+            throw new ArgumentException(
+                $"AVI codec {o.AviCodec} is not supported by this engine: it stores uncompressed DIB/Y800 " +
+                "frames only and contains no Ut Video or MPEG-4 encoder. Use -avi_codec=0 (DIB).");
+        }
+
         var settings = new PipelineSettings
         {
             OutputDirectory = string.IsNullOrWhiteSpace(o.OutputDirectory) ? DefaultOutputDirectory() : o.OutputDirectory!,
@@ -207,6 +227,38 @@ internal static class Program
             JoinMode = o.Join,
             IncludeQualityValue = o.IncludeQualityValue,
             OutputFrameDrop = o.OutputFrameDrop,
+
+            // GIF encoder options: -gif_col_tbl_depth and -gif_trns_pxl_tol have observable engine
+            // effects (global colour-table size and the reserved entry 1); -gif_quant_type selects
+            // the live quantiser here because the engine never encodes an image block.
+            GifOptions = new GifOptions
+            {
+                ColorTableDepth = o.GifColorTableDepth,
+                Quantisation = o.GifQuantisation == PippGifQuantisation.MedianCut
+                    ? GifQuantisation.MedianCut
+                    : GifQuantisation.NeuralNet,
+                BorderTolerance = o.GifBorderTolerance,
+                TransparentPixelTolerance = o.GifTransparentPixelTolerance,
+                LossyCompression = o.GifLossyCompression,
+            },
+
+            // -rgb writes three files per frame; -save_dark/-save_flat re-emit the loaded masters.
+            SplitRgb = o.SplitRgb,
+            SaveMasterDark = o.SaveMasterDark,
+            SaveMasterFlat = o.SaveMasterFlat,
+
+            // -avi_codec is carried into the writer, which only implements DIB. -avi_quality is
+            // validated against the engine's real range (1..10, not the parser's 1..100) so a value
+            // the original rejects fails here too; the uncompressed path has no quality parameter.
+            AviCodec = o.AviCodec switch
+            {
+                PippAviCodec.Ulrg => AviCodec.Ulrg,
+                PippAviCodec.Fmp4 => AviCodec.Fmp4,
+                _ => AviCodec.Dib,
+            },
+            AviQuality = o.AviQuality is >= 1 and <= 10
+                ? o.AviQuality
+                : throw new ArgumentException($"Illegal avi_quality value ({o.AviQuality}); expected 1-10."),
 
             AlignmentBox = o.AnchorFeatureX is int ax && o.AnchorFeatureY is int ay && o.AnchorFeatureWidth is int aw && o.AnchorFeatureHeight is int ah
                 ? new PixelRect(ax, ay, aw, ah)

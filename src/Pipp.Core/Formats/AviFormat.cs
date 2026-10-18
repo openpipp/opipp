@@ -22,11 +22,37 @@ public enum AviPixelFormat
     Y800 = 2,
 }
 
+/// <summary>Compression codec requested for AVI output (<c>-avi_codec</c>).</summary>
+public enum AviCodec
+{
+    /// <summary>Uncompressed DIB/Y800, the only layout <see cref="AviWriter"/> can produce (0).</summary>
+    Dib = 0,
+
+    /// <summary>Ut Video lossless compression (1) — requires the FFmpeg Ut Video encoder.</summary>
+    Ulrg = 1,
+
+    /// <summary>MPEG-4 part 2 lossy compression (2) — requires the FFmpeg MPEG-4 encoder.</summary>
+    Fmp4 = 2,
+}
+
 /// <summary>Options for <see cref="AviWriter"/>.</summary>
 public sealed class AviWriterOptions
 {
     /// <summary>Pixel layout of the written stream. Defaults to <see cref="AviPixelFormat.Mono8"/>.</summary>
     public AviPixelFormat PixelFormat { get; init; } = AviPixelFormat.Mono8;
+
+    /// <summary>
+    /// Compression codec (<c>-avi_codec</c>). Only <see cref="AviCodec.Dib"/> is implementable: the
+    /// writer stores uncompressed samples and this build contains no Ut Video or MPEG-4 encoder.
+    /// </summary>
+    public AviCodec Codec { get; init; } = AviCodec.Dib;
+
+    /// <summary>
+    /// Codec quality, 1..10 (<c>-avi_quality</c>). The engine accepts exactly this range and feeds it
+    /// to the FMP4 encoder; the uncompressed DIB path has no quality parameter, so the value is
+    /// validated and otherwise unused here.
+    /// </summary>
+    public int Quality { get; init; } = 10;
 
     /// <summary>Frame rate numerator (frames per second when <see cref="FpsScale"/> is 1). Defaults to 25.</summary>
     public int FpsRate { get; init; } = 25;
@@ -42,6 +68,16 @@ public sealed class AviWriterOptions
             throw new ArgumentOutOfRangeException(nameof(FpsScale), FpsScale, "FPS scale must be positive.");
         if (!Enum.IsDefined(PixelFormat))
             throw new ArgumentOutOfRangeException(nameof(PixelFormat), PixelFormat, "Unknown AVI pixel format.");
+        if (!Enum.IsDefined(Codec))
+            throw new ArgumentOutOfRangeException(nameof(Codec), Codec, "Unknown AVI codec.");
+        if (Quality is < 1 or > 10)
+            throw new ArgumentOutOfRangeException(nameof(Quality), Quality, "AVI codec quality must be between 1 and 10.");
+        if (Codec != AviCodec.Dib)
+        {
+            throw new NotSupportedException(
+                $"AVI codec {Codec} is not supported: this writer stores uncompressed DIB/Y800 frames only " +
+                "and contains no Ut Video or MPEG-4 encoder. Use -avi_codec=0 (DIB) instead.");
+        }
     }
 }
 

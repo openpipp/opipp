@@ -88,7 +88,15 @@ public static class FrameSinkFactory
     /// <param name="template">A frame describing the output geometry and depth.</param>
     /// <param name="frameCountHint">Expected frame count for containers that store it up front (SER).</param>
     /// <param name="fps">Frames per second for AVI/SER timing metadata.</param>
-    public static IFrameSink Create(string path, Frame template, int frameCountHint = 0, double fps = 0)
+    /// <param name="aviCodec">Requested AVI codec (<c>-avi_codec</c>); only DIB is implementable.</param>
+    /// <param name="aviQuality">Requested AVI codec quality, 1..10 (<c>-avi_quality</c>).</param>
+    public static IFrameSink Create(
+        string path,
+        Frame template,
+        int frameCountHint = 0,
+        double fps = 0,
+        AviCodec aviCodec = AviCodec.Dib,
+        int aviQuality = 10)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(template);
@@ -105,6 +113,8 @@ public static class FrameSinkFactory
             {
                 // The writer defaults to mono; a colour frame must be stored as 24bpp BGR.
                 PixelFormat = template.Channels == 3 ? AviPixelFormat.Bgr24 : AviPixelFormat.Mono8,
+                Codec = aviCodec,
+                Quality = aviQuality,
                 // Keep sub-Hz precision for rates such as 29.97 fps.
                 FpsRate = fps > 0 ? (int)Math.Round(fps * 1000.0) : 25,
                 FpsScale = fps > 0 ? 1000 : 1,

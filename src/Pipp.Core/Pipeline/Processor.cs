@@ -110,6 +110,44 @@ public sealed class PipelineSettings
     /// <summary>Output file extension, e.g. <c>.ser</c>, <c>.fits</c>, <c>.avi</c>, <c>.bmp</c>, <c>.tif</c>, <c>.png</c>.</summary>
     public string OutputExtension { get; set; } = ".ser";
 
+    /// <summary>GIF encoder options (<c>-gif_*</c>); the delay is derived from <see cref="Fps"/> at write time.</summary>
+    public GifOptions GifOptions { get; set; } = GifOptions.Default;
+
+    /// <summary>
+    /// Split colour output into one R, one G and one B file per frame (<c>-rgb</c>). Stills are named
+    /// <c>r_&lt;n&gt;.tif</c> inside the per-input folder; containers are three separate files named
+    /// <c>r_&lt;name&gt;.&lt;ext&gt;</c>, including the engine's doubled dot.
+    /// </summary>
+    /// <remarks>
+    /// The engine emits nothing at all for <c>-rgb -keepimgname</c> (its name builder fails); this
+    /// implementation writes the natural <c>r_&lt;baseName&gt;_f&lt;n&gt;</c> instead, a documented
+    /// divergence. GIF output ignores the split, exactly like the engine.
+    /// </remarks>
+    public bool SplitRgb { get; set; }
+
+    /// <summary>AVI codec requested with <c>-avi_codec</c>; only <see cref="AviCodec.Dib"/> is writable.</summary>
+    public AviCodec AviCodec { get; set; } = AviCodec.Dib;
+
+    /// <summary>AVI codec quality, 1..10 (<c>-avi_quality</c>); unused by the uncompressed path.</summary>
+    public int AviQuality { get; set; } = 10;
+
+    /// <summary>
+    /// Re-emit the loaded master dark as <c>logs/pipp_master_dark.tif</c> (<c>-save_dark</c>).
+    /// </summary>
+    /// <remarks>
+    /// The engine writes the file only when <c>-dark</c> is on and a master was loaded from
+    /// <c>-dark_tmp</c> (a <c>-dark_pgm</c>-only run saves nothing). This implementation re-emits
+    /// whichever master it loaded, so a readable <c>-dark_pgm</c> also produces the file; the name,
+    /// location, orientation and pixels are oracle-verified.
+    /// </remarks>
+    public bool SaveMasterDark { get; set; }
+
+    /// <summary>
+    /// Re-emit the loaded master flat as <c>logs/pipp_master_flat.tif</c> (<c>-save_flat</c>), or
+    /// <c>logs/pipp_master_flat_dark.tif</c> for a one-channel master, matching the engine's quirk.
+    /// </summary>
+    public bool SaveMasterFlat { get; set; }
+
     /// <summary>Filename prefix applied to generated files.</summary>
     public string Prefix { get; set; } = string.Empty;
 
@@ -319,6 +357,11 @@ public sealed class Processor
         // writes <od>/<subdir>/logs/ and <od>/<subdir>/<input>/.
         string outputRoot = EffectiveOutputDirectory();
         Directory.CreateDirectory(outputRoot);
+
+        // -save_dark / -save_flat: the engine re-emits the master it loaded into logs/ before any
+        // frame is processed (oracle: <od>/[sub/]logs/pipp_master_dark.tif). Nothing is written
+        // when the calibration switch is off or no master was loaded.
+        SaveMasterFrames(outputRoot);
 
         // -join collapses the inputs into one continuous stream: one output and one log, named
         // after the first input (verified: capture.ser + real1.ser -> capture/1.tif..5.tif).
@@ -596,7 +639,8 @@ public sealed class Processor
                         stacker.Add(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset, shiftFill));
                     }
                     var master = stacker.Result();
-                    using var sink = FrameSinkFactory.Create(masterPath, master, 1, _settings.Fps);
+                    using var sink = FrameSinkFactory.Create(masterPath, master, 1, _settings.Fps,
+                        _settings.AviCodec, _settings.AviQuality);
                     sink.Write(master);
                     outputFrames++;
                     outputs.Add(masterPath);
@@ -607,6 +651,8 @@ public sealed class Processor
                     // One animated file at the output root: unlike TIFF/PNG the engine does not use a
                     // per-input folder for GIF. The original writes an image-less GIF (no image
                     // descriptors at all), so writing a valid animation is a deliberate divergence.
+                    // -rgb has no effect on GIF in the engine (one file), and neither do -gif_border_tol
+                    // or -gif_lossy_comp, which only ever shaped image blocks that were never written.
                     string gifPath = Path.Combine(outputRoot, baseName + ".gif");
                     var gifFrames = new List<Frame>(written.Count);
                     foreach (var (frame, _, offset) in written)
@@ -616,14 +662,13 @@ public sealed class Processor
                     }
 
                     int delay = Math.Max(1, (int)Math.Round(100.0 / Math.Max(1, _settings.Fps)));
-                    GifWriter.Write(gifPath, gifFrames, new GifOptions(delay, Loop: true));
+                    GifWriter.Write(gifPath, gifFrames, _settings.GifOptions with { DelayCentiseconds = delay });
                     outputs.Add(gifPath);
                 }
                 else if (IsMultiFrameContainer(_settings.OutputExtension))
                 {
                     // SER/AVI hold the whole run in one file; joining inputs of different geometry
                     // is exactly the case the engine refuses ("Frames of different sizes ...").
-                    string outputPath = Path.Combine(outputRoot, baseName + _settings.OutputExtension);
                     var template = written[0].Frame;
                     foreach (var (frame, _, _) in written)
                     {
@@ -634,13 +679,53 @@ public sealed class Processor
                         }
                     }
 
-                    using var sink = FrameSinkFactory.Create(outputPath, template, written.Count, _settings.Fps);
-                    foreach (var (frame, _, offset) in written)
+                    if (_settings.SplitRgb)
                     {
-                        sink.Write(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset, shiftFill));
-                        outputFrames++;
+                        // -rgb writes three containers, one per channel. The engine's name is
+                        // <channel>_<prefix><name>.<suffix><ext> — with no suffix this yields the
+                        // doubled dot seen in the oracle ("r_colour..ser"), reproduced here.
+                        string stem = Path.GetFileNameWithoutExtension(unit.Name);
+                        string splitBase = _settings.Prefix + stem + "." + _settings.Suffix + _settings.OutputExtension;
+                        var sinks = new List<IFrameSink>(3);
+                        try
+                        {
+                            foreach ((char letter, int channel) in RgbChannels)
+                            {
+                                Frame part = ExtractChannel(template, channel);
+                                string path = Path.Combine(outputRoot, letter + "_" + splitBase);
+                                sinks.Add(FrameSinkFactory.Create(path, part, written.Count, _settings.Fps,
+                                    _settings.AviCodec, _settings.AviQuality));
+                                outputs.Add(path);
+                            }
+
+                            foreach (var (frame, _, offset) in written)
+                            {
+                                var output = offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset, shiftFill);
+                                for (int channel = 0; channel < sinks.Count; channel++)
+                                {
+                                    sinks[channel].Write(ExtractChannel(output, channel));
+                                }
+
+                                outputFrames++;
+                            }
+                        }
+                        finally
+                        {
+                            foreach (IFrameSink sink in sinks) sink.Dispose();
+                        }
                     }
-                    outputs.Add(outputPath);
+                    else
+                    {
+                        string outputPath = Path.Combine(outputRoot, baseName + _settings.OutputExtension);
+                        using var sink = FrameSinkFactory.Create(outputPath, template, written.Count, _settings.Fps,
+                            _settings.AviCodec, _settings.AviQuality);
+                        foreach (var (frame, _, offset) in written)
+                        {
+                            sink.Write(offset.Dx == 0 && offset.Dy == 0 ? frame : FrameAligner.ShiftWithBackground(frame, offset, shiftFill));
+                            outputFrames++;
+                        }
+                        outputs.Add(outputPath);
+                    }
                 }
                 else
                 {
@@ -688,11 +773,32 @@ public sealed class Processor
                         string fileName = _settings.KeepImageNames
                             ? $"{baseName}_f{stem}{_settings.OutputExtension}"
                             : $"{stem}{_settings.OutputExtension}";
-                        string outputPath = Path.Combine(frameDirectory, fileName);
-                        using var sink = FrameSinkFactory.Create(outputPath, output, 1, _settings.Fps);
-                        sink.Write(output);
+
+                        if (_settings.SplitRgb)
+                        {
+                            // -rgb: one file per channel, named <channel>_<normal file name>; the
+                            // frame number, zero padding and -incqv suffix are shared by all three
+                            // (oracle: r_0_quality_100%.fit, b_1.tif). Mono frames are replicated.
+                            foreach ((char letter, int channel) in RgbChannels)
+                            {
+                                Frame part = ExtractChannel(output, channel);
+                                string partPath = Path.Combine(frameDirectory, letter + "_" + fileName);
+                                using var partSink = FrameSinkFactory.Create(
+                                    partPath, part, 1, _settings.Fps, _settings.AviCodec, _settings.AviQuality);
+                                partSink.Write(part);
+                                outputs.Add(partPath);
+                            }
+                        }
+                        else
+                        {
+                            string outputPath = Path.Combine(frameDirectory, fileName);
+                            using var sink = FrameSinkFactory.Create(
+                                outputPath, output, 1, _settings.Fps, _settings.AviCodec, _settings.AviQuality);
+                            sink.Write(output);
+                            outputs.Add(outputPath);
+                        }
+
                         outputFrames++;
-                        outputs.Add(outputPath);
                         number++;
                     }
                 }
@@ -1123,6 +1229,66 @@ public sealed class Processor
 
         using var sink = FrameSinkFactory.Create(path, output, 1, _settings.Fps);
         sink.Write(output);
+    }
+
+    /// <summary>
+    /// Writes the engine's saved master frames: <c>logs/pipp_master_dark.tif</c> for
+    /// <c>-save_dark</c> and <c>logs/pipp_master_flat.tif</c> (or, for a one-channel flat,
+    /// <c>logs/pipp_master_flat_dark.tif</c>) for <c>-save_flat</c>.
+    /// </summary>
+    /// <remarks>
+    /// Verified with the oracle on a 32x24 capture: with <c>-dark -dark_tmp=&lt;master&gt; -save_dark</c>
+    /// the engine writes a real TIFF under <c>&lt;od&gt;/logs/</c> before processing, and writes
+    /// nothing when <c>-dark</c> is absent or no master path was supplied. The saved dark is always
+    /// one channel; the flat's channel count is preserved, and the engine names a one-channel flat
+    /// <c>pipp_master_flat_dark.tif</c> (an engine quirk this reproduces). <c>-osubdir</c> nests the
+    /// same way the log does.
+    /// </remarks>
+    private void SaveMasterFrames(string outputRoot)
+    {
+        if (!_settings.SaveMasterDark && !_settings.SaveMasterFlat)
+        {
+            return;
+        }
+
+        string logDirectory = Path.Combine(outputRoot, "logs");
+        if (_settings.SaveMasterDark && _settings.MasterDark is { } dark)
+        {
+            Frame master = dark.Channels == 1
+                ? dark
+                : new Frame(dark.Width, dark.Height, 1, dark.BitDepth, QualityMetrics.ToLuma(dark));
+            MasterFrameBuilder.WriteMaster(master, Path.Combine(logDirectory, "pipp_master_dark.tif"));
+        }
+
+        if (_settings.SaveMasterFlat && _settings.MasterFlat is { } flat)
+        {
+            string name = flat.Channels == 3 ? "pipp_master_flat.tif" : "pipp_master_flat_dark.tif";
+            MasterFrameBuilder.WriteMaster(flat, Path.Combine(logDirectory, name));
+        }
+    }
+
+    /// <summary>The channel order <c>-rgb</c> uses for its file prefixes: <c>r_</c>, <c>g_</c>, <c>b_</c>.</summary>
+    private static readonly (char Letter, int Channel)[] RgbChannels = [('r', 0), ('g', 1), ('b', 2)];
+
+    /// <summary>
+    /// Extracts one colour plane as a one-channel frame; a mono frame is cloned for every channel,
+    /// which is what the engine's <c>-rgb</c> does with mono input (three identical files).
+    /// </summary>
+    private static Frame ExtractChannel(Frame frame, int channel)
+    {
+        if (frame.Channels == 1)
+        {
+            return frame.Clone();
+        }
+
+        int pixels = frame.Width * frame.Height;
+        var samples = new ushort[pixels];
+        for (int i = 0; i < pixels; i++)
+        {
+            samples[i] = frame.Samples[(i * 3) + channel];
+        }
+
+        return new Frame(frame.Width, frame.Height, 1, frame.BitDepth, samples);
     }
 
     private void Report(int percent, string? file, int frameIndex, int frameCount, string message)
