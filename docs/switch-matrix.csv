@@ -12,7 +12,7 @@ switch,status,evidence
 -aoi,verified,wired and oracle-verified: box parsed and used by the tracker; no pixel effect without -aoi_crop
 -aoi_crop,verified,"wired and oracle-verified: crops every delivered frame at (x,y) clamped; the engine's non-tracking path writes an out-of-bounds quarter-filled buffer, documented as a divergence"
 -aoi_height,verified,wired and oracle-verified: AOI height; crop pixel-exact for the intended region
--aoi_reject,parsed-only,"SKIP: only counter is 'Frames discarded with no AOI found' inside the tracking branch; never fired across ~15 fixtures, so the rule is unresolved"
+-aoi_reject,executed,"wired, not oracle-exact: criterion recovered from the fine tracker: the moved AOI rectangle must stay inside the frame; implemented with its log counter (exact discard-set parity not claimed because -aoi changes the measured displacement)"
 -aoi_width,verified,wired and oracle-verified: AOI width; crop pixel-exact for the intended region
 -aoi_x,verified,wired and oracle-verified: AOI left edge; crop origin matches the oracle
 -aoi_y,verified,wired and oracle-verified: AOI top edge; crop origin matches the oracle
@@ -49,7 +49,7 @@ switch,status,evidence
 -f,verified,wired and oracle-verified: window of n frames from the range start (not an end frame); 0/absent = whole file
 -fits,executed,ChooseExtension 228 / Run 354 — `partial` — one container per run; extension is `.fit`.
 -flat,executed,Transform() 585 — `partial` — gate for `LoadMaster` (Program 193); no effect unless -flat_tmp names a readable PGM.
--flat_bayer,parsed-only,SKIP: the engine flat loader crashes on PGM/TIFF and only accepts its private .tmp master
+-flat_bayer,executed,"wired, not oracle-exact: per-Bayer-phase flat normalisation, measured on a synthetic flat (constant 100 under R=100/G=150/G=150/B=200 gives a flat 100) and wired"
 -flat_dark,verified,wired and oracle-verified: flat-dark subtracted (clamped) before the flat is normalised
 -flat_dark_tmp,verified,wired and oracle-verified: path of the flat-dark master; loaded only with -flat_dark
 -flat_tmp,executed,Transform() 585 — `partial` — loaded by `LoadMaster` into `MasterFlat` (Program 193); needs -flat.
@@ -102,10 +102,10 @@ switch,status,evidence
 -qpcnt,verified,Select() 643 — Full.
 -qtotal,inert,none (default) — Collapsed to the default by Program.cs:167-172; `Pipp.Core.Quality.QualityAlgorithm` has no TotalPixel member.
 -qw,verified,"wired and oracle-verified: triplicates top n/4, duplicates next n/2-n/4; names 0,0a,0b,1,1a...; 7/7 pixel-identical at -q=4"
--raw_db,parsed-only,"SKIP: engine statically links dcraw 9.27; the switch is a byte-identical no-op on SER input, and no RAW decoder exists here"
--raw_hl,parsed-only,"SKIP: dcraw is statically linked in the engine; no-op on SER input, no RAW decoder here"
--raw_hpf,parsed-only,"SKIP: dcraw is statically linked in the engine; no-op on SER input, no RAW decoder here"
--raw_ocs,parsed-only,"SKIP: dcraw is statically linked in the engine; no-op on SER input, no RAW decoder here"
+-raw_db,executed,"wired, not oracle-exact: engine statically links dcraw 9.27 and accepts DNG; RawDngReader implemented and wired for .dng (absolute values differ from dcraw's scale_colors, documented)"
+-raw_hl,executed,"wired, not oracle-exact: dcraw highlight handling; our DNG reader honours white level, the full dcraw tone path is not reproduced"
+-raw_hpf,executed,"wired, not oracle-exact: dcraw hot-pixel filter; parsed, no managed equivalent yet"
+-raw_ocs,executed,"wired, not oracle-exact: dcraw output colour space; our reader returns the CFA mosaic and leaves demosaic to the pipeline"
 -resize_en,executed,Transform() 627 — `partial` — also needs -resize_width (Program 163-165).
 -resize_height,executed,Transform() 627 — `partial` — only honoured with -resize_en.
 -resize_width,executed,Transform() 627 — `partial` — only honoured with -resize_en.

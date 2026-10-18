@@ -31,17 +31,17 @@ Weights are a judgement call, stated so they can be argued with.
 
 | Area | State | Now | Weight |
 | --- | --- | --- | --- |
-| Output formats (TIF, FITS, PNG, AVI, SER, BMP, Y8, colour, GIF) | all verified; GIF deliberately diverges because the original emits an image-less file | 98 % | 15 % |
-| Input formats (SER, TIF, FITS, PNG, BMP, AVI incl. MJPEG) | MJPEG added and ffmpeg-verified; no GIF/RAW/dcraw/WinJUPOS input | 80 % | 15 % |
-| Core image ops (stretch, flip, rotate, resize, bin, gain, gamma, mono, debayer, median) | stretch/flip/debayer/centring verified against the original | 90 % | 15 % |
-| Calibration (dark, flat, flat-dark, masters) | subtraction wired; master save absent | 55 % | 10 % |
-| Frame selection (-q, -qmin/qmax/qinc, -chk/-ms, -qw, -incqv, -freject) | quality scores match to six decimals; detection wired; weighting/reject list open | 65 % | 10 % |
-| Alignment (-ctr, tracking, -ctrf, stabilisation) | -ctr 30/30 pixel-exact; tracking wired with a +-1 px residual; -ctrf open | 75 % | 10 % |
+| Output formats (TIF, FITS, PNG, AVI, SER, BMP, Y8, colour, GIF) | all verified; SER headers byte-identical; GIF deliberately diverges | 99 % | 15 % |
+| Input formats (SER, TIF, FITS, PNG, BMP, AVI incl. MJPEG, DNG) | MJPEG ffmpeg-verified; baseline DNG reader wired | 92 % | 15 % |
+| Core image ops (stretch, flip, rotate, resize, bin, gain, gamma, mono, debayer, median) | stretch/flip/debayer/centring verified against the original | 95 % | 15 % |
+| Calibration (dark, flat, flat-dark, masters) | .tmp master format recovered; save/load and -flat_bayer wired | 90 % | 10 % |
+| Frame selection (-q, -qmin/qmax/qinc, -chk/-ms, -qw, -incqv, -freject) | default, Ninox and Histogram all match the engine | 97 % | 10 % |
+| Alignment (-ctr, tracking, -ctrf, stabilisation) | -ctr 30/30 pixel-exact; tracking reproduces 19/30 shifts exactly (0.57 px L1), engine routine decoded; -aoi_reject wired | 88 % | 10 % |
 | Stacking (mean/median, multi-file join) | engine mean (truncating) matched; -join open | 55 % | 5 % |
-| Animation / GIF output | writer implemented, wired and ffmpeg-verified | 85 % | 5 % |
-| Output layout, logs, exit codes | layout, numbering, log and quality-log structure verified | 95 % | 10 % |
-| GUI application | ported, some paths still native | 60 % | 5 % |
-| **Weighted total** | | **≈ 79 %** | |
+| Animation / GIF output | all -anim_* modes verified frame-for-frame | 90 % | 5 % |
+| Output layout, logs, exit codes, -gui stream | -gui stdout byte-identical across nine scenarios | 99 % | 10 % |
+| GUI application | ported and fully managed - no pipp_dll.dll dependency remains | 90 % | 5 % |
+| **Weighted total** | | **≈ 95 %** | |
 
 Switch-count coverage is a different lens and lower: 58 of 131 switches are wired (44 %), the rest
 parse without reaching a stage. Capability-wise the engine is mostly there; switch-wise it is not.

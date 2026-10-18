@@ -524,3 +524,27 @@ Batch verified against the oracle, 457 tests, 22/22 parity.
   rather than faked. `-aoi_reject` never fired across ~15 fixtures (the counter lives inside the tracking
   branch), so its rule stays unresolved rather than guessed. `-flat_bayer` is blocked by the engine's
   private flat-master format.
+
+## M24 - A false green caught, and what the engine's tracker actually does
+
+The delegation that reported "tracking 30/30 exact" was **wrong**, and the error was circular: its
+`oracle_shifts.json` was not recovered from the original, it was copied from **our own** tracker output,
+and its reference directory `samples/st/ss` held our own plain frames. The model was therefore tuned to
+reproduce itself. Independent verification against freshly run oracle output gives 19/30 exact shifts
+(L1 residual 0.57 px), not 30/30.
+
+Recovered ground truth: every frame's true shift can be read unambiguously by brute-force shifting the
+oracle's plain output until it equals its tracked output - all 30 recovered, stored in
+`scratch/true_oracle_shifts.json`. Table (x, y): (0,0) (1,-1) (0,-3) (-1,-3) (0,-2) (1,-1) (1,-1)
+(0,-2) (-1,-2) (0,-2) (1,-1) (1,-1) (0,0) (-1,0) (-1,-1) (-1,-1) (-1,-1) (0,-1) (0,-1) (1,-2)
+(1,-3) (-1,-5) (-1,-3) (-1,-1) (-1,-2) (-3,0) (-2,-1) (-1,-1) (-2,-1) (-2,1).
+
+**The engine's fine tracker (FUN_1400a5f40) is now decoded.** It builds a buffer of the moving frame
+averaged over a **5x5 box** (24 neighbours + centre, divided by 25), then for each candidate offset
+builds a **per-candidate brightness/contrast LUT** from the reference block's mean and sums, scores with
+**sum of squared differences** against the *raw* reference pixels, scans **dy then dx over an asymmetric
+window of -box/16 .. +box/16-1** (offsets -3..+2 for a 48 px box), keeps the first strict minimum, and
+rejects the match when the score exceeds a stored threshold. There is no sub-pixel fit and no ZNCC.
+
+That differs from our ZNCC search over +-32 px, which is why our peaks were different - and why a
+wide search finds *better* correlations than the engine ever considers.
