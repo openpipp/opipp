@@ -103,3 +103,24 @@ On the real capture the engine ranks frame 1 first at **1065.667424** and frame 
 a 4% spread. The ordering itself differs, so this is not a scale factor: the estimator behind "PIPP
 Default" weighs something we do not. Next step is to find that routine (`FUN_1400af990` is the
 downsample it calls; follow its callers), not to calibrate constants.
+
+## M7 - Quality estimator: pipeline located, metric still open
+
+Walked the call sites of the subsample routine (`FUN_1400af990`). The quality path is:
+
+1. `FUN_1400af990` samples the frame at a stride (`-qmin`..`-qmax`..`-qinc` drive the loop), writing a
+   16-bit subsampled buffer;
+2. the buffer is **contrast-normalised** by dividing by the mean of three stored accumulators
+   (`dVar20 = dVar1 / iVar18`, saturating at 65535) - so absolute brightness cannot influence the
+   score;
+3. `FUN_1400afc90` applies a **3x3 box blur** to the normalised buffer;
+4. the score comes from **`FUN_1400aecf0(image, blurred, width, height)`**; the algorithm selector
+   `param_2 == 3` uses `FUN_1400afda0` instead (a 781-byte routine);
+5. the search box (`image[0x374..0x377]`) is tracked and expanded across iterations.
+
+Negative results, worth not repeating: variance, Tenengrad, mean |gradient|, Laplacian variance,
+max gradient, and top-5 brightness (at strides 3/5/7, and top-5/median ratios) all give a frame1/frame11
+ratio of 0.87-1.07, while the engine reports **1.3102**. So the score is not a global image statistic -
+with the box tracking in the path, it is most likely measured inside the detected object's box.
+
+Next: read `FUN_1400aecf0` (and `FUN_1400afda0` for mode 3); that is the metric itself.

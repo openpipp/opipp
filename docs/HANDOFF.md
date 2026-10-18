@@ -71,9 +71,10 @@ Open, in the order I would take them:
 
 1. **Centring centroid** (item 2b, below) - bounded, one unknown left.
 2. **Quality estimator** (item 3) - the log format matches but the ranking does not: engine frame 1
-   = 1065.7 vs frame 11 = 813.3 (31% apart); ours has them within 4% and in the opposite order. Find
-   the estimator behind "PIPP Default" (`FUN_1400af990` is its downsample; follow callers). This is
-   what blocks the Phase 4 exit criterion "kept-frame set **and order** match".
+   = 1065.7 vs frame 11 = 813.3 (31% apart); ours has them within 4% and in the opposite order.
+   Pipeline located: subsample `FUN_1400af990` -> normalise by mean -> 3x3 blur `FUN_1400afc90` ->
+   metric `FUN_1400aecf0` (mode 3: `FUN_1400afda0`). Global statistics are ruled out (see journal M7).
+   Read `FUN_1400aecf0` next. This blocks the Phase 4 exit criterion "kept-frame set **and order**".
 3. **Detection rejection reasons** (item 2) - `-chk` now logs the threshold; the object finder
    `FUN_140077560` returns -1 for "no object" and the per-reason counters are not reproduced.
 4. **Weighting and bounds** (item 3) - `-qw`, `-incqv`, `-freject`.
