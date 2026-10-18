@@ -1,3 +1,4 @@
+using Pipp.Core.Alignment;
 using Pipp.Core.Frames;
 
 namespace Pipp.Core.Quality;
@@ -19,13 +20,19 @@ public enum QualityAlgorithm
 /// Frame quality scoring used for sorting and frame selection.
 /// </summary>
 /// <remarks>
-/// The original scores are computed on a downsampled region (see PIPP's <c>-qmin/-qmax/-qinc</c>),
-/// and its subsampler projects colour pixels to Rec.601 luma with the weights observed in
-/// <c>pipp_core!FUN_1400af990</c> (0.299 R + 0.587 G + 0.114 B over BGR-ordered samples).
-/// The three scalar formulas below are reconstructions: the surrounding contract (downsample,
-/// ordering, "% of best" reporting) is observed, the exact native expression is not yet
-/// verified against a labelled frame set. They are deterministic and exposure-normalised so
-/// that sorting behaviour is stable.
+/// <para>
+/// <see cref="QualityAlgorithm.PippDefault"/> is the recovered engine metric: see
+/// <see cref="EngineQuality"/> for the stride sweep, the mask-buffer reuse that makes the first
+/// frame of a run score higher, and the exposure factor. A single call here uses a fresh mask and
+/// the frame's own computed detection threshold, i.e. it reproduces PIPP's <em>frame 1</em>.
+/// </para>
+/// <para>
+/// The other two estimators remain reconstructions: the original scores are computed on a
+/// downsampled region (see PIPP's <c>-qmin/-qmax/-qinc</c>), and its subsampler projects colour
+/// pixels to Rec.601 luma with the weights observed in <c>pipp_core!FUN_1400af990</c>
+/// (0.299 R + 0.587 G + 0.114 B over BGR-ordered samples). Their formulas are deterministic and
+/// exposure-normalised so that sorting behaviour is stable.
+/// </para>
 /// </remarks>
 public static class QualityMetrics
 {
@@ -33,14 +40,24 @@ public static class QualityMetrics
     public static double Compute(Frame frame, QualityAlgorithm algorithm)
     {
         ArgumentNullException.ThrowIfNull(frame);
-        var luma = ToLuma(frame);
         return algorithm switch
         {
-            QualityAlgorithm.PippDefault => Tenengrad(luma, frame.Width, frame.Height),
-            QualityAlgorithm.Ninox => LaplacianVariance(luma, frame.Width, frame.Height),
-            QualityAlgorithm.Histogram => HistogramEntropy(luma, frame.BitDepth),
+            QualityAlgorithm.PippDefault => ComputeDefault(frame),
+            QualityAlgorithm.Ninox => LaplacianVariance(ToLuma(frame), frame.Width, frame.Height),
+            QualityAlgorithm.Histogram => HistogramEntropy(ToLuma(frame), frame.BitDepth),
             _ => throw new ArgumentOutOfRangeException(nameof(algorithm)),
         };
+    }
+
+    /// <summary>
+    /// One frame measured with a fresh mask and the frame's computed detection threshold — the
+    /// engine's frame 1 of a run. Callers that score a whole sequence must keep one
+    /// <see cref="EngineQuality"/> instead, or every frame looks like a first frame.
+    /// </summary>
+    private static double ComputeDefault(Frame frame)
+    {
+        var engine = new EngineQuality();
+        return engine.Score(frame, DetectionThreshold.ComputeOrDefault(frame));
     }
 
     /// <summary>
@@ -62,35 +79,6 @@ public static class QualityMetrics
             luma[i] = (ushort)y;
         }
         return luma;
-    }
-
-    /// <summary>Mean squared Sobel gradient, normalised by mean intensity (Tenengrad-style sharpness).</summary>
-    private static double Tenengrad(ushort[] luma, int w, int h)
-    {
-        if (w < 3 || h < 3) return 0;
-        double sum = 0, energy = 0;
-        long n = 0;
-
-        for (int y = 1; y < h - 1; y++)
-        {
-            for (int x = 1; x < w - 1; x++)
-            {
-                int i = y * w + x;
-                int tl = luma[i - w - 1], tc = luma[i - w], tr = luma[i - w + 1];
-                int ml = luma[i - 1], mr = luma[i + 1];
-                int bl = luma[i + w - 1], bc = luma[i + w], br = luma[i + w + 1];
-
-                int gx = (tr + 2 * mr + br) - (tl + 2 * ml + bl);
-                int gy = (bl + 2 * bc + br) - (tl + 2 * tc + tr);
-                sum += (double)gx * gx + (double)gy * gy;
-                energy += luma[i];
-                n++;
-            }
-        }
-
-        if (n == 0) return 0;
-        double meanEnergy = energy / n;
-        return meanEnergy <= 0 ? 0 : sum / n / meanEnergy;
     }
 
     /// <summary>Variance of the 3x3 Laplacian response.</summary>

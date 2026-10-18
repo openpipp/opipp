@@ -172,10 +172,14 @@ internal static class Program
             },
             KeepFrames = o.QualityFrameCount,
             KeepPercent = o.QualityPercent,
+            QualityMinDownsample = o.QualityMinDownsample ?? 3,
+            QualityMaxDownsample = o.QualityMaxDownsample ?? 5,
+            QualityIncrement = o.QualityIncrement ?? 1,
 
             Centre = o.Centre,
             MinPixelValue = o.MinPixelValue,
             CheckForPlanet = o.CheckForPlanet,
+            MinSize = o.MinPlanetSize ?? 50,
             KeepImageNames = o.KeepImageFilenames,
             SurfaceTracking = o.SurfaceFeatureTracking,
             AlignmentBox = o.AnchorFeatureX is int ax && o.AnchorFeatureY is int ay && o.AnchorFeatureWidth is int aw && o.AnchorFeatureHeight is int ah

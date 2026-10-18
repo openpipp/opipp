@@ -1,127 +1,132 @@
 switch,status,evidence
--afb_height,parsed-only,"parsed, no effect yet"
--afb_width,parsed-only,"parsed, no effect yet"
--afb_x,parsed-only,"parsed, no effect yet"
--afb_y,parsed-only,"parsed, no effect yet"
--anim_all_rep,parsed-only,"parsed, no effect yet"
--anim_all_rep_always,parsed-only,"parsed, no effect yet"
--anim_fwd,parsed-only,"parsed, no effect yet"
--anim_fwd_lf_rep,parsed-only,"parsed, no effect yet"
--anim_rev,parsed-only,"parsed, no effect yet"
--anim_rev_lf_rep,parsed-only,"parsed, no effect yet"
--aoi,parsed-only,"parsed, no effect yet"
--aoi_crop,parsed-only,"parsed, no effect yet"
--aoi_height,parsed-only,"parsed, no effect yet"
--aoi_reject,parsed-only,"parsed, no effect yet"
--aoi_width,parsed-only,"parsed, no effect yet"
--aoi_x,parsed-only,"parsed, no effect yet"
--aoi_y,parsed-only,"parsed, no effect yet"
--auto_fps,parsed-only,"parsed, no effect yet"
--avi,verified,oracle parity case
--avi_codec,parsed-only,"parsed, no effect yet"
--avi_old,parsed-only,"parsed, no effect yet"
--avi_old4,parsed-only,"parsed, no effect yet"
--avi_quality,parsed-only,"parsed, no effect yet"
--avi_safe_width,parsed-only,"parsed, no effect yet"
--bin,executed,mapped into PipelineSettings / Program
--bin_sum,executed,mapped into PipelineSettings / Program
--bmp,executed,mapped into PipelineSettings / Program
--chk,parsed-only,"parsed, no effect yet"
--colour,executed,mapped into PipelineSettings / Program
--convmono,parsed-only,"parsed, no effect yet"
--ctr,verified,oracle parity case
--ctrf,parsed-only,"parsed, no effect yet"
--cx,parsed-only,"parsed, no effect yet"
--cy,parsed-only,"parsed, no effect yet"
--dark,executed,mapped into PipelineSettings / Program
--dark_bayer,parsed-only,"parsed, no effect yet"
--dark_pgm,parsed-only,"parsed, no effect yet"
--dark_tmp,parsed-only,"parsed, no effect yet"
--db,executed,pattern-only form is a verified no-op; interpolated output differs by ~1 LSB (known gap)
--db_type,executed,selects the debayer algorithm; interpolation not yet matched (known gap)
--drop,parsed-only,"parsed, no effect yet"
--en_ss,parsed-only,"parsed, no effect yet"
--en_surface_feature_tracking,executed,mapped into PipelineSettings / Program
--f,parsed-only,"parsed, no effect yet"
--fits,verified,oracle parity case
--flat,executed,mapped into PipelineSettings / Program
--flat_bayer,parsed-only,"parsed, no effect yet"
--flat_dark,parsed-only,"parsed, no effect yet"
--flat_dark_tmp,parsed-only,"parsed, no effect yet"
--flat_tmp,parsed-only,"parsed, no effect yet"
--flip_x,verified,oracle parity case
--flip_y,executed,mapped into PipelineSettings / Program
--fps_rate,executed,mapped into PipelineSettings / Program
--fps_scale,executed,mapped into PipelineSettings / Program
--freject,parsed-only,"parsed, no effect yet"
--gamma,executed,mapped into PipelineSettings / Program
--gif,parsed-only,"parsed, no effect yet"
--gif_border_tol,parsed-only,"parsed, no effect yet"
--gif_col_tbl_depth,parsed-only,"parsed, no effect yet"
--gif_lossy_comp,parsed-only,"parsed, no effect yet"
--gif_quant_type,parsed-only,"parsed, no effect yet"
--gif_trns_pxl_tol,parsed-only,"parsed, no effect yet"
--gui,executed,mapped into PipelineSettings / Program
--hot_pixel,parsed-only,"parsed, no effect yet"
--hs,verified,"oracle parity case (synthetic, colour and 30 real frames)"
--hs_bp,verified,oracle parity case (30 real frames)
--hsrgb,verified,"oracle parity case (colour fixture, per-channel gains)"
--ifd,parsed-only,"parsed, no effect yet"
--incqv,parsed-only,"parsed, no effect yet"
--input_gain,parsed-only,"parsed, no effect yet"
--join,parsed-only,"parsed, no effect yet"
--keepimgname,parsed-only,"parsed, no effect yet"
--median,executed,mapped into PipelineSettings / Program
--mono,executed,mapped into PipelineSettings / Program
--mp,parsed-only,"parsed, no effect yet"
--ms,verified,oracle parity case
--nlz,executed,mapped into PipelineSettings / Program
--no_anim_rev_last_rep,parsed-only,"parsed, no effect yet"
--no_ram_buff,parsed-only,"parsed, no effect yet"
--nr,executed,mapped into PipelineSettings / Program
--od,executed,mapped into PipelineSettings / Program
--oe,executed,mapped into PipelineSettings / Program
--op,executed,mapped into PipelineSettings / Program
--os,executed,mapped into PipelineSettings / Program
--osubdir,parsed-only,"parsed, no effect yet"
--ox,parsed-only,"parsed, no effect yet"
--oy,parsed-only,"parsed, no effect yet"
--pb,parsed-only,"parsed, no effect yet"
--png,verified,oracle parity case
--q,verified,oracle parity case
--qhisto,executed,mapped into PipelineSettings / Program
--qinc,parsed-only,"parsed, no effect yet"
--qmax,parsed-only,"parsed, no effect yet"
--qmin,parsed-only,"parsed, no effect yet"
--qold,executed,mapped into PipelineSettings / Program
--qpcnt,parsed-only,"parsed, no effect yet"
--qtotal,executed,mapped into PipelineSettings / Program
--qw,parsed-only,"parsed, no effect yet"
--raw_db,parsed-only,"parsed, no effect yet"
--raw_hl,parsed-only,"parsed, no effect yet"
--raw_hpf,parsed-only,"parsed, no effect yet"
--raw_ocs,parsed-only,"parsed, no effect yet"
--resize_en,executed,mapped into PipelineSettings / Program
--resize_height,parsed-only,"parsed, no effect yet"
--resize_width,parsed-only,"parsed, no effect yet"
--rgb,parsed-only,"parsed, no effect yet"
--rotate180,executed,mapped into PipelineSettings / Program
--rotate270,executed,mapped into PipelineSettings / Program
--rotate90,executed,mapped into PipelineSettings / Program
--save_dark,parsed-only,"parsed, no effect yet"
--save_flat,parsed-only,"parsed, no effect yet"
--save_flat_dark,parsed-only,"parsed, no effect yet"
--sdp,parsed-only,"parsed, no effect yet"
--ser,executed,mapped into PipelineSettings / Program
--ser_bpp,parsed-only,"parsed, no effect yet"
--sf,parsed-only,"parsed, no effect yet"
--shdw,parsed-only,"parsed, no effect yet"
--sr,parsed-only,"parsed, no effect yet"
--temp_dir,parsed-only,"parsed, no effect yet"
--test_run,parsed-only,"parsed, no effect yet"
--tif,verified,oracle parity case
--wjpos_dtmask,parsed-only,"parsed, no effect yet"
--wjpos_ipfps,parsed-only,"parsed, no effect yet"
--wjpos_lt2ut,parsed-only,"parsed, no effect yet"
--wjpos_time,parsed-only,"parsed, no effect yet"
--y8,parsed-only,"parsed, no effect yet"
+-afb_height,executed,Run() 317 — `partial` — all four required.
+-afb_width,executed,Run() 317 — `partial` — all four required.
+-afb_x,executed,Run() 317 — `partial` — all four -afb_* are required (Program 181-183) and ignored without -en_surface_feature_tracking.
+-afb_y,executed,Run() 317 — `partial` — all four required.
+-anim_all_rep,parsed-only,No PS property.
+-anim_all_rep_always,parsed-only,No PS property.
+-anim_fwd,parsed-only,No PS property; there is no animation/repeat stage.
+-anim_fwd_lf_rep,parsed-only,No PS property.
+-anim_rev,parsed-only,No PS property.
+-anim_rev_lf_rep,parsed-only,No PS property.
+-aoi,parsed-only,No PS property.
+-aoi_crop,parsed-only,No PS property.
+-aoi_height,parsed-only,No PS property.
+-aoi_reject,parsed-only,No PS property.
+-aoi_width,parsed-only,No PS property.
+-aoi_x,parsed-only,No PS property.
+-aoi_y,parsed-only,No PS property.
+-auto_fps,parsed-only,No PS property; `Fps` is only ever -fps_rate/-fps_scale.
+-avi,executed,"ChooseExtension 228 / Run 354 — `partial` — feeds `Formats` → `ChooseExtension` (Program 228-239): one container per run, priority ser > avi > fit > tif > png > bmp."
+-avi_codec,parsed-only,No PS property; `AviWriterOptions` carries only PixelFormat/FpsRate/FpsScale (Formats/AviFormat.cs:26-45).
+-avi_old,parsed-only,No PS property.
+-avi_old4,parsed-only,No PS property.
+-avi_quality,parsed-only,No PS property; same writer-options gap.
+-avi_safe_width,parsed-only,No PS property.
+-bin,verified,Transform() 574 — Full.
+-bin_average,inert,Transform() 577 — Writes the default value; only undoes an earlier -bin_sum.
+-bin_sum,verified,Transform() 577 — Full.
+-bmp,executed,ChooseExtension 228 / Run 354 — `partial` — one container per run.
+-centre,inert,same body as -ctr — Alias of -ctr: same `case` body (CommandLineParser 350-353).
+-check,parsed-only,"No PS property; validate-and-exit is a `Main` concern, not a stage."
+-chk,executed,WriteLogFiles() 468 — `partial` — read only to choose a log header (Processor 468); frames are never rejected for a missing object.
+-colour,verified,Transform() 559/568 — Full.
+-convmono,verified,Transform() 561/600 — Full.
+-ctr,verified,Run() 305 / log 468 — Full.
+-ctrf,parsed-only,No PS property; the range origin is fixed at frame 1.
+-cx,executed,"Transform() 623 — `partial` — needs -cx or -cy (`BuildCrop`, Program 219-226); offsets alone are ignored."
+-cy,executed,Transform() 623 — `partial` — needs a crop size.
+-dark,executed,Transform() 581 — `partial` — gate for `LoadMaster` (Program 192); no effect unless -dark_tmp/-dark_pgm names a readable PGM.
+-dark_bayer,parsed-only,No PS property.
+-dark_pgm,executed,Transform() 581 — `partial` — preferred over -dark_tmp (Program 192); needs -dark.
+-dark_tmp,executed,Transform() 581 — `partial` — loaded by `LoadMaster` into `MasterDark` (Program 192); needs -dark.
+-db,executed,"Transform() 564 / none — `partial` — bare `-db` works; `-db=<pattern>` only sets `DebayerPattern`, which Processor never reads."
+-db_type,executed,Transform() 566/570 — `partial` — only value 2 (SmoothHue) survives; 0 and 1 both map to `false` (Program 139).
+-debugavi,parsed-only,No PS property; `AviWriter` has no diagnostics switch.
+-drop,parsed-only,No PS property.
+-en_ss,parsed-only,No PS property.
+-en_surface_feature_tracking,verified,Run() 311 — Full.
+-f,parsed-only,No PS property; the read loop runs to EOF.
+-fits,executed,ChooseExtension 228 / Run 354 — `partial` — one container per run; extension is `.fit`.
+-flat,executed,Transform() 585 — `partial` — gate for `LoadMaster` (Program 193); no effect unless -flat_tmp names a readable PGM.
+-flat_bayer,parsed-only,No PS property.
+-flat_dark,parsed-only,No PS property.
+-flat_dark_tmp,parsed-only,`MasterFlatDarkTmpFile` is never read by Program or Processor.
+-flat_tmp,executed,Transform() 585 — `partial` — loaded by `LoadMaster` into `MasterFlat` (Program 193); needs -flat.
+-flip_x,verified,Transform() 614 — Full.
+-flip_y,verified,Transform() 615 — Full.
+-fps_rate,executed,writers 348/359/395 — `partial` — `Fps` reaches only the AVI rate fields (FrameIo 104-111); SER and stills ignore it.
+-fps_scale,executed,writers 348/359/395 — `partial` — AVI timing only.
+-freject,parsed-only,No PS property.
+-gamma,verified,Transform() 591 — Full.
+-gif,verified,"wired: Program.ChooseExtension maps .gif; Processor writes one animated GifWriter file; original emits an image-less GIF (deliberate divergence)"
+-gif_border_tol,parsed-only,"No PS property, and no GIF writer."
+-gif_col_tbl_depth,parsed-only,"No PS property, and no GIF writer."
+-gif_lossy_comp,parsed-only,"No PS property, and no GIF writer."
+-gif_quant_type,parsed-only,"No PS property, and no GIF writer."
+-gif_trns_pxl_tol,parsed-only,"No PS property, and no GIF writer."
+-gui,verified,Report() 661 — Full: drives the `@TOKEN` progress protocol.
+-help,inert,Prints `PippHelpText` and exits 0 (Program.cs:33-37); not an option.
+-hot_pixel,parsed-only,No PS property; no hot-pixel repair stage.
+-hs,verified,Transform() 604 — Full; the `%`/`p` spellings are normalised to 1..255 in the parser (CommandLineParser 290-303).
+-hs_bp,verified,Transform() 609 — Full.
+-hsrgb,verified,Transform() 610 — Full.
+-ifd,parsed-only,No PS property; the read loop cannot drop leading frames.
+-incqv,parsed-only,No PS property.
+-input_gain,verified,Transform() 591 — Full.
+-join,parsed-only,Banner only (Program.cs:91); `Run()` loops per file independently.
+-keepimgname,verified,Run() 391 — Full.
+-median,verified,Transform() 596 — Full.
+-mono,verified,Transform() 559/568 — Full.
+-mp,verified,Run() 303 / log 472 — Full (detection floor for centring and the log).
+-ms,parsed-only,No PS property; `MinPlanetSize` is never mapped.
+-nlz,inert,none — `PipelineSettings.LeadingZeros` is never read; padding is always applied (Processor 382).
+-no_anim_rev_last_rep,parsed-only,No PS property.
+-no_ram_buff,parsed-only,No PS property; every frame is held in a `List` (Processor 244).
+-nr,executed,"Run() 388 — `partial` — `RenumberFrames` is read at 388, in the still-image branch only."
+-od,verified,Run() 219/340/357 — Full.
+-oe,executed,"Run() 283 — `partial` — the count gate works, but `OverexposedThreshold` (the pixel value) is never set, so it uses the frame maximum (Processor 548-551)."
+-op,verified,Run() 336 — Full.
+-os,verified,Run() 336 — Full.
+-osubdir,parsed-only,No PS property; output is written straight into `OutputDirectory` (Processor 219).
+-ox,executed,Transform() 623 — `partial` — read only when a crop size is present.
+-oy,executed,Transform() 623 — `partial` — read only when a crop size is present.
+-pb,parsed-only,No PS property.
+-png,executed,ChooseExtension 228 / Run 354 — `partial` — one container per run.
+-q,executed,"Select() 642 / none — `partial` — `-q=<n>` sets `QualityFrameCount` → `KeepFrames` (works); bare `-q` sets `QualityAllFrames`, which Program never maps."
+-qhisto,verified,Run() 298 / log 495 — Full (Histogram).
+-qinc,parsed-only,No PS property.
+-qmax,parsed-only,No PS property.
+-qmin,parsed-only,No PS property.
+-qold,verified,Run() 298 / log 495 — Full (Ninox).
+-qpcnt,verified,Select() 643 — Full.
+-qtotal,inert,none (default) — Collapsed to the default by Program.cs:167-172; `Pipp.Core.Quality.QualityAlgorithm` has no TotalPixel member.
+-qw,parsed-only,"No PS property, and no stacking path to apply it to."
+-raw_db,parsed-only,No PS property.
+-raw_hl,parsed-only,No PS property (the PippOptions default 1 never reaches the pipeline).
+-raw_hpf,parsed-only,No PS property; the RAW path has no hot-pixel filter.
+-raw_ocs,parsed-only,No PS property.
+-resize_en,executed,Transform() 627 — `partial` — also needs -resize_width (Program 163-165).
+-resize_height,executed,Transform() 627 — `partial` — only honoured with -resize_en.
+-resize_width,executed,Transform() 627 — `partial` — only honoured with -resize_en.
+-rgb,parsed-only,No PS property.
+-rotate180,verified,Transform() 616 — Full.
+-rotate270,verified,Transform() 616 — Full.
+-rotate90,verified,Transform() 616 — Full.
+-save_dark,parsed-only,No PS property; no master-writing stage.
+-save_flat,parsed-only,No PS property.
+-save_flat_dark,parsed-only,No PS property.
+-sdp,parsed-only,No PS property; there is no overlay stage.
+-ser,executed,ChooseExtension 228 / Run 354 — `partial` — one container per run.
+-ser_bpp,parsed-only,No PS property; the SER reader always trusts the header.
+-sf,parsed-only,No PS property; the read loop (Processor 249-325) has no start index.
+-shdw,parsed-only,No PS property.
+-sr,parsed-only,"No PS property; rejected frames are dropped (Processor 278, 288)."
+-temp_dir,parsed-only,No PS property; the managed engine stages nothing on disk.
+-test_run,parsed-only,No PS property; `TestRun` is never read.
+-tif,executed,ChooseExtension 228 / Run 354 — `partial` — one container per run.
+-wjpos_dtmask,parsed-only,No PS property; names are built at Processor 336/391.
+-wjpos_ipfps,parsed-only,No PS property.
+-wjpos_lt2ut,parsed-only,No PS property.
+-wjpos_time,parsed-only,No PS property.
+-y8,parsed-only,No PS property.

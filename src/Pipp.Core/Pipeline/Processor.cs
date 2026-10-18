@@ -30,8 +30,14 @@ public sealed record ProcessingReport
     /// <summary>Frames dropped by quality selection.</summary>
     public int DiscardedByQuality { get; init; }
 
-    /// <summary>Frames dropped because the object was missing or too small.</summary>
+    /// <summary>Frames dropped because no object was detected (<c>-chk</c> return -1).</summary>
     public int DiscardedNoObject { get; init; }
+
+    /// <summary>Frames dropped because the object touched a border.</summary>
+    public int DiscardedPartialObject { get; init; }
+
+    /// <summary>Frames dropped because the object was below the minimum size.</summary>
+    public int DiscardedTooSmall { get; init; }
 
     /// <summary>Input files processed.</summary>
     public int FilesProcessed { get; init; }
@@ -117,6 +123,23 @@ public sealed class PipelineSettings
 
     /// <summary>Reject frames with no detectable object (<c>-chk</c>); also makes the log carry the threshold.</summary>
     public bool CheckForPlanet { get; set; }
+
+    /// <summary>Minimum object size in pixels (<c>-ms</c>), compared with both box dimensions.</summary>
+    /// <remarks>
+    /// The engine compares it with <c>min(box width, box height)</c>. When <c>-ms</c> is absent the
+    /// work image's field keeps its initial 50 (bisected against the shipped binary: a synthetic
+    /// object with a 49-pixel minimum dimension is rejected, a 50-pixel one is accepted).
+    /// </remarks>
+    public int MinSize { get; set; } = 50;
+
+    /// <summary>Smallest quality stride (<c>-qmin</c>).</summary>
+    public int QualityMinDownsample { get; set; } = 3;
+
+    /// <summary>Largest quality stride (<c>-qmax</c>).</summary>
+    public int QualityMaxDownsample { get; set; } = 5;
+
+    /// <summary>Quality stride step (<c>-qinc</c>).</summary>
+    public int QualityIncrement { get; set; } = 1;
 
     /// <summary>Write the engine's layout: frames in a per-input folder plus a logs folder.</summary>
     public bool PippLayout { get; set; } = true;
@@ -215,7 +238,15 @@ public sealed class Processor
         var files = inputFiles.Where(f => !string.IsNullOrWhiteSpace(f)).ToList();
         var outputs = new List<string>();
         var failed = new List<string>();
-        int inputFrames = 0, outputFrames = 0, discardedQuality = 0, discardedObject = 0, filesProcessed = 0;
+        int inputFrames = 0, outputFrames = 0, discardedQuality = 0,
+            discardedNoObject = 0, discardedPartial = 0, discardedTooSmall = 0, filesProcessed = 0;
+
+        // One metric instance for the whole run: the engine's mask buffer lives in its work image
+        // and is reused (never cleared) across frames, which is exactly what the score depends on.
+        var quality = new EngineQuality(
+            _settings.QualityMinDownsample,
+            _settings.QualityMaxDownsample,
+            _settings.QualityIncrement);
 
         Directory.CreateDirectory(_settings.OutputDirectory);
         int fileIndex = 0;
@@ -224,7 +255,9 @@ public sealed class Processor
         {
             cancellationToken.ThrowIfCancellationRequested();
             fileIndex++;
-            int objectDiscardsBefore = discardedObject;
+            int noObjectBefore = discardedNoObject;
+            int partialBefore = discardedPartial;
+            int tooSmallBefore = discardedTooSmall;
             _protocol?.WriteFileLabel(fileIndex, files.Count);
             Report(0, file, 0, 0, $"Processing {Path.GetFileName(file)}");
 
@@ -245,6 +278,7 @@ public sealed class Processor
                 var accepted = new List<(Frame Frame, double Score, AlignmentOffset Offset)>();
                 int? detectionThreshold = null;
                 Frame? reference = null;
+                Frame? sample = null;
                 int index = 0;
 
                 while (true)
@@ -276,7 +310,7 @@ public sealed class Processor
                     catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
                     {
                         // a frame that cannot be transformed is a rejected frame, not a crash
-                        discardedObject++;
+                        discardedNoObject++;
                         _protocol?.WriteLine($"  Frame {index} rejected: {ex.Message}");
                         continue;
                     }
@@ -286,7 +320,7 @@ public sealed class Processor
                         int over = Statistics.CountOverexposed(frame, ResolveOverexposedThreshold(frame)).Sum();
                         if (over > maxOver)
                         {
-                            discardedObject++;
+                            discardedNoObject++;
                             continue;
                         }
                     }
@@ -296,13 +330,48 @@ public sealed class Processor
                         frame.Bayer = raw.Bayer;
                     }
 
-                    double score = QualityMetrics.Compute(frame, _settings.QualityAlgorithm);
-                    AlignmentOffset offset = AlignmentOffset.Zero;
+                    sample = frame;
 
                     // The engine derives the detection threshold once, from the first frame it
                     // prepares, and reuses it for the rest of the file (pipp_core FUN_14009ab40).
                     detectionThreshold ??= _settings.MinPixelValue ?? DetectionThreshold.ComputeOrDefault(frame);
 
+                    if (_settings.CheckForPlanet)
+                    {
+                        PlanetDetection detection = PlanetDetector.Detect(frame, detectionThreshold.Value, _settings.MinSize);
+                        if (!detection.Found)
+                        {
+                            switch (detection.Status)
+                            {
+                                case PlanetDetectionStatus.PartialObject:
+                                    discardedPartial++;
+                                    break;
+                                case PlanetDetectionStatus.TooSmall:
+                                    discardedTooSmall++;
+                                    break;
+                                default:
+                                    discardedNoObject++;
+                                    break;
+                            }
+
+                            // Every failure path in the finder zeroes the box the metric reads.
+                            quality.ClearDetectedBox();
+                            string reason = DetectionLabel(detection.Status);
+                            _protocol?.WriteLine($"  Frame {index} rejected: {reason}");
+                            Report((int)(100.0 * index / Math.Max(1, source.FrameCount)), file, index, source.FrameCount,
+                                $"Frame {index} of {source.FrameCount} ({reason})");
+                            continue;
+                        }
+
+                        // The score measures the box the finder wrote, grown by one pixel per side.
+                        quality.SetDetectedBox(detection.Left, detection.Top, detection.Right, detection.Bottom);
+                    }
+
+                    double score = _settings.QualityAlgorithm == QualityAlgorithm.PippDefault
+                        ? quality.Score(frame, detectionThreshold.Value)
+                        : QualityMetrics.Compute(frame, _settings.QualityAlgorithm);
+
+                    AlignmentOffset offset = AlignmentOffset.Zero;
                     if (_settings.Centre)
                     {
                         // -ctr puts the object at the engine's fixed target in every frame rather
@@ -325,16 +394,34 @@ public sealed class Processor
                         $"Frame {index} of {source.FrameCount}");
                 }
 
+                string baseName = _settings.Prefix + Path.GetFileNameWithoutExtension(file) + _settings.Suffix;
+
                 if (accepted.Count == 0)
                 {
+                    // The engine still writes both logs when every frame was rejected; the summary
+                    // then carries the discard counters and "Total output frames: 0".
+                    if (_settings.WriteLogFile && sample is not null)
+                    {
+                        WriteLogFiles(
+                            file,
+                            baseName,
+                            source.FrameCount,
+                            0,
+                            0,
+                            discardedNoObject - noObjectBefore,
+                            discardedPartial - partialBefore,
+                            discardedTooSmall - tooSmallBefore,
+                            sample,
+                            detectionThreshold,
+                            []);
+                    }
+
                     filesProcessed++;
                     continue;
                 }
 
                 var selected = Select(accepted, out int dropped);
                 discardedQuality += dropped;
-
-                string baseName = _settings.Prefix + Path.GetFileNameWithoutExtension(file) + _settings.Suffix;
 
                 if (_settings.Stack is StackMethod method)
                 {
@@ -397,7 +484,12 @@ public sealed class Processor
 
                     bool qualitySelection = _settings.KeepFrames is not null || _settings.KeepPercent is not null;
                     int firstNumber = _settings.PippLayout ? (qualitySelection ? 0 : 1) : 0;
-                    int digits = Math.Max(1, (firstNumber + selected.Count - 1).ToString(CultureInfo.InvariantCulture).Length);
+
+                    // Pad to the width of the source frame count, not the kept count: a 30-frame
+                    // capture keeps 00.tif..09.tif from a -q=10 run, while a 4-frame capture keeps
+                    // 1.tif..4.tif.
+                    int highest = Math.Max(firstNumber + selected.Count - 1, source.FrameCount);
+                    int digits = Math.Max(1, highest.ToString(CultureInfo.InvariantCulture).Length);
                     string numberFormat = "D" + digits.ToString(CultureInfo.InvariantCulture);
                     int number = firstNumber;
                     foreach (var (frame, _, offset) in selected)
@@ -426,7 +518,9 @@ public sealed class Processor
                         source.FrameCount,
                         selected.Count,
                         dropped,
-                        discardedObject - objectDiscardsBefore,
+                        discardedNoObject - noObjectBefore,
+                        discardedPartial - partialBefore,
+                        discardedTooSmall - tooSmallBefore,
                         selected[0].Frame,
                         detectionThreshold,
                         selected);
@@ -442,7 +536,9 @@ public sealed class Processor
             InputFrames = inputFrames,
             OutputFrames = outputFrames,
             DiscardedByQuality = discardedQuality,
-            DiscardedNoObject = discardedObject,
+            DiscardedNoObject = discardedNoObject,
+            DiscardedPartialObject = discardedPartial,
+            DiscardedTooSmall = discardedTooSmall,
             FilesProcessed = filesProcessed,
             FailedFiles = failed,
             OutputFiles = outputs,
@@ -452,9 +548,9 @@ public sealed class Processor
     /// <summary>
     /// Writes the engine's two log files: <c>logs/&lt;name&gt;_pipp_log.txt</c> for every run and
     /// <c>logs/&lt;name&gt;_pipp_quality.txt</c> when frames were selected by quality.
-    /// The layout and wording mirror the original's logs line for line; numeric values that come
-    /// from reconstructed algorithms (quality scores, detection threshold) differ until those
-    /// algorithms are proven in Phase 4.
+    /// The layout and wording mirror the original's logs line for line, including the three
+    /// detection discard counters and a quality log with nothing but its header when every frame
+    /// was rejected.
     /// </summary>
     private void WriteLogFiles(
         string sourceFile,
@@ -463,6 +559,8 @@ public sealed class Processor
         int outputFrameCount,
         int droppedByQuality,
         int droppedNoObject,
+        int droppedPartial,
+        int droppedTooSmall,
         Frame sample,
         int? detectionThreshold,
         List<(Frame Frame, double Score, AlignmentOffset Offset)> ranked)
@@ -489,11 +587,9 @@ public sealed class Processor
             int shownThreshold = detectionThreshold
                 ?? _settings.MinPixelValue
                 ?? DetectionThreshold.ComputeOrDefault(sample);
-            text.Append(_settings.MinPixelValue.HasValue
-                    ? "  Calculated '-minpixel' value: "
-                    : "  Calculated minpixel value: ")
+            text.Append("  Calculated minpixel value: ")
                 .Append(shownThreshold.ToString(CultureInfo.InvariantCulture))
-                .Append("\r\n");
+                .Append((char)13).Append((char)10);
         }
 
         text.Append("\r\nSummary:\r\n");
@@ -501,11 +597,20 @@ public sealed class Processor
         text.Append("  Total input frames: ").Append(inputFrameCount.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
         if (droppedNoObject > 0)
         {
-            text.Append("  Frames discarded with no planet detected: ").Append(droppedNoObject.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+            text.Append("  Frames discarded with no planet detected: ").Append(droppedNoObject.ToString(CultureInfo.InvariantCulture)).Append((char)13).Append((char)10);
         }
-        if (droppedByQuality > 0)
+        if (droppedPartial > 0)
         {
-            text.Append("  Frames discarded by quality: ").Append(droppedByQuality.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+            text.Append("  Frames discarded with partial planet detected: ").Append(droppedPartial.ToString(CultureInfo.InvariantCulture)).Append((char)13).Append((char)10);
+        }
+        if (droppedTooSmall > 0)
+        {
+            text.Append("  Frames discarded with planet diameter below minimum: ").Append(droppedTooSmall.ToString(CultureInfo.InvariantCulture)).Append((char)13).Append((char)10);
+        }
+        if (droppedByQuality > 0 || _settings.KeepFrames is not null || _settings.KeepPercent is not null)
+        {
+            // the engine prints the line (with 0) whenever quality selection ran
+            text.Append("  Frames discarded by quality: ").Append(droppedByQuality.ToString(CultureInfo.InvariantCulture)).Append((char)13).Append((char)10);
         }
         text.Append("  Total output frames: ").Append(outputFrameCount.ToString(CultureInfo.InvariantCulture)).Append(":\r\n");
         if (_settings.KeepFrames is not null || _settings.KeepPercent is not null)
@@ -518,9 +623,15 @@ public sealed class Processor
 
         File.WriteAllText(Path.Combine(logDirectory, baseName + "_pipp_log.txt"), text.ToString());
 
-        if (ranked.Count > 0 && (_settings.KeepFrames is not null || _settings.KeepPercent is not null))
+        if (_settings.KeepFrames is not null || _settings.KeepPercent is not null)
         {
-            double best = ranked.Max(r => r.Score);
+            // The engine writes the header even when every frame was rejected.
+            double best = 0;
+            foreach (var entry in ranked)
+            {
+                if (entry.Score > best) best = entry.Score;
+            }
+
             var quality = new StringBuilder();
             quality.Append("PIPP (").Append(_settings.EngineVersion).Append(") Quality Log\r\n\r\n");
             quality.Append("Pos\tSource\tOutput\tQuality\t% of Best\r\n");
@@ -528,7 +639,8 @@ public sealed class Processor
             for (int position = 0; position < ranked.Count; position++)
             {
                 var entry = ranked[position];
-                int percent = best > 0 ? (int)Math.Round(entry.Score / best * 100.0, MidpointRounding.AwayFromZero) : 100;
+                // the engine truncates the percentage (74.9% prints as 74%)
+                int percent = best > 0 ? (int)(entry.Score / best * 100.0) : 100;
                 quality.Append((position + 1).ToString(CultureInfo.InvariantCulture)).Append('\t')
                     .Append((entry.Frame.Index + 1).ToString(CultureInfo.InvariantCulture)).Append('\t')
                     .Append((position + 1).ToString(CultureInfo.InvariantCulture)).Append('\t')
@@ -545,6 +657,14 @@ public sealed class Processor
         QualityAlgorithm.Histogram => "PIPP Histogram",
         QualityAlgorithm.Ninox => "PIPP Old",
         _ => "PIPP Default",
+    };
+
+    /// <summary>Human-readable form of a detection rejection, used in the console/protocol log.</summary>
+    private static string DetectionLabel(PlanetDetectionStatus status) => status switch
+    {
+        PlanetDetectionStatus.PartialObject => "partial planet detected",
+        PlanetDetectionStatus.TooSmall => "planet diameter below minimum",
+        _ => "no planet detected",
     };
 
     private static string FormatLabel(string extension) => extension.ToLowerInvariant() switch
@@ -661,7 +781,13 @@ public sealed class Processor
         if (_settings.KeepPercent is double pct) keep = Math.Min(keep, (int)Math.Round(accepted.Count * Math.Clamp(pct, 0, 100) / 100.0));
 
         dropped = accepted.Count - keep;
-        if (keep >= accepted.Count) return accepted;
+
+        // Without quality selection the engine keeps the source order. With it, it ranks even when
+        // nothing is dropped: the output numbering and the log both follow quality order.
+        if (_settings.KeepFrames is null && _settings.KeepPercent is null)
+        {
+            return accepted;
+        }
 
         var ranked = QualityMetrics.Rank(accepted.Select(a => a.Score).ToArray());
         var result = new List<(Frame, double, AlignmentOffset)>(keep);
