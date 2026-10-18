@@ -90,13 +90,15 @@ public static class FrameSinkFactory
     /// <param name="fps">Frames per second for AVI/SER timing metadata.</param>
     /// <param name="aviCodec">Requested AVI codec (<c>-avi_codec</c>); only DIB is implementable.</param>
     /// <param name="aviQuality">Requested AVI codec quality, 1..10 (<c>-avi_quality</c>).</param>
+    /// <param name="aviLegacyLayout">Write the legacy AVI header layout (<c>-avi_old</c>).</param>
     public static IFrameSink Create(
         string path,
         Frame template,
         int frameCountHint = 0,
         double fps = 0,
         AviCodec aviCodec = AviCodec.Dib,
-        int aviQuality = 10)
+        int aviQuality = 10,
+        bool aviLegacyLayout = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(template);
@@ -118,6 +120,7 @@ public static class FrameSinkFactory
                 // Keep sub-Hz precision for rates such as 29.97 fps.
                 FpsRate = fps > 0 ? (int)Math.Round(fps * 1000.0) : 25,
                 FpsScale = fps > 0 ? 1000 : 1,
+                LegacyLayout = aviLegacyLayout,
             }),
             ".bmp" => new BmpWriter(path, template.Width, template.Height, template.Channels, template.BitDepth),
             ".tif" or ".tiff" => new TiffWriter(path, template.Width, template.Height, template.Channels, template.BitDepth),

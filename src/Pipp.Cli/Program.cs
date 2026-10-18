@@ -164,6 +164,11 @@ internal static class Program
         if (o.GifLossyCompression is < 0 or > 50)
             throw new ArgumentException($"Illegal gif_lossy_comp value ({o.GifLossyCompression}); expected 0-50.");
 
+        // -anim_all_rep=0 (or a negative count) is rejected by the engine before any frame is read:
+        // "Error: Illegal anim_all_rep value". Every other animation switch is tolerant of zero.
+        if (o.RepeatAll is <= 0)
+            throw new ArgumentException($"Illegal anim_all_rep value ({o.RepeatAll}); expected 1 or more.");
+
         // Only DIB is implementable for AVI output; fail before any frame is processed rather than
         // half-way through a run. (The writer repeats this check for API callers.)
         if (o.AviCodec != PippAviCodec.Dib && ChooseExtension(o.Formats) == ".avi")
@@ -273,8 +278,33 @@ internal static class Program
             AreaOfInterest = BuildAoi(o),
             AreaOfInterestCrop = o.AreaOfInterestCrop,
 
-            // Quality weighting triplicates the top quarter and duplicates the next quarter.
+            // -qw duplicates the top quarter twice and the next quarter once.
             QualityWeighting = o.QualityWeighting,
+
+            // Animation sequencing (-anim_*). The engine rejects an all-repeat count of zero with
+            // "Illegal anim_all_rep value"; every other combination is accepted and shapes the AVI
+            // and GIF frame order in the output stage.
+            Animation = new AnimationOptions
+            {
+                Forward = o.AnimateForward,
+                Reverse = o.AnimateReverse,
+                ForwardLastFrameRepeats = Math.Max(0, o.RepeatForwardLast ?? 0),
+                ReverseLastFrameRepeats = Math.Max(0, o.RepeatReverseLast ?? 0),
+                AllRepeats = o.RepeatAll ?? 0,
+                NoReverseInLastRepeat = o.NoReverseInLastRepeat,
+                RepeatForever = o.RepeatAllForever,
+            },
+
+            // WinJUPOS-friendly names (-wjpos_*): -wjpos_time alone enables the prefix; the mask and
+            // frame rate only supply the timestamp when the input has no SER trailer.
+            WinJuposTimeMode = o.WinJuposTime is PippWinJuposTimeMode timeMode ? (int)timeMode : null,
+            WinJuposDateTimeMask = string.IsNullOrWhiteSpace(o.WinJuposDateTimeMask) ? null : o.WinJuposDateTimeMask,
+            WinJuposLocalToUtc = o.WinJuposLocalToUtc,
+            WinJuposInputFps = o.WinJuposInputFps ?? 0,
+
+            // -avi_old and -avi_old4 select the same legacy layout; they differ only in the engine's
+            // >2 GiB size arithmetic, which our 4 GiB AVI 1.0 guard already covers.
+            AviLegacyLayout = o.AviOldFormat != PippAviOldFormat.None,
 
             // -test_run writes one input/output BMP pair at the output root.
             TestRun = o.TestRun,

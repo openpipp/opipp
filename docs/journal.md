@@ -501,3 +501,26 @@ Batch verified against the oracle, 457 tests, 22/22 parity.
 - **Skipped, not guessed**: `-aoi_reject` (the discard rule depends on tracker internals and could not be
   pinned down), `-flat_bayer` (the engine's flat loader crashes on PGM/TIFF and only accepts its private
   `.tmp` master), and `-avi_old`/`-avi_old4` (our writer implements the modern layout only).
+
+## M23 - Animation, WinJUPOS naming and the end of the switch tail
+
+- **Animation modes** measured on a 4-frame capture: `-anim_fwd` is plain order; `-anim_rev` is reverse
+  only; both together is a ping-pong **without repeating the turn** (1 2 3 4 3 2 1, seven frames, verified
+  frame-hash identical); `-anim_fwd_lf_rep`/`-anim_rev_lf_rep` add k holds after each block;
+  `-anim_all_rep=n` plays the sequence **n+1** times (rep2 -> 21 frames) and rejects 0;
+  `-anim_all_rep_always` only changes the GIF NETSCAPE loop count.
+- **GIF animation** drops consecutive duplicate frames (which kills the holds) and the ping-pong seam
+  frame, turning repeats into a loop count - reproduced as image counts 6/4/3 and matching loop values.
+- **Animation with `-ser`/`-tif` is an engine bug**: it writes `1.tmp...`, reports "Total output frames: 0"
+  and exits 127. Not reproduced; SER/TIFF stay plain.
+- **WinJUPOS naming**: `<yyyy-MM-dd-HHmm_t>-<name>` for single-file containers, from the SER trailer
+  timestamp; `-wjpos_dtmask` parses the file name when there is no trailer; `-wjpos_ipfps` steps times by
+  1/fps; `-wjpos_lt2ut` adds the machine UTC offset for name-derived times only. Rounding goes to the
+  nearest 6-second tenth, halves up, with carry.
+- **`-avi_old`/`-avi_old4`**: legacy layout with a JUNK pad that pushes `movi` to 0x2000 and no
+  indx/odml/dmlh/ix00 - identical chunk tree, 11380 B for a 32x24x4 capture.
+- **Skips, with evidence**: the four `-raw_*` switches need dcraw 9.27, which the engine statically links
+  and which is a byte-identical no-op on SER input - we have no RAW decoder, so they are documented
+  rather than faked. `-aoi_reject` never fired across ~15 fixtures (the counter lives inside the tracking
+  branch), so its rule stays unresolved rather than guessed. `-flat_bayer` is blocked by the engine's
+  private flat-master format.

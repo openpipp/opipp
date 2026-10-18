@@ -60,6 +60,14 @@ public sealed class AviWriterOptions
     /// <summary>Frame rate denominator. Defaults to 1.</summary>
     public int FpsScale { get; init; } = 1;
 
+    /// <summary>
+    /// Write the legacy layout selected by <c>-avi_old</c> / <c>-avi_old4</c>: the same header and
+    /// <c>idx1</c> with no OpenDML chunks (<c>indx</c>, <c>odml</c>/<c>dmlh</c>, <c>ix00</c>), followed
+    /// by a zero-filled <c>JUNK</c> chunk that pushes the <c>movi</c> list to absolute offset 8192.
+    /// The engine's two switches produce identical files; they differ only in the >2 GiB arithmetic.
+    /// </summary>
+    public bool LegacyLayout { get; init; }
+
     internal void Validate()
     {
         if (FpsRate <= 0)
@@ -174,6 +182,9 @@ internal static class AviIds
 
     /// <summary><c>AVIF_HASINDEX</c>: the file contains an <c>idx1</c> chunk.</summary>
     public const uint AviFlagHasIndex = 0x00000010;
+
+    /// <summary>Zero-filled filler chunk (<c>JUNK</c>) used by the legacy header layout.</summary>
+    public static readonly uint Junk = AviFourCC.Make("JUNK");
 
     /// <summary><c>AVIIF_KEYFRAME</c>: every index entry points at a key frame (all DIB frames are).</summary>
     public const uint AviKeyFrame = 0x00000010;

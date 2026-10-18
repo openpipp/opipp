@@ -3,24 +3,24 @@ switch,status,evidence
 -afb_width,executed,Run() 317 — `partial` — all four required.
 -afb_x,executed,Run() 317 — `partial` — all four -afb_* are required (Program 181-183) and ignored without -en_surface_feature_tracking.
 -afb_y,executed,Run() 317 — `partial` — all four required.
--anim_all_rep,parsed-only,No PS property.
--anim_all_rep_always,parsed-only,No PS property.
--anim_fwd,parsed-only,No PS property; there is no animation/repeat stage.
--anim_fwd_lf_rep,parsed-only,No PS property.
--anim_rev,parsed-only,No PS property.
--anim_rev_lf_rep,parsed-only,No PS property.
+-anim_all_rep,verified,wired and oracle-verified: plays the whole sequence n+1 times (rep2 -> 21 frames on the 7-frame ping-pong); 0 rejected
+-anim_all_rep_always,verified,wired and oracle-verified: AVI: no frame effect; GIF: NETSCAPE loop count becomes 0
+-anim_fwd,verified,wired and oracle-verified: 4-frame capture -> 1 2 3 4 (plain order)
+-anim_fwd_lf_rep,verified,wired and oracle-verified: k extra copies of the last forward frame after the forward block
+-anim_rev,verified,"wired and oracle-verified: reverse only: 4 3 2 1, no forward pass"
+-anim_rev_lf_rep,verified,wired and oracle-verified: k extra copies of the last reverse frame after the reverse block
 -aoi,verified,wired and oracle-verified: box parsed and used by the tracker; no pixel effect without -aoi_crop
 -aoi_crop,verified,"wired and oracle-verified: crops every delivered frame at (x,y) clamped; the engine's non-tracking path writes an out-of-bounds quarter-filled buffer, documented as a divergence"
 -aoi_height,verified,wired and oracle-verified: AOI height; crop pixel-exact for the intended region
--aoi_reject,parsed-only,No PS property.
+-aoi_reject,parsed-only,"SKIP: only counter is 'Frames discarded with no AOI found' inside the tracking branch; never fired across ~15 fixtures, so the rule is unresolved"
 -aoi_width,verified,wired and oracle-verified: AOI width; crop pixel-exact for the intended region
 -aoi_x,verified,wired and oracle-verified: AOI left edge; crop origin matches the oracle
 -aoi_y,verified,wired and oracle-verified: AOI top edge; crop origin matches the oracle
 -auto_fps,inert,"accepted, no observable effect: same as -avi_safe_width: only the undefined dmlh tail differs"
 -avi,executed,"ChooseExtension 228 / Run 354 — `partial` — feeds `Formats` → `ChooseExtension` (Program 228-239): one container per run, priority ser > avi > fit > tif > png > bmp."
 -avi_codec,executed,NOT oracle-verified: engine supports DIB/ULRG/FMP4 only - no MJPEG encoder in 2.5.9; ULRG/FMP4 rejected with NotSupportedException rather than writing mislabelled data
--avi_old,parsed-only,No PS property.
--avi_old4,parsed-only,No PS property.
+-avi_old,verified,"wired and oracle-verified: legacy layout: JUNK pad pushes movi to 0x2000, no indx/odml/dmlh/ix00 (11380 B for 32x24x4)"
+-avi_old4,verified,wired and oracle-verified: identical to -avi_old
 -avi_quality,verified,wired and oracle-verified: accepted range is 1-10 only; DIB ignores it and writes dwQuality=0xFFFFFFFF
 -avi_safe_width,inert,"accepted, no observable effect: AVI differs only in the undefined 244-byte dmlh tail (stack garbage); avih/strf identical"
 -bin,verified,Transform() 574 — Full.
@@ -49,7 +49,7 @@ switch,status,evidence
 -f,verified,wired and oracle-verified: window of n frames from the range start (not an end frame); 0/absent = whole file
 -fits,executed,ChooseExtension 228 / Run 354 — `partial` — one container per run; extension is `.fit`.
 -flat,executed,Transform() 585 — `partial` — gate for `LoadMaster` (Program 193); no effect unless -flat_tmp names a readable PGM.
--flat_bayer,parsed-only,No PS property.
+-flat_bayer,parsed-only,SKIP: the engine flat loader crashes on PGM/TIFF and only accepts its private .tmp master
 -flat_dark,verified,wired and oracle-verified: flat-dark subtracted (clamped) before the flat is normalised
 -flat_dark_tmp,verified,wired and oracle-verified: path of the flat-dark master; loaded only with -flat_dark
 -flat_tmp,executed,Transform() 585 — `partial` — loaded by `LoadMaster` into `MasterFlat` (Program 193); needs -flat.
@@ -81,7 +81,7 @@ switch,status,evidence
 -mp,verified,Run() 303 / log 472 — Full (detection floor for centring and the log).
 -ms,verified,"wired and oracle-verified: default 50 (bisected), 49 rejected / 50 accepted; -ms=999 rejects all"
 -nlz,inert,none — `PipelineSettings.LeadingZeros` is never read; padding is always applied (Processor 382).
--no_anim_rev_last_rep,parsed-only,No PS property.
+-no_anim_rev_last_rep,inert,"accepted, no observable effect: no observable effect at rep 1/2/3 for AVI or GIF across 12 combinations"
 -no_ram_buff,verified,wired and oracle-verified: quality-selected frames delivered in source order instead of score order
 -nr,executed,"Run() 388 — `partial` — `RenumberFrames` is read at 388, in the still-image branch only."
 -od,verified,Run() 219/340/357 — Full.
@@ -102,10 +102,10 @@ switch,status,evidence
 -qpcnt,verified,Select() 643 — Full.
 -qtotal,inert,none (default) — Collapsed to the default by Program.cs:167-172; `Pipp.Core.Quality.QualityAlgorithm` has no TotalPixel member.
 -qw,verified,"wired and oracle-verified: triplicates top n/4, duplicates next n/2-n/4; names 0,0a,0b,1,1a...; 7/7 pixel-identical at -q=4"
--raw_db,parsed-only,No PS property.
--raw_hl,parsed-only,No PS property (the PippOptions default 1 never reaches the pipeline).
--raw_hpf,parsed-only,No PS property; the RAW path has no hot-pixel filter.
--raw_ocs,parsed-only,No PS property.
+-raw_db,parsed-only,"SKIP: engine statically links dcraw 9.27; the switch is a byte-identical no-op on SER input, and no RAW decoder exists here"
+-raw_hl,parsed-only,"SKIP: dcraw is statically linked in the engine; no-op on SER input, no RAW decoder here"
+-raw_hpf,parsed-only,"SKIP: dcraw is statically linked in the engine; no-op on SER input, no RAW decoder here"
+-raw_ocs,parsed-only,"SKIP: dcraw is statically linked in the engine; no-op on SER input, no RAW decoder here"
 -resize_en,executed,Transform() 627 — `partial` — also needs -resize_width (Program 163-165).
 -resize_height,executed,Transform() 627 — `partial` — only honoured with -resize_en.
 -resize_width,executed,Transform() 627 — `partial` — only honoured with -resize_en.
@@ -125,8 +125,8 @@ switch,status,evidence
 -temp_dir,inert,"accepted, no observable effect: no files created, outputs identical"
 -test_run,verified,wired and oracle-verified: one frame; writes pipp_input_frame.bmp/pipp_output_frame.bmp containing TIFF payloads
 -tif,executed,ChooseExtension 228 / Run 354 — `partial` — one container per run.
--wjpos_dtmask,parsed-only,No PS property; names are built at Processor 336/391.
--wjpos_ipfps,parsed-only,No PS property.
--wjpos_lt2ut,parsed-only,No PS property.
--wjpos_time,parsed-only,No PS property.
+-wjpos_dtmask,verified,wired and oracle-verified: parses the input file name when the SER has no trailer (YYYY/YY/MM/DD/hh/mm/ss/t/N/?)
+-wjpos_ipfps,verified,wired and oracle-verified: steps per-frame times by 1/fps; absent means an all-zero timestamp
+-wjpos_lt2ut,verified,"wired and oracle-verified: adds the machine UTC offset for filename-derived times; no-op on trailer times; rounding to the nearest 6 s tenth, halves up"
+-wjpos_time,verified,"wired and oracle-verified: enables <yyyy-MM-dd-HHmm_t>-<name> naming for SER/AVI, from the SER trailer timestamp"
 -y8,verified,"wired and oracle-verified by the y8-out parity case (mono AVI is already Y800, so it is a no-op)"

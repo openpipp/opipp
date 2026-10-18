@@ -359,6 +359,75 @@ public sealed class PipelineSettings
 
     /// <summary>Emit the engine's <c>@TOKEN</c> progress protocol on stdout.</summary>
     public bool GuiProtocol { get; set; }
+
+    /// <summary>
+    /// Animation options (<c>-anim_*</c>). They only reshape multi-frame outputs: the engine builds
+    /// its animation for AVI and GIF. With every field at its default the output is the plain frame
+    /// order (one forward pass).
+    /// </summary>
+    public AnimationOptions Animation { get; set; } = new();
+
+    /// <summary>
+    /// WinJUPOS-friendly filename mode (<c>-wjpos_time</c>): 0 mid-point, 1 earliest, 2 first frame.
+    /// <see langword="null"/> leaves naming off; the other <c>-wjpos_*</c> switches only supply the
+    /// timestamp and never enable it on their own.
+    /// </summary>
+    public int? WinJuposTimeMode { get; set; }
+
+    /// <summary>Date/time mask used to read a timestamp out of each input file name (<c>-wjpos_dtmask</c>).</summary>
+    public string? WinJuposDateTimeMask { get; set; }
+
+    /// <summary>Convert the extracted local timestamp to UT (<c>-wjpos_lt2ut</c>).</summary>
+    public bool WinJuposLocalToUtc { get; set; }
+
+    /// <summary>Frame rate used to step per-frame timestamps (<c>-wjpos_ipfps</c>); 0 disables stepping.</summary>
+    public int WinJuposInputFps { get; set; }
+
+    /// <summary>Write the legacy AVI layout (<c>-avi_old</c> / <c>-avi_old4</c>).</summary>
+    public bool AviLegacyLayout { get; set; }
+}
+
+/// <summary>
+/// The engine's animation switches (<c>-anim_*</c>). The sequence is a forward block, an optional
+/// reverse block, and optional holds of each block's last frame; the whole thing can be played
+/// several times. Every rule below was measured against <c>pipp_core.exe</c> on a four-frame capture.
+/// </summary>
+public sealed class AnimationOptions
+{
+    /// <summary>Play the frames forwards (<c>-anim_fwd</c>).</summary>
+    public bool Forward { get; set; }
+
+    /// <summary>Play the frames backwards (<c>-anim_rev</c>).</summary>
+    public bool Reverse { get; set; }
+
+    /// <summary>Extra copies of the last forward frame (<c>-anim_fwd_lf_rep</c>).</summary>
+    public int ForwardLastFrameRepeats { get; set; }
+
+    /// <summary>Extra copies of the last reverse frame (<c>-anim_rev_lf_rep</c>).</summary>
+    public int ReverseLastFrameRepeats { get; set; }
+
+    /// <summary>Extra plays of the whole animation (<c>-anim_all_rep</c>); the engine plays n+1 times.</summary>
+    public int AllRepeats { get; set; }
+
+    /// <summary>Leave the reverse block out of the final play (<c>-no_anim_rev_last_rep</c>).</summary>
+    /// <remarks>
+    /// Parsed and carried for round-tripping only. The 2.5.9 engine accepts the switch but writes the
+    /// same AVI frame count (14/21/28 for <c>-anim_all_rep=1/2/3</c>) and the same GIF image count and
+    /// loop value with and without it, so honouring it here would diverge.
+    /// </remarks>
+    public bool NoReverseInLastRepeat { get; set; }
+
+    /// <summary>Loop the GIF forever (<c>-anim_all_rep_always</c>).</summary>
+    public bool RepeatForever { get; set; }
+
+    /// <summary>True when at least one block was requested, i.e. the output is an animation.</summary>
+    public bool IsActive => Forward || Reverse;
+
+    /// <summary>
+    /// The repeat count written into the GIF's NETSCAPE loop block: <c>-anim_all_rep</c> verbatim,
+    /// 0 ("forever") with <c>-anim_all_rep_always</c>, and 1 when repetitions were not requested.
+    /// </summary>
+    public int GifLoopCount => RepeatForever ? 0 : Math.Max(1, AllRepeats);
 }
 
 /// <summary>
@@ -789,11 +858,23 @@ public sealed class Processor
                     foreach (var (frame, _, offset, _) in queue)
                     {
                         gifFrames.Add(ApplyOverlay(ApplyGeometry(frame, offset, shiftFill), detectionThreshold));
-                        outputFrames++;
                     }
 
+                    // The engine's animation blocks apply to GIF too, but with two differences
+                    // measured against pipp_core: last-frame holds are collapsed (identical
+                    // consecutive frames produce one image) and the ping-pong's closing frame is
+                    // dropped because it repeats the first image at the loop seam. Repetitions never
+                    // duplicate frames; they become the NETSCAPE loop count instead.
+                    GifOptions gifOptions = _settings.GifOptions;
+                    if (_settings.Animation.IsActive)
+                    {
+                        gifFrames = BuildGifAnimation(gifFrames);
+                        gifOptions = gifOptions with { LoopCount = _settings.Animation.GifLoopCount };
+                    }
+
+                    outputFrames += gifFrames.Count;
                     int delay = Math.Max(1, (int)Math.Round(100.0 / Math.Max(1, _settings.Fps)));
-                    GifWriter.Write(gifPath, gifFrames, _settings.GifOptions with { DelayCentiseconds = delay });
+                    GifWriter.Write(gifPath, gifFrames, gifOptions with { DelayCentiseconds = delay });
                     outputs.Add(gifPath);
                 }
                 else if (IsMultiFrameContainer(_settings.OutputExtension))
@@ -811,6 +892,17 @@ public sealed class Processor
                         }
                     }
 
+                    // Only AVI carries an animation: with -ser the engine writes per-frame .tmp
+                    // dumps, reports "Total output frames: 0" and exits non-zero, a defect this
+                    // implementation does not reproduce (SER stays a plain frame stream).
+                    bool animate = _settings.Animation.IsActive &&
+                        _settings.OutputExtension.Equals(".avi", StringComparison.OrdinalIgnoreCase);
+                    List<Frame> animated = animate
+                        ? BuildAviAnimation(queue, shiftFill, detectionThreshold)
+                        : BuildGeometryFrames(queue, shiftFill, detectionThreshold);
+                    int frameCount = animated.Count;
+                    string containerName = WinJuposName(unit, baseName, window);
+
                     if (_settings.SplitRgb)
                     {
                         // -rgb writes three containers, one per channel. The engine's name is
@@ -818,21 +910,21 @@ public sealed class Processor
                         // doubled dot seen in the oracle ("r_colour..ser"), reproduced here.
                         string stem = Path.GetFileNameWithoutExtension(unit.Name);
                         string splitBase = _settings.Prefix + stem + "." + _settings.Suffix + _settings.OutputExtension;
+                        string splitPrefix = WinJuposPrefix(unit, window);
                         var sinks = new List<IFrameSink>(3);
                         try
                         {
                             foreach ((char letter, int channel) in RgbChannels)
                             {
                                 Frame part = ExtractChannel(template, channel);
-                                string path = Path.Combine(outputRoot, letter + "_" + splitBase);
-                                sinks.Add(FrameSinkFactory.Create(path, part, queue.Count, _settings.Fps,
-                                    _settings.AviCodec, _settings.AviQuality));
+                                string path = Path.Combine(outputRoot, splitPrefix + letter + "_" + splitBase);
+                                sinks.Add(FrameSinkFactory.Create(path, part, frameCount, _settings.Fps,
+                                    _settings.AviCodec, _settings.AviQuality, _settings.AviLegacyLayout));
                                 outputs.Add(path);
                             }
 
-                            foreach (var (frame, _, offset, _) in queue)
+                            foreach (Frame output in animated)
                             {
-                                var output = ApplyOverlay(ApplyGeometry(frame, offset, shiftFill), detectionThreshold);
                                 for (int channel = 0; channel < sinks.Count; channel++)
                                 {
                                     sinks[channel].Write(ExtractChannel(output, channel));
@@ -848,12 +940,12 @@ public sealed class Processor
                     }
                     else
                     {
-                        string outputPath = Path.Combine(outputRoot, baseName + _settings.OutputExtension);
-                        using var sink = FrameSinkFactory.Create(outputPath, template, queue.Count, _settings.Fps,
-                            _settings.AviCodec, _settings.AviQuality);
-                        foreach (var (frame, _, offset, _) in queue)
+                        string outputPath = Path.Combine(outputRoot, containerName + _settings.OutputExtension);
+                        using var sink = FrameSinkFactory.Create(outputPath, template, frameCount, _settings.Fps,
+                            _settings.AviCodec, _settings.AviQuality, _settings.AviLegacyLayout);
+                        foreach (Frame output in animated)
                         {
-                            sink.Write(ApplyOverlay(ApplyGeometry(frame, offset, shiftFill), detectionThreshold));
+                            sink.Write(output);
                             outputFrames++;
                         }
                         outputs.Add(outputPath);
@@ -1441,6 +1533,406 @@ public sealed class Processor
             Path.Combine(outputRoot, "pipp_output_frame.bmp"), processed.Width, processed.Height,
             processed.Channels, processed.BitDepth);
         output.Write(processed);
+    }
+
+    // ------------------------------------------------------------------ animation
+
+    /// <summary>Applies the geometry and overlay stages to every queued frame, in queue order.</summary>
+    private List<Frame> BuildGeometryFrames(
+        List<(Frame Frame, double Score, AlignmentOffset Offset, string Suffix)> queue,
+        ushort? shiftFill,
+        int? detectionThreshold)
+    {
+        var frames = new List<Frame>(queue.Count);
+        foreach (var (frame, _, offset, _) in queue)
+        {
+            frames.Add(ApplyOverlay(ApplyGeometry(frame, offset, shiftFill), detectionThreshold));
+        }
+
+        return frames;
+    }
+
+    /// <summary>
+    /// Builds the frame sequence written to AVI. The engine's animation is a forward block, an
+    /// optional reverse block that stops one frame short of the turn (so the last forward frame is
+    /// not written twice), optional holds of each block's last frame, and <c>-anim_all_rep</c> + 1
+    /// plays of the whole thing. Measured on a four-frame capture: <c>-anim_fwd -anim_rev</c> writes
+    /// 1 2 3 4 3 2 1, <c>-anim_fwd_lf_rep=2</c> appends two more 4s, <c>-anim_rev_lf_rep=2</c>
+    /// appends two more 1s, and <c>-anim_all_rep=2</c> writes three copies.
+    /// </summary>
+    private List<Frame> BuildAviAnimation(
+        List<(Frame Frame, double Score, AlignmentOffset Offset, string Suffix)> queue,
+        ushort? shiftFill,
+        int? detectionThreshold)
+    {
+        List<Frame> plain = BuildGeometryFrames(queue, shiftFill, detectionThreshold);
+        if (plain.Count == 0)
+        {
+            return plain;
+        }
+
+        List<Frame> sequence = BuildAnimationBlocks(plain);
+        int plays = Math.Max(1, _settings.Animation.AllRepeats + 1);
+        if (plays == 1)
+        {
+            return sequence;
+        }
+
+        var repeated = new List<Frame>(sequence.Count * plays);
+        for (int play = 0; play < plays; play++)
+        {
+            repeated.AddRange(sequence);
+        }
+
+        return repeated;
+    }
+
+    /// <summary>
+    /// The GIF variant of <see cref="BuildAviAnimation"/>. GIF never duplicates frames for
+    /// <c>-anim_all_rep</c> (that becomes the loop count), collapses consecutive identical frames
+    /// (which removes the last-frame holds the AVI writer emits), and drops the closing frame of a
+    /// ping-pong because it repeats the first image across the loop seam. Verified against
+    /// <c>pipp_core.exe</c>: a four-frame capture yields 4 images for <c>-anim_fwd -anim_rev</c>,
+    /// 6 for <c>-anim_fwd -anim_rev -anim_rev_lf_rep=3</c>, and 3 for <c>-anim_fwd -anim_fwd_lf_rep=2</c>.
+    /// </summary>
+    private List<Frame> BuildGifAnimation(List<Frame> frames)
+    {
+        var blocks = BuildAnimationBlocks(frames);
+        var unique = new List<Frame>(blocks.Count);
+        foreach (Frame frame in blocks)
+        {
+            if (unique.Count == 0 || !FramesEqual(unique[^1], frame))
+            {
+                unique.Add(frame);
+            }
+        }
+
+        if (unique.Count > 1 && FramesEqual(unique[0], unique[^1]))
+        {
+            unique.RemoveAt(unique.Count - 1);
+        }
+
+        return unique;
+    }
+
+    private List<Frame> BuildAnimationBlocks(List<Frame> frames)
+    {
+        AnimationOptions animation = _settings.Animation;
+        var sequence = new List<Frame>(frames.Count * 3);
+
+        if (animation.Forward)
+        {
+            sequence.AddRange(frames);
+            for (int hold = 0; hold < animation.ForwardLastFrameRepeats; hold++)
+            {
+                sequence.Add(frames[^1]);
+            }
+        }
+
+        if (animation.Reverse)
+        {
+            // A ping-pong does not repeat the turn frame: after 1 2 3 4 the reverse starts at 3.
+            int start = animation.Forward ? frames.Count - 2 : frames.Count - 1;
+            for (int i = start; i >= 0; i--)
+            {
+                sequence.Add(frames[i]);
+            }
+
+            for (int hold = 0; hold < animation.ReverseLastFrameRepeats; hold++)
+            {
+                sequence.Add(frames[0]);
+            }
+        }
+
+        return sequence.Count == 0 ? frames : sequence;
+    }
+
+    private static bool FramesEqual(Frame left, Frame right) =>
+        left.Width == right.Width && left.Height == right.Height && left.Channels == right.Channels &&
+        left.BitDepth == right.BitDepth && left.Samples.AsSpan().SequenceEqual(right.Samples);
+
+    // ------------------------------------------------------------------ WinJUPOS names
+
+    /// <summary>
+    /// The output stem the engine uses when <c>-wjpos_time</c> is on: a
+    /// <c>yyyy-MM-dd-HHmm_t-</c> prefix in front of the normal name. Only single-file containers
+    /// (SER and AVI) are renamed; still images keep the numbered PIPP layout and GIF keeps its
+    /// plain name, exactly as observed.
+    /// </summary>
+    private string WinJuposName(InputUnit unit, string baseName, FrameWindow window) =>
+        WinJuposPrefix(unit, window) + baseName;
+
+    /// <summary>
+    /// The <c>yyyy-MM-dd-HHmm_t-</c> prefix alone (empty when <c>-wjpos_time</c> is off), for the
+    /// <c>-rgb</c> names that put their channel letter before the input stem.
+    /// </summary>
+    private string WinJuposPrefix(InputUnit unit, FrameWindow window)
+    {
+        if (_settings.WinJuposTimeMode is not int mode)
+        {
+            return string.Empty;
+        }
+
+        DateTime stamp = SelectWinJuposTimestamp(unit, window, mode);
+        return FormatWinJuposPrefix(stamp) + "-";
+    }
+
+    /// <summary>
+    /// Picks the timestamp written into the name. The engine prefers the per-frame timestamps in a
+    /// SER trailer (frame count × 8 bytes after the image data), falls back to the input file name
+    /// parsed with <c>-wjpos_dtmask</c> stepped by <c>-wjpos_ipfps</c>, and writes
+    /// <c>0001-01-01-0000_0</c> when neither source is available. Mode 0 averages the earliest and
+    /// latest timestamps, 1 takes the earliest, 2 takes the first frame's timestamp.
+    /// </summary>
+    private DateTime SelectWinJuposTimestamp(InputUnit unit, FrameWindow window, int mode)
+    {
+        long[]? trailer = ReadSerTrailerTimestamps(unit.Name);
+        int first = Math.Clamp(window.Start, 0, Math.Max(0, trailer?.Length - 1 ?? int.MaxValue));
+
+        DateTime? parsed = null;
+        if (trailer is null && _settings.WinJuposDateTimeMask is { Length: > 0 } mask &&
+            TryParseWinJuposTimestamp(Path.GetFileName(unit.Name), mask, out DateTime masked))
+        {
+            parsed = masked;
+        }
+
+        double fps = _settings.WinJuposInputFps;
+        long TicksAt(int frameIndex)
+        {
+            if (trailer is not null)
+            {
+                return frameIndex >= 0 && frameIndex < trailer.Length ? trailer[frameIndex] : 0;
+            }
+
+            if (parsed is not { } baseTime || fps <= 0)
+            {
+                return 0;
+            }
+
+            return baseTime.Ticks + (long)Math.Round(frameIndex * TimeSpan.TicksPerSecond / fps);
+        }
+
+        int frames = 0;
+        if (trailer is not null)
+        {
+            frames = trailer.Length;
+        }
+        else if (parsed is not null && fps > 0)
+        {
+            frames = Math.Max(0, window.Limit - first);
+        }
+
+        long min = long.MaxValue, max = long.MinValue, firstTicks = 0;
+        for (int i = 0; i < Math.Max(1, frames); i++)
+        {
+            long ticks = TicksAt(first + i);
+            if (i == 0)
+            {
+                firstTicks = ticks;
+            }
+
+            if (ticks < min) min = ticks;
+            if (ticks > max) max = ticks;
+        }
+
+        long chosen = mode switch
+        {
+            1 => min,
+            2 => firstTicks,
+            _ => min == long.MaxValue ? 0 : (min + max) / 2,
+        };
+
+        DateTime stamp = chosen > 0 && chosen <= DateTime.MaxValue.Ticks
+            ? new DateTime(chosen, DateTimeKind.Unspecified)
+            : DateTime.MinValue;
+
+        // -wjpos_lt2ut converts the local time the mask parsed out of the file name; the SER
+        // trailer already stores UTC, which is why the switch changes nothing for those files.
+        // UTC = local - offset (an EDT offset of -4 h therefore moves 00:55 to 04:55, which is what
+        // the engine writes).
+        if (_settings.WinJuposLocalToUtc && trailer is null && stamp > DateTime.MinValue)
+        {
+            stamp -= TimeZoneInfo.Local.GetUtcOffset(stamp);
+        }
+
+        return stamp;
+    }
+
+    /// <summary>
+    /// Formats a timestamp the way the engine's WinJUPOS prefix does: the time is rounded to the
+    /// nearest tenth of a minute (6 s, halves up) and written <c>yyyy-MM-dd-HHmm_t</c>. Rounding to
+    /// 10 carries into the next minute, hour, day, month and year.
+    /// </summary>
+    public static string FormatWinJuposPrefix(DateTime stamp)
+    {
+        long intoMinute = stamp.Ticks % TimeSpan.TicksPerMinute;
+        int tenths = (int)((intoMinute + (3 * TimeSpan.TicksPerSecond)) /
+                           (6 * TimeSpan.TicksPerSecond));
+        DateTime rounded = new DateTime(stamp.Year, stamp.Month, stamp.Day, stamp.Hour, stamp.Minute, 0,
+            stamp.Kind).AddSeconds(tenths * 6);
+
+        // tenths == 10 (>= 57 s) has already carried into the next minute above.
+        int digit = (int)((rounded.Ticks % TimeSpan.TicksPerMinute) / (6 * TimeSpan.TicksPerSecond));
+        return rounded.ToString("yyyy-MM-dd-HHmm", CultureInfo.InvariantCulture) + "_" +
+               digit.ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Reads the SER v3 trailer of per-frame timestamps (8 bytes each, in .NET ticks) when the file
+    /// carries one. Returns <see langword="null"/> for other containers, truncated files and files
+    /// whose trailer is not exactly frame-count × 8 bytes.
+    /// </summary>
+    private static long[]? ReadSerTrailerTimestamps(string path)
+    {
+        if (!Path.GetExtension(path).Equals(".ser", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        try
+        {
+            SerInfo info = SerProbe.Probe(path);
+            if (!info.Header.IsStructurallyValid || info.FileSizeBytes is not long size ||
+                info.Header.FrameCount <= 0 || info.ExtraBytes != info.Header.FrameCount * 8L)
+            {
+                return null;
+            }
+
+            var stamps = new long[info.Header.FrameCount];
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            stream.Seek(size - info.ExtraBytes, SeekOrigin.Begin);
+            var buffer = new byte[8];
+            for (int i = 0; i < stamps.Length; i++)
+            {
+                stream.ReadExactly(buffer, 0, 8);
+                stamps[i] = System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(buffer);
+            }
+
+            return stamps;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Parses a timestamp out of an input file name using PIPP's date/time mask. Tokens:
+    /// <c>YYYY</c>/<c>YY</c> year, <c>MM</c> month, <c>DD</c> day, <c>hh</c> hour, <c>mm</c> minute,
+    /// <c>ss</c> second, <c>t</c> one tenth-of-a-minute digit (six seconds) and <c>?</c> any one
+    /// character; every other character must appear literally. Text after the mask (the extension)
+    /// is ignored, matching the engine's <c>date_time_check</c>.
+    /// </summary>
+    public static bool TryParseWinJuposTimestamp(string fileName, string mask, out DateTime value)
+    {
+        value = default;
+        string text = Path.GetFileName(fileName);
+        int pos = 0, token = 0;
+        int year = 1, month = 1, day = 1, hour = 0, minute = 0, second = 0;
+        bool sawYear = false;
+
+        bool Digits(int count, out int number)
+        {
+            number = 0;
+            if (pos + count > text.Length)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                char c = text[pos + i];
+                if (c is < '0' or > '9')
+                {
+                    return false;
+                }
+
+                number = (number * 10) + (c - '0');
+            }
+
+            pos += count;
+            return true;
+        }
+
+        while (token < mask.Length)
+        {
+            char c = mask[token];
+            switch (c)
+            {
+                case 'Y':
+                {
+                    int run = 1;
+                    while (token + run < mask.Length && mask[token + run] == 'Y') run++;
+                    if (!Digits(run >= 4 ? 4 : 2, out int parsedYear))
+                    {
+                        return false;
+                    }
+
+                    year = run >= 4 ? parsedYear : 2000 + parsedYear;
+                    sawYear = true;
+                    token += run >= 4 ? 4 : 2;
+                    continue;
+                }
+
+                case 'M':
+                case 'D':
+                case 'h':
+                case 'm':
+                case 's':
+                {
+                    if (!Digits(2, out int number))
+                    {
+                        return false;
+                    }
+
+                    switch (c)
+                    {
+                        case 'M': month = number; break;
+                        case 'D': day = number; break;
+                        case 'h': hour = number; break;
+                        case 'm': minute = number; break;
+                        default: second = number; break;
+                    }
+
+                    token += 2;
+                    continue;
+                }
+
+                case 't':
+                    if (!Digits(1, out int tenth)) return false;
+                    second += tenth * 6;
+                    token++;
+                    continue;
+
+                case 'N':
+                    if (!Digits(1, out _)) return false;
+                    token++;
+                    continue;
+
+                case '?':
+                    if (pos >= text.Length) return false;
+                    pos++;
+                    token++;
+                    continue;
+            }
+
+            if (pos >= text.Length || text[pos] != c)
+            {
+                return false;
+            }
+
+            pos++;
+            token++;
+        }
+
+        if (!sawYear || year < 1 || month is < 1 or > 12 || day < 1 || day > DateTime.DaysInMonth(year, month) ||
+            hour > 23 || minute > 59 || second > 59)
+        {
+            return false;
+        }
+
+        value = new DateTime(year, month, day, hour, minute, second, DateTimeKind.Unspecified);
+        return true;
     }
 
     /// <summary>

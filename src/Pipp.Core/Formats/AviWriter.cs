@@ -98,6 +98,11 @@ public sealed class AviWriter : IFrameSink
             EndList(strlSizePosition);
             EndList(hdrlSizePosition);
 
+            if (_options.LegacyLayout)
+            {
+                WriteLegacyPadding();
+            }
+
             WriteFourCC(AviIds.List);
             _moviSizePosition = _stream.Position;
             WriteUInt32(0); // movi size, patched on Dispose
@@ -333,6 +338,30 @@ public sealed class AviWriter : IFrameSink
         if (predictedEnd - 8 > uint.MaxValue)
             throw new InvalidOperationException(
                 "AVI 1.0 cannot address files larger than 4 GiB; split the sequence across multiple AVI files.");
+    }
+
+    private void WriteLegacyPadding()
+    {
+        // The old muxer reserved a fixed 8 KiB header area so it could rewrite the (then
+        // indeterminate) stream headers in place; everything after hdrl up to that mark is a
+        // zero-filled JUNK chunk. pipp_core writes 6948 bytes here for a mono 8bpp stream, which
+        // puts the movi list at offset 8192 exactly.
+        const long legacyHeaderEnd = 8192;
+        long pad = legacyHeaderEnd - _stream.Position - 8;
+        if (pad <= 0)
+            return;
+
+        WriteFourCC(AviIds.Junk);
+        WriteUInt32((uint)pad);
+        Span<byte> zeros = stackalloc byte[256];
+        zeros.Clear();
+        long remaining = pad;
+        while (remaining > 0)
+        {
+            int count = (int)Math.Min(remaining, zeros.Length);
+            _stream.Write(zeros[..count]);
+            remaining -= count;
+        }
     }
 
     private long BeginList(uint listType)

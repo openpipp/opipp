@@ -16,7 +16,11 @@ public enum GifQuantisation
 
 /// <summary>Options controlling GIF output.</summary>
 /// <param name="DelayCentiseconds">Per-frame delay in hundredths of a second (10 = 100 ms).</param>
-/// <param name="Loop">When true, the animation loops forever (NETSCAPE2.0 extension).</param>
+/// <param name="Loop">When true, the animation loops (NETSCAPE2.0 extension).</param>
+/// <param name="LoopCount">
+/// NETSCAPE2.0 repeat count: 0 repeats forever, <c>n</c> plays the animation <c>n</c> extra times
+/// (PIPP's <c>-anim_all_rep</c> writes its value here). Only used when <paramref name="Loop"/> is true.
+/// </param>
 /// <param name="ColorTableDepth">
 /// Bits per palette index, 2..8; the global colour table holds 2^<paramref name="ColorTableDepth"/>
 /// entries. PIPP's parser accepts 4..8 (<c>-gif_col_tbl_depth</c>) and its writer produces exactly that
@@ -39,6 +43,7 @@ public enum GifQuantisation
 public sealed record GifOptions(
     int DelayCentiseconds = 10,
     bool Loop = true,
+    int LoopCount = 0,
     int ColorTableDepth = 8,
     GifQuantisation Quantisation = GifQuantisation.NeuralNet,
     int BorderTolerance = 5,
@@ -157,7 +162,9 @@ public static class GifWriter
         {
             writer.Write(new byte[] { 0x21, 0xFF, 0x0B });
             writer.Write(Encoding.ASCII.GetBytes("NETSCAPE2.0"));
-            writer.Write(new byte[] { 0x03, 0x01, 0x00, 0x00, 0x00 });
+            writer.Write(new byte[] { 0x03, 0x01 });
+            writer.Write((ushort)Math.Clamp(options.LoopCount, 0, ushort.MaxValue));
+            writer.Write((byte)0x00);
         }
 
         foreach (Frame frame in frames)
