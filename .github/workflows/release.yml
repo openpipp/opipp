@@ -226,7 +226,15 @@ jobs:
           )
 
           $readme = (Get-Content -LiteralPath (Join-Path $stage 'README-ALPHA.txt') -Raw) -replace "`r`n", "`n"
-          $notes = ($header -join "`n") + "`n`n" + $readme + "`n`n## Checksum`n`n    $checksumLine`n"
+
+          # Per-release highlights live in the repository so the published notes say what changed,
+          # not just how the artifact was built. Optional: a version without a file still publishes.
+          $highlightsPath = Join-Path $env:GITHUB_WORKSPACE ("docs/release-notes/" + $env:VERSION + ".md")
+          $notes = ($header -join "`n") + "`n`n"
+          if (Test-Path -LiteralPath $highlightsPath) {
+              $notes += ((Get-Content -LiteralPath $highlightsPath -Raw) -replace "`r`n", "`n") + "`n`n"
+          }
+          $notes += $readme + "`n`n## Checksum`n`n    $checksumLine`n"
           Set-Content -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'release-notes.md') -Value $notes -Encoding utf8
 
           Write-Host "Packaged $zipPath ($size bytes, SHA-256 $hash)."

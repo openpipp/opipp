@@ -19,7 +19,7 @@ smoke-tested and published on GitHub Releases.
 ## Status and community
 
 Early development. The engine is functionally complete and parity-tested, the GUI is ported and fully
-managed, and 0.1.4-alpha is published - but surface tracking is not exact yet and the UI has not had
+managed, and 0.1.5-alpha is published - but surface tracking is not exact yet and the UI has not had
 broad real-world use. The project is being published now specifically to get feedback from people who
 image planets, not because it is finished.
 
@@ -45,8 +45,8 @@ continue that way. Claims in this file are expected to be backed by a test or a 
 | Build output excluded | `dist/`, `obj/`, `bin/` per project are git-ignored |
 | Secrets | none: no credentials, tokens or connection strings anywhere in the tree |
 | Tests runnable from a clone | yes - the 80 KB synthetic parity fixtures are committed |
-| CI | running on every push: build + 597 tests; parity stays out of CI because it needs the original binaries |
-| Next release | [0.1.4 plan and action items](plan-0.1.4.md) — streaming AVI animation, measured memory, debayer delta |
+| CI | running on every push: build + 615 tests; parity stays out of CI because it needs the original binaries |
+| Next release | no committed plan yet; the remaining behavioural gap is surface-feature tracking (target ≥28/30 frames) |
 
 ## Where the numbers come from
 
@@ -82,8 +82,8 @@ Saturn fixture, with the remaining frames off by one pixel. Everything else is a
 
 | | |
 | --- | --- |
-| Artifact | `OPIPP-0.1.4-alpha-win-x64.zip` on [Releases](https://github.com/openpipp/opipp/releases) (self-contained win-x64, 50.7 MB) |
-| Provenance | `Version=0.1.4-alpha` in `Directory.Build.props`; window title `OPIPP 0.1.4-alpha - Open PIPP` |
+| Artifact | `OPIPP-0.1.5-alpha-win-x64.zip` on [Releases](https://github.com/openpipp/opipp/releases) (self-contained win-x64, 50.7 MB) |
+| Provenance | `Version=0.1.5-alpha` in `Directory.Build.props`; window title `OPIPP 0.1.5-alpha - Open PIPP` |
 | Verified | 597 tests, parity 27 compared / 27 matched / 2 known differences / 0 gaps, CLI conversion of 30 real frames, GUI launch, no native DLL |
 | Notes | [`alpha.md`](alpha.md) |
 
@@ -101,7 +101,7 @@ Rebuild with the two `dotnet publish` commands in `alpha.md`. `dist/` is git-ign
 | 4. Selection, alignment, stacking | **done except tracking exactness** |
 | 5. Animation and long tail | **done** — `-anim_*`, WinJUPOS, legacy AVI, RAW switches |
 | 6. GUI parity | **done** — managed, `LegacyNativeApi` deleted, `-gui` verified |
-| 7. Alpha build | **done** — 0.1.4-alpha published on GitHub Releases |
+| 7. Alpha build | **done** — 0.1.5-alpha published on GitHub Releases |
 
 ### Phase 4 remainder — tracking exactness
 
@@ -136,7 +136,7 @@ applies no shift, and Saturn reaches ≥28/30. Notes: [`../notes/tracking.md`](.
 
 ### 2026-10-18 — the reconstruction is named OPIPP, and the alpha ships
 
-Chosen over further parity work because the engine is functionally complete: 0.1.4-alpha is a working
+Chosen over further parity work because the engine is functionally complete: 0.1.5-alpha is a working
 preview (597 tests, 27/27 compared parity), and shipping it makes the remaining gap concrete instead of
 theoretical. Tracking at 23/30 is documented in the release notes rather than hidden.
 

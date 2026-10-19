@@ -5,11 +5,11 @@ produce every figure on this page.
 
 | | |
 |---|---|
-| Version | `0.1.4-alpha`, commit `234c505` plus the 0.1.5 work |
+| Version | `0.1.5-alpha` at the tagged commit |
 | SDK | .NET 10.0.402 (local `~/.dotnet-sdk`) |
 | Tests | **615 passing, 0 failing, 0 skipped** across eight projects |
 | Parity | **27 compared, 27 matched, 2 deliberate differences, 0 gaps, 0 failed** |
-| Release | `v0.1.4-alpha`, Windows x64 zip, self-contained |
+| Release | `v0.1.5-alpha`, Windows x64 zip, self-contained |
 | History | [`journal.md`](journal.md) — dated findings, superseded details |
 
 ```bash

@@ -17,7 +17,7 @@ operator path.
 | 2 | `dotnet restore`, `build`, `test OPIPP.slnx -c Release` | Any failing test stops the run. |
 | 3 | `dotnet publish` `Opipp.App` and `Opipp.Cli`, self-contained `win-x64`, into one folder | Both `Opipp.App.exe` and `Opipp.Cli.exe` must exist. |
 | 4 | Write `README-ALPHA.txt` | Carries the not-affiliated, AI-disclosure and GPLv3 wording from the previous builds. |
-| 5 | Zip the folder, compute SHA-256, write `release-notes.md` | The checksum is appended to the release notes. |
+| 5 | Zip the folder, compute SHA-256, write `release-notes.md` | The notes include `docs/release-notes/<version>.md` when present, then the checksum. |
 | 6 | Extract the zip into `$RUNNER_TEMP` and run the extracted `Opipp.Cli.exe -tif -q=10 -od=... capture.ser` on a generated 4-frame SER | Nonzero exit, a missing or non-TIFF output, or a frame-count mismatch fails the run. |
 | 7 | Upload the zip and notes as a workflow artifact | Kept 14 days, including on dry runs. |
 | 8 | Create a **draft** release with the zip attached | Tag name is the release title and tag; `-alpha` tags are marked prerelease. |

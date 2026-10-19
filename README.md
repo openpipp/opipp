@@ -19,7 +19,7 @@ projects — is `Opipp.*`.
 
 ## Status: early development — feedback wanted
 
-OPIPP is at **0.1.4-alpha**. The engine is functionally complete and parity-tested against the
+OPIPP is at **0.1.5-alpha**. The engine is functionally complete and parity-tested against the
 original across 29 cases, but one algorithm (surface-feature tracking) is still one pixel off on part
 of the real-data fixture, and the UI has not seen broad real-world use. Treat it as a working preview.
 
