@@ -8,6 +8,10 @@ using Opipp.Core.Processing;
 using Opipp.Core.Quality;
 using Opipp.Core.Stacking;
 
+// The pipeline's animation sequencers are internal so the sequencing tests can compare the
+// arithmetic frame count with the sequence it describes without exposing them on the public API.
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Opipp.Image.Tests")]
+
 namespace Opipp.Core.Pipeline;
 
 /// <summary>Progress notification raised while a pipeline run advances.</summary>
@@ -62,7 +66,37 @@ public sealed class PipelineSettings
     /// Resident pixel-byte budget for accepted frames. Past this, frames spill to a temp store so a
     /// long capture cannot exhaust RAM. Small runs never touch the disk.
     /// </summary>
-    public long RetentionBudgetBytes { get; set; } = 512L * 1024 * 1024;
+    /// <remarks>
+    /// Defaults to 512 MB, or to <c>OPIPP_RETENTION_BUDGET_MB</c> megabytes when that diagnostic
+    /// environment variable holds a positive integer. There is deliberately no CLI switch, so
+    /// <c>-gui</c> transcripts and the engine protocol stay identical to the original.
+    /// </remarks>
+    public long RetentionBudgetBytes { get; set; } = DefaultRetentionBudgetBytes;
+
+    /// <summary>Environment variable that overrides the default budget, in megabytes.</summary>
+    private const string RetentionBudgetEnvironmentVariable = "OPIPP_RETENTION_BUDGET_MB";
+
+    /// <summary>
+    /// The budget used when a caller does not set one: 512 MB, or the
+    /// <c>OPIPP_RETENTION_BUDGET_MB</c> override when it parses as a positive number of megabytes.
+    /// An unusable value (unparsable, zero, negative, or one that would overflow a <see cref="long"/>
+    /// of bytes) falls back to 512 MB instead of failing the run — a diagnostic switch must not be
+    /// able to break processing.
+    /// </summary>
+    internal static long DefaultRetentionBudgetBytes
+    {
+        get
+        {
+            const long bytesPerMegabyte = 1024L * 1024L;
+            const long fallback = 512L * bytesPerMegabyte;
+            string? text = Environment.GetEnvironmentVariable(RetentionBudgetEnvironmentVariable);
+            return long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long megabytes) &&
+                megabytes > 0 &&
+                megabytes <= long.MaxValue / bytesPerMegabyte
+                ? megabytes * bytesPerMegabyte
+                : fallback;
+        }
+    }
 
     /// <summary>
     /// Subdirectory created under <see cref="OutputDirectory"/> (<c>-osubdir</c>); everything the run
@@ -1027,10 +1061,18 @@ public sealed class Processor
                     // implementation does not reproduce (SER stays a plain frame stream).
                     bool animate = _settings.Animation.IsActive &&
                         _settings.OutputExtension.Equals(".avi", StringComparison.OrdinalIgnoreCase);
-                    List<Frame> animated = animate
+
+                    // The sequence is produced by frame index and the writer pulls one frame at a
+                    // time, so a container write never holds the whole run: the queue can re-read any
+                    // frame (inline or spilled), which is what makes index order possible. The count
+                    // a container header needs is computed arithmetically for the same reason — the
+                    // AVI header is patched from the frames actually written.
+                    int frameCount = animate
+                        ? CountAnimationFrames(queue.Count, _settings.Animation)
+                        : queue.Count;
+                    IEnumerable<Frame> animated = animate
                         ? BuildAviAnimation(queue, shiftFill, detectionThreshold)
-                        : BuildGeometryFrames(queue, shiftFill, detectionThreshold);
-                    int frameCount = animated.Count;
+                        : GeometryFrames(queue, shiftFill, detectionThreshold);
                     string containerName = WinJuposName(unit, baseName, window);
 
                     if (_settings.SplitRgb)
@@ -1053,6 +1095,9 @@ public sealed class Processor
                                 outputs.Add(path);
                             }
 
+                            // `animated` is one lazy sequence enumerated once and split into the
+                            // three sinks as each frame arrives: no channel restarts it, so there
+                            // is no per-channel re-materialisation (and no second decode).
                             foreach (Frame output in animated)
                             {
                                 for (int channel = 0; channel < sinks.Count; channel++)
@@ -1740,94 +1785,156 @@ public sealed class Processor
 
     // ------------------------------------------------------------------ animation
 
-    /// <summary>Applies the geometry and overlay stages to every queued frame, in queue order.</summary>
-    private List<Frame> BuildGeometryFrames(
+    /// <summary>
+    /// Applies the geometry and overlay stages to every queued frame, in queue order, on demand.
+    /// Container writers pull one frame at a time, so the sequence never has to be held in memory.
+    /// </summary>
+    private IEnumerable<Frame> GeometryFrames(
         List<(RetainedFrame Frame, double Score, AlignmentOffset Offset, string Suffix)> queue,
         ushort? shiftFill,
         int? detectionThreshold)
     {
-        var frames = new List<Frame>(queue.Count);
         foreach (var (frame, _, offset, _) in queue)
         {
-            frames.Add(ApplyOverlay(ApplyGeometry(frame.Frame, offset, shiftFill), detectionThreshold));
+            yield return ApplyOverlay(ApplyGeometry(frame.Frame, offset, shiftFill), detectionThreshold);
         }
-
-        return frames;
     }
 
     /// <summary>
-    /// Builds the frame sequence written to AVI. The engine's animation is a forward block, an
+    /// Materialising form of <see cref="GeometryFrames"/>, for callers that genuinely need the whole
+    /// sequence as a list.
+    /// </summary>
+    private List<Frame> BuildGeometryFrames(
+        List<(RetainedFrame Frame, double Score, AlignmentOffset Offset, string Suffix)> queue,
+        ushort? shiftFill,
+        int? detectionThreshold) =>
+        GeometryFrames(queue, shiftFill, detectionThreshold).ToList();
+
+    /// <summary>
+    /// Streams the frame sequence written to AVI. The engine's animation is a forward block, an
     /// optional reverse block that stops one frame short of the turn (so the last forward frame is
     /// not written twice), optional holds of each block's last frame, and <c>-anim_all_rep</c> + 1
     /// plays of the whole thing. Measured on a four-frame capture: <c>-anim_fwd -anim_rev</c> writes
     /// 1 2 3 4 3 2 1, <c>-anim_fwd_lf_rep=2</c> appends two more 4s, <c>-anim_rev_lf_rep=2</c>
     /// appends two more 1s, and <c>-anim_all_rep=2</c> writes three copies.
     /// </summary>
-    private List<Frame> BuildAviAnimation(
+    /// <remarks>
+    /// The order is defined over frame positions and the queue can re-read any frame (inline or
+    /// spilled), so the sequence is generated by index and decoded only when the writer asks: a
+    /// reverse pass or a hold re-reads a frame instead of keeping it. Unlike GIF, AVI does not
+    /// collapse consecutive identical frames — the holds are part of the file.
+    /// </remarks>
+    internal IEnumerable<Frame> BuildAviAnimation(
         List<(RetainedFrame Frame, double Score, AlignmentOffset Offset, string Suffix)> queue,
         ushort? shiftFill,
         int? detectionThreshold)
     {
-        List<Frame> plain = BuildGeometryFrames(queue, shiftFill, detectionThreshold);
-        if (plain.Count == 0)
-        {
-            return plain;
-        }
-
-        List<Frame> sequence = BuildAnimationBlocks(plain);
-        int plays = Math.Max(1, _settings.Animation.AllRepeats + 1);
-        if (plays == 1)
-        {
-            return sequence;
-        }
-
-        var repeated = new List<Frame>(sequence.Count * plays);
+        AnimationOptions animation = _settings.Animation;
+        int count = queue.Count;
+        int plays = Math.Max(1, animation.AllRepeats + 1);
         for (int play = 0; play < plays; play++)
         {
-            repeated.AddRange(sequence);
+            foreach (int index in AnimationOrder(count, animation))
+            {
+                var (frame, _, offset, _) = queue[index];
+                yield return ApplyOverlay(ApplyGeometry(frame.Frame, offset, shiftFill), detectionThreshold);
+            }
         }
-
-        return repeated;
     }
 
     /// <summary>
-    /// The GIF variant of <see cref="BuildAviAnimation"/>. GIF never duplicates frames for
-    /// <c>-anim_all_rep</c> (that becomes the loop count), collapses consecutive identical frames
-    /// (which removes the last-frame holds the AVI writer emits), and drops the closing frame of a
-    /// ping-pong because it repeats the first image across the loop seam. Verified against
-    /// <c>pipp_core.exe</c>: a four-frame capture yields 4 images for <c>-anim_fwd -anim_rev</c>,
-    /// 6 for <c>-anim_fwd -anim_rev -anim_rev_lf_rep=3</c>, and 3 for <c>-anim_fwd -anim_fwd_lf_rep=2</c>.
+    /// The AVI animation order as frame positions: the forward block, its holds, the reverse block
+    /// (which starts at the frame before the turn when a forward block leads), then its holds. With
+    /// no block requested the engine writes the plain frame order.
     /// </summary>
-    private List<Frame> BuildAnimationBlocks(List<Frame> frames)
+    /// <param name="count">Selected frames; 0 yields nothing.</param>
+    /// <remarks>
+    /// This is one play of the animation; <see cref="BuildAviAnimation"/> repeats it
+    /// <c>-anim_all_rep</c> + 1 times. The number of positions is
+    /// <see cref="CountAnimationFrames"/> divided by that play count.
+    /// </remarks>
+    internal static IEnumerable<int> AnimationOrder(int count, AnimationOptions animation)
     {
-        AnimationOptions animation = _settings.Animation;
-        var sequence = new List<Frame>(frames.Count * 3);
+        if (count <= 0)
+        {
+            yield break;
+        }
 
         if (animation.Forward)
         {
-            sequence.AddRange(frames);
+            for (int i = 0; i < count; i++)
+            {
+                yield return i;
+            }
+
             for (int hold = 0; hold < animation.ForwardLastFrameRepeats; hold++)
             {
-                sequence.Add(frames[^1]);
+                yield return count - 1;
             }
         }
 
         if (animation.Reverse)
         {
             // A ping-pong does not repeat the turn frame: after 1 2 3 4 the reverse starts at 3.
-            int start = animation.Forward ? frames.Count - 2 : frames.Count - 1;
+            int start = animation.Forward ? count - 2 : count - 1;
             for (int i = start; i >= 0; i--)
             {
-                sequence.Add(frames[i]);
+                yield return i;
             }
 
             for (int hold = 0; hold < animation.ReverseLastFrameRepeats; hold++)
             {
-                sequence.Add(frames[0]);
+                yield return 0;
             }
         }
 
-        return sequence.Count == 0 ? frames : sequence;
+        if (!animation.Forward && !animation.Reverse)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                yield return i;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Number of frames <see cref="BuildAviAnimation"/> yields for <paramref name="frameCount"/>
+    /// selected frames, without materialising it. A container header needs the count before the
+    /// first frame is decoded, and a wrong count is a corrupt file, so this must agree with
+    /// <see cref="AnimationOrder"/> for every option combination (the tests pin that).
+    /// </summary>
+    internal static int CountAnimationFrames(int frameCount, AnimationOptions animation)
+    {
+        if (frameCount <= 0)
+        {
+            return 0;
+        }
+
+        long block = 0;
+        if (animation.Forward)
+        {
+            block += frameCount + Math.Max(0, animation.ForwardLastFrameRepeats);
+        }
+
+        if (animation.Reverse)
+        {
+            // Forward + reverse loses one frame at the turn; reverse alone keeps every frame.
+            int start = animation.Forward ? frameCount - 2 : frameCount - 1;
+            block += Math.Max(0, start + 1);
+            block += Math.Max(0, animation.ReverseLastFrameRepeats);
+        }
+
+        if (block == 0)
+        {
+            // No block requested: the sequencer falls back to the plain frame order.
+            block = frameCount;
+        }
+
+        long plays = Math.Max(1, animation.AllRepeats + 1);
+        long total = block * plays;
+        return total > int.MaxValue
+            ? throw new OverflowException($"{total} animation frames exceed the container's 32-bit frame count")
+            : (int)total;
     }
 
     private static bool FramesEqual(Frame left, Frame right) =>
