@@ -178,6 +178,59 @@ public sealed class EndToEndTests
     }
 
     [Fact]
+    public void QualityLimit_ZeroFrames_WritesNothingAndDoesNotThrow()
+    {
+        string dir = TempDir();
+        try
+        {
+            string input = WriteSyntheticSer(dir, 16, 16, 6, bitDepth: 8);
+            var settings = new PipelineSettings
+            {
+                OutputDirectory = Path.Combine(dir, "out"),
+                OutputExtension = ".tif",
+                KeepFrames = 0,
+            };
+
+            var report = new Processor(settings).Run([input]);
+
+            Assert.Equal(6, report.InputFrames);
+            Assert.Equal(0, report.OutputFrames);
+            Assert.Equal(6, report.DiscardedByQuality);
+            Assert.Empty(report.OutputFiles);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void QualityPercent_RoundingToZero_WithContainerOutput_DoesNotThrow()
+    {
+        string dir = TempDir();
+        try
+        {
+            string input = WriteSyntheticSer(dir, 16, 16, 6, bitDepth: 8);
+            var settings = new PipelineSettings
+            {
+                OutputDirectory = Path.Combine(dir, "out"),
+                OutputExtension = ".ser",
+                KeepPercent = 1.0,
+            };
+
+            var report = new Processor(settings).Run([input]);
+
+            Assert.Equal(6, report.InputFrames);
+            Assert.Equal(0, report.OutputFrames);
+            Assert.Empty(report.OutputFiles);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void SerToSer_WithHistogramStretch_AppliesMeasuredGain()
     {
         string dir = TempDir();

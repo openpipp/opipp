@@ -1,7 +1,9 @@
 OPIPP - Open PIPP
 =================
 
-This repository is an independent, clean reimplementation of the command-line and processing
+The engine, formats and processing pipeline are new code, written from black-box measurement and annotated decompilation of the original. The WinForms front-end is a port of the decompiled user-interface layout rather than a clean-room design. No original source code, binaries or decompiled listings are redistributed with this repository.
+
+This repository is an independent reimplementation of the command-line and processing
 behaviour of PIPP (Planetary Imaging PreProcessor), originally written by Chris Garry.
 
 Licence

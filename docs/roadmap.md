@@ -19,7 +19,7 @@ smoke-tested and published on GitHub Releases.
 ## Status and community
 
 Early development. The engine is functionally complete and parity-tested, the GUI is ported and fully
-managed, and 0.1.1-alpha is installable - but surface tracking is not exact yet and the UI has not had
+managed, and 0.1.2-alpha is published - but surface tracking is not exact yet and the UI has not had
 broad real-world use. The project is being published now specifically to get feedback from people who
 image planets, not because it is finished.
 
@@ -45,7 +45,7 @@ continue that way. Claims in this file are expected to be backed by a test or a 
 | Build output excluded | `dist/`, `obj/`, `bin/` per project are git-ignored |
 | Secrets | none: no credentials, tokens or connection strings anywhere in the tree |
 | Tests runnable from a clone | yes - the 80 KB synthetic parity fixtures are committed |
-| CI | not yet configured; build + tests is the required gate |
+| CI | running on every push: build + 555 tests; parity stays out of CI because it needs the original binaries |
 
 ## Where the numbers come from
 
@@ -135,7 +135,7 @@ applies no shift, and Saturn reaches ≥28/30. Notes: [`../notes/tracking.md`](.
 
 ### 2026-10-18 — the reconstruction is named OPIPP, and the alpha ships
 
-Chosen over further parity work because the engine is functionally complete: 0.1.0-alpha is a working
+Chosen over further parity work because the engine is functionally complete: 0.1.2-alpha is a working
 preview (553 tests, 29/29 parity), and shipping it makes the remaining gap concrete instead of
 theoretical. Tracking at 23/30 is documented in the release notes rather than hidden.
 

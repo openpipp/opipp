@@ -797,6 +797,38 @@ public sealed class Processor
                 var selected = Select(accepted, out int dropped);
                 discardedQuality += dropped;
 
+                // -q=0, -qpcnt=0, or a short capture whose percentage rounds to zero leaves nothing
+                // to write. The engine still emits both logs with "Total output frames: 0"; the
+                // writers and the stacker must never see an empty selection.
+                if (selected.Count == 0)
+                {
+                    if (_settings.WriteLogFile)
+                    {
+                        WriteLogFiles(
+                            unit.Sources,
+                            baseName,
+                            window.Limit,
+                            0,
+                            0,
+                            0,
+                            dropped,
+                            discardedNoObject - noObjectBefore,
+                            discardedPartial - partialBefore,
+                            discardedTooSmall - tooSmallBefore,
+                            discardedNoFeature - noFeatureBefore,
+                            discardedNoAoi - noAoiBefore,
+                            window.Start,
+                            discardedInputDrop - inputDropBefore,
+                            discardedOutputDrop - outputDropBefore,
+                            sample,
+                            detectionThreshold,
+                            []);
+                    }
+
+                    filesProcessed++;
+                    continue;
+                }
+
                 // -drop writes one frame and then skips `OutputFrameDrop`, repeating
                 // (pipp_core: counter++ then reset when counter > drop; oracle -drop=2 keeps 1, 4, 7).
                 var written = selected;

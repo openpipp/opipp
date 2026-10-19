@@ -34,6 +34,8 @@ internal static class Program
         KnownGap,
     }
 
+    private enum CaseOutcome { Match, ExpectedDifference, Gap, Fail }
+
     private sealed record ParityCase(
         string Name,
         string[] Switches,
@@ -143,7 +145,7 @@ internal static class Program
             cases.Add(new ParityCase("real-centre", ["-tif", "-ctr"], Input: "real"));
         }
 
-        int failures = 0;
+        int matched = 0, expected = 0, gaps = 0, failed = 0;
         foreach (var c in cases)
         {
             string caseInput = c.Input switch
@@ -155,15 +157,22 @@ internal static class Program
                 "real" => realInput,
                 _ => input,
             };
-            failures += RunCase(c, oracle, managed, work, caseInput) ? 0 : 1;
+            switch (RunCase(c, oracle, managed, work, caseInput))
+            {
+                case CaseOutcome.Match: matched++; break;
+                case CaseOutcome.ExpectedDifference: expected++; break;
+                case CaseOutcome.Gap: gaps++; break;
+                default: failed++; break;
+            }
         }
 
         Console.WriteLine();
-        Console.WriteLine(failures == 0 ? "ALL CASES MATCH" : $"{failures} case(s) diverged");
-        return failures == 0 ? 0 : 1;
+        Console.WriteLine($"compared: {matched + failed} | matched: {matched} | expected differences: {expected} | gaps: {gaps} | failed: {failed}");
+        Console.WriteLine(failed == 0 ? "NO UNEXPECTED DIVERGENCES" : $"{failed} case(s) diverged");
+        return failed == 0 ? 0 : 1;
     }
 
-    private static bool RunCase(ParityCase c, string oracle, string managed, string work, string input)
+    private static CaseOutcome RunCase(ParityCase c, string oracle, string managed, string work, string input)
     {
         string caseDir = Path.Combine(work, c.Name);
         string oracleOut = Path.Combine(caseDir, "oracle");
@@ -176,8 +185,10 @@ internal static class Program
         Console.WriteLine($"=== {c.Name}: {string.Join(' ', c.Switches)} ===");
         if (c.Mode is CompareMode.KnownDivergence or CompareMode.KnownGap)
         {
+            // Deliberate differences and acknowledged gaps are reported, never counted as matches:
+            // neither engine runs, so this case proves nothing about parity.
             Console.WriteLine($"  ({c.Mode}: {c.Note})");
-            return true;
+            return c.Mode == CompareMode.KnownDivergence ? CaseOutcome.ExpectedDifference : CaseOutcome.Gap;
         }
 
         var oracleRun = Run(oracle, [.. c.Switches, "-od=" + oracleOut, input], work);
@@ -197,7 +208,7 @@ internal static class Program
         if (oracleFiles.Count == 0)
         {
             Console.WriteLine("  DIVERGENCE: oracle produced no files");
-            return false;
+            return CaseOutcome.Fail;
         }
 
         Console.WriteLine($"  oracle names : {string.Join(", ", oracleFiles.Select(f => Path.GetRelativePath(oracleOut, f)))}");
@@ -206,7 +217,7 @@ internal static class Program
         if (oracleFiles.Count != managedFiles.Count)
         {
             Console.WriteLine("  DIVERGENCE: file count differs");
-            return false;
+            return CaseOutcome.Fail;
         }
 
         bool allMatch = true;
@@ -243,7 +254,7 @@ internal static class Program
             allMatch &= setsMatch;
         }
 
-        return allMatch;
+        return allMatch ? CaseOutcome.Match : CaseOutcome.Fail;
     }
 
     private sealed record RunResult(int ExitCode, string StdOut, string StdErr);
