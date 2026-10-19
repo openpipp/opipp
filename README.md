@@ -118,9 +118,9 @@ dotnet run --project src/Opipp.App
 
 ## Status
 
-Working end to end (verified by tests): SER → pipeline → FITS/TIFF/SER output, calibration
-subtract/divide, histogram stretch, quality selection, stacking. **597 tests pass** across seven
-projects (formats 127, processing 80, CLI 77, pipeline 9).
+Working end to end (verified by tests): SER → pipeline → FITS/TIFF/SER/AVI/GIF output, calibration
+subtract/divide, histogram stretch, quality selection, alignment, stacking and animation. **615 tests
+pass** across eight projects; [`docs/status.md`](docs/status.md) is the authoritative summary.
 
 The CLI is a drop-in engine: it accepts the GUI's stdin protocol (switches and file paths, one per
 line) as well as a normal command line, and emits the original `@PROGRESS/@PFILE/...` tokens with
@@ -139,8 +139,8 @@ line) as well as a normal command line, and emits the original `@PROGRESS/@PFILE
 | Quality sort/limit | complete contract; score formulas are reconstructions |
 | Alignment | centroid + NCC translation + AFB box |
 | Stacking | mean / sum / median |
-| CLI | full 152-switch parse/build; executed subset listed in notes/algorithms.md |
-| GIF animation, RAW/dcraw, planet detection, AOI, WinJUPOS naming, `-join`, `-qw` | parsed, not executed |
+| CLI | all 131 switch labels parse; 76 verified against the engine, 37 wired, 6 documented skips, 12 inert (see `docs/status.md`) |
+| Not equivalent yet | surface-feature tracking (23/30 frames exact), RAW/dcraw absolute values, 16-bit Bayer debayer — see `docs/status.md` |
 | WinForms UI | builds on .NET 10; drives the managed CLI through the original stdin/stdout protocol (legacy binary as fallback) and builds master darks/flats in-process when `pipp_dll.dll` is absent |
 
 ### Parity against the original engine

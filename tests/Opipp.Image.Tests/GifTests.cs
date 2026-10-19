@@ -194,6 +194,147 @@ public class GifTests
         }
     }
 
+    // ---- Bounded palette sampling: a global reservoir cap, deterministic, shared by both encoders ----
+
+    [Fact]
+    public void StreamingWrite_MatchesEncode_WhenCaptureExceedsPaletteSampleCap()
+    {
+        Frame[] frames = LargeColourCapture();
+        long offered = (long)frames.Length * frames[0].Width * frames[0].Height;
+        Assert.True(offered > GifWriter.MaxColourSamples, $"capture offers only {offered} samples");
+
+        string path = TempGifPath();
+        try
+        {
+            byte[] buffered = GifWriter.Encode(frames);
+            int written = GifWriter.Write(path, () => frames);
+
+            Assert.Equal(frames.Length, written);
+            Assert.Equal(buffered, File.ReadAllBytes(path));
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void PaletteSampleReservoir_HoldsAtMostTheCapForAnyNumberOfSamples()
+    {
+        var reservoir = new PaletteSampleReservoir();
+        int maxCount = 0;
+        for (int i = 0; i < 1_000_000; i++)
+        {
+            reservoir.Add((byte)i, (byte)(i >> 8), (byte)(i * 7));
+            maxCount = Math.Max(maxCount, reservoir.Count);
+        }
+
+        Assert.Equal(PaletteSampleReservoir.Capacity, maxCount);
+        Assert.Equal(PaletteSampleReservoir.Capacity, reservoir.Count);
+        Assert.Equal(1_000_000, reservoir.Seen);
+    }
+
+    [Fact]
+    public void BuildColourPalette_RetainsAtMostTheCapAndStaysInsideTheTable()
+    {
+        (byte[] palette, _, int sampleCount) =
+            GifWriter.BuildColourPalette(LargeColourCapture(), 128, 96, 256, GifQuantisation.NeuralNet);
+
+        Assert.Equal(GifWriter.MaxColourSamples, sampleCount);
+        Assert.Equal(256 * 3, palette.Length);
+    }
+
+    [Fact]
+    public void Encode_SmallColourCapture_KeepsThePreCapPaletteAndBytes()
+    {
+        // Hashes recorded from the unbounded sampler before the cap was introduced; a capture below
+        // the cap must keep sampling every colour, in traversal order, so the palette cannot move.
+        Frame[] frames = SmallColourCapture();
+
+        byte[] neural = GifWriter.Encode(frames);
+        byte[] median = GifWriter.Encode(
+            frames, new GifOptions(ColorTableDepth: 4, Quantisation: GifQuantisation.MedianCut));
+
+        Assert.Equal(1069, neural.Length);
+        Assert.Equal("FAFCD1404ABF773C8E3724136543331371AE3B8FB03F6EDD4E00D6DE9FD1B8E7", Sha256(neural));
+        Assert.Equal("6A6CC2A2AF355DD96D21FCB3F05ABF854F11658C4E6486BE546FA5B323DF1CAF", Sha256(median));
+
+        (_, _, int sampleCount) = GifWriter.BuildColourPalette(frames, 8, 8, 256, GifQuantisation.NeuralNet);
+        Assert.Equal(3 * 8 * 8, sampleCount);
+    }
+
+    [Fact]
+    public void Encode_ColourCaptureAboveTheCap_IsDeterministicAcrossRunsAndEncoders()
+    {
+        byte[] first = GifWriter.Encode(LargeColourCapture());
+        byte[] second = GifWriter.Encode(LargeColourCapture());
+        Assert.Equal(first, second);
+
+        string firstPath = TempGifPath();
+        string secondPath = TempGifPath();
+        try
+        {
+            Assert.Equal(24, GifWriter.Write(firstPath, () => LargeColourCapture()));
+            Assert.Equal(24, GifWriter.Write(secondPath, () => LargeColourCapture()));
+
+            Assert.Equal(first, File.ReadAllBytes(firstPath));
+            Assert.Equal(first, File.ReadAllBytes(secondPath));
+        }
+        finally
+        {
+            if (File.Exists(firstPath)) File.Delete(firstPath);
+            if (File.Exists(secondPath)) File.Delete(secondPath);
+        }
+    }
+
+    private static string TempGifPath() =>
+        System.IO.Path.Combine(System.IO.Path.GetTempPath(), "opipp-gif-" + Guid.NewGuid().ToString("n") + ".gif");
+
+    private static string Sha256(byte[] data) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(data));
+
+    /// <summary>Three 8x8 colour frames: 192 samples, far below the palette cap.</summary>
+    private static Frame[] SmallColourCapture()
+    {
+        var frames = new Frame[3];
+        for (int f = 0; f < frames.Length; f++)
+        {
+            int[] samples = new int[8 * 8 * 3];
+            for (int i = 0; i < samples.Length; i++)
+            {
+                samples[i] = (f * 37 + i * 11) % 256;
+            }
+
+            frames[f] = Rgb(8, 8, samples);
+        }
+
+        return frames;
+    }
+
+    /// <summary>
+    /// Twenty-four 128x96 colour frames: 12,288 samples per frame, 294,912 in total, which is above
+    /// <see cref="GifWriter.MaxColourSamples"/> and therefore exercises reservoir replacement.
+    /// </summary>
+    private static Frame[] LargeColourCapture()
+    {
+        const int width = 128;
+        const int height = 96;
+        var frames = new Frame[24];
+        for (int f = 0; f < frames.Length; f++)
+        {
+            int[] samples = new int[width * height * 3];
+            uint state = 0x9E3779B9u * (uint)(f + 1);
+            for (int i = 0; i < samples.Length; i++)
+            {
+                state = (state * 1664525u) + 1013904223u;
+                samples[i] = (int)(state >> 24);
+            }
+
+            frames[f] = Rgb(width, height, samples);
+        }
+
+        return frames;
+    }
 }
 
 /// <summary>Exposes the internal LZW encoder to the tests without making it public API.</summary>

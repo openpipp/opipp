@@ -13,4 +13,7 @@
     <Project Path="tests/Opipp.Images.Tests/Opipp.Images.Tests.csproj" />
     <Project Path="tests/Opipp.Ser.Tests/Opipp.Ser.Tests.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Opipp.Parity.Tests/Opipp.Parity.Tests.csproj" />
+  </Folder>
 </Solution>

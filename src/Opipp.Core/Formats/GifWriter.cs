@@ -93,9 +93,21 @@ public sealed record GifOptions(
 /// <remarks>
 /// <para>
 /// Monochrome frames map to a greyscale ramp of 2^depth entries, so an 8-bit mono frame is written
-/// without any loss. Colour frames build a palette from a sample of all frames and are mapped to the
-/// nearest entry. 16-bit samples are reduced to 8 bits by keeping the high byte, matching how the
+/// without any loss. Colour frames build a palette from at most <see cref="MaxColourSamples"/>
+/// (262,144) colours drawn from every frame by a deterministic reservoir sampler, and are mapped to
+/// the nearest entry. 16-bit samples are reduced to 8 bits by keeping the high byte, matching how the
 /// engine converts to its 8-bit output formats.
+/// </para>
+/// <para>
+/// The global sample cap is deliberate: the earlier writer appended roughly 16,384 colours per frame
+/// with no overall limit, so a 10,000-frame 1920x1080 capture accumulated about 165 million samples
+/// (~500 MB) before quantisation even though the frames themselves were streamed. Sampling is now
+/// bounded at 262,144 colours (786 KB) regardless of frame count or frame size. Captures that fit
+/// inside the cap keep exactly the old sample set, and therefore the old palette and bytes; captures
+/// larger than the cap get a different palette, and so different RGB GIF bytes, from that unbounded
+/// writer. <b>That change is accepted and intentional</b> — there is no switch back to unbounded
+/// sampling. Both <see cref="Encode"/> and the streaming overload run the same sampler over the same
+/// frame order with the same seed, so their byte output stays identical to each other.
 /// </para>
 /// <para>
 /// The shipped engine's GIF writer is a stub: it writes the header, global colour table (mono only),
@@ -139,10 +151,17 @@ public static class GifWriter
         int entries = options.PaletteEntries;
         bool colour = frames[0].Channels == 3;
 
-        (byte[] palette, Func<Frame, byte[]> indexer) = colour
-            ? BuildColourPalette(frames, width, height, entries, options.Quantisation)
-            : (BuildGreyscalePalette(entries, reserveTransparentEntry: options.TransparentPixelTolerance >= 0),
-               frame => IndexMono(frame, options.ColorTableDepth));
+        byte[] palette;
+        Func<Frame, byte[]> indexer;
+        if (colour)
+        {
+            (palette, indexer, _) = BuildColourPalette(frames, width, height, entries, options.Quantisation);
+        }
+        else
+        {
+            palette = BuildGreyscalePalette(entries, reserveTransparentEntry: options.TransparentPixelTolerance >= 0);
+            indexer = frame => IndexMono(frame, options.ColorTableDepth);
+        }
 
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Encoding.ASCII, leaveOpen: true);
@@ -195,9 +214,9 @@ public static class GifWriter
 
     /// <summary>
     /// Writes an animated GIF from a re-enumerable frame source, one frame at a time. The source is
-    /// enumerated up to twice (colour palettes are built from a sample of every frame), but no frame
-    /// list and no encoded image is retained: a long capture can produce a GIF in bounded memory.
-    /// Returns the number of image blocks written.
+    /// enumerated up to twice (colour palettes come from a bounded reservoir sample of every frame),
+    /// but no frame list and no encoded image is retained: a long capture can produce a GIF in bounded
+    /// memory. Returns the number of image blocks written.
     /// </summary>
     public static int Write(string path, Func<IEnumerable<Frame>> frameSource, GifOptions? options = null)
     {
@@ -214,10 +233,17 @@ public static class GifWriter
         int entries = options.PaletteEntries;
         bool colour = first.Channels == 3;
 
-        (byte[] palette, Func<Frame, byte[]> indexer) = colour
-            ? BuildColourPalette(frameSource(), width, height, entries, options.Quantisation)
-            : (BuildGreyscalePalette(entries, options.TransparentPixelTolerance >= 0),
-               frame => IndexMono(frame, options.ColorTableDepth));
+        byte[] palette;
+        Func<Frame, byte[]> indexer;
+        if (colour)
+        {
+            (palette, indexer, _) = BuildColourPalette(frameSource(), width, height, entries, options.Quantisation);
+        }
+        else
+        {
+            palette = BuildGreyscalePalette(entries, options.TransparentPixelTolerance >= 0);
+            indexer = frame => IndexMono(frame, options.ColorTableDepth);
+        }
 
         using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
         using var writer = new BinaryWriter(stream, Encoding.ASCII, leaveOpen: true);
@@ -346,10 +372,27 @@ public static class GifWriter
         return indices;
     }
 
-    private static (byte[] Palette, Func<Frame, byte[]> Indexer) BuildColourPalette(
+    /// <summary>
+    /// Maximum number of colour samples retained for one palette build, however many frames the
+    /// animation holds. 262,144 = 2^18 samples = 786 KB at three bytes each.
+    /// </summary>
+    internal const int MaxColourSamples = PaletteSampleReservoir.Capacity;
+
+    /// <summary>
+    /// Samples every frame into a bounded, deterministic reservoir and quantises those colours into a
+    /// palette. <paramref name="sampleCount"/> reports how many colours were retained and never
+    /// exceeds <see cref="MaxColourSamples"/>; the returned indexer maps a frame's pixels onto the
+    /// nearest palette entry.
+    /// </summary>
+    /// <remarks>
+    /// Traversal order is fixed: frames in enumeration order, and inside each frame the pixels at
+    /// <c>0, step, 2*step, ...</c> in row-major order. Both encoders must call this with the same
+    /// frame sequence for their output to stay byte-identical.
+    /// </remarks>
+    internal static (byte[] Palette, Func<Frame, byte[]> Indexer, int SampleCount) BuildColourPalette(
         IEnumerable<Frame> frames, int width, int height, int entries, GifQuantisation quantisation)
     {
-        var sample = new List<(byte R, byte G, byte B)>(1 << 16);
+        var reservoir = new PaletteSampleReservoir();
         int step = Math.Max(1, (width * height) / 16384);
         foreach (Frame frame in frames)
         {
@@ -357,13 +400,14 @@ public static class GifWriter
             for (int p = 0; p < frame.Width * frame.Height; p += step)
             {
                 int i = p * 3;
-                sample.Add((
+                reservoir.Add(
                     (byte)(frame.Samples[i] >> shift),
                     (byte)(frame.Samples[i + 1] >> shift),
-                    (byte)(frame.Samples[i + 2] >> shift)));
+                    (byte)(frame.Samples[i + 2] >> shift));
             }
         }
 
+        List<(byte R, byte G, byte B)> sample = reservoir.ToList();
         List<(byte R, byte G, byte B)> colours = quantisation == GifQuantisation.MedianCut
             ? MedianCut(sample, entries)
             : SelfOrganisingMap(sample, entries);
@@ -400,7 +444,7 @@ public static class GifWriter
             return indices;
         }
 
-        return (table, Indexer);
+        return (table, Indexer, sample.Count);
     }
 
     private static byte Nearest(List<(byte R, byte G, byte B)> colours, byte r, byte g, byte b)
@@ -666,4 +710,108 @@ public static class GifWriter
 
     private static byte Channel((byte R, byte G, byte B) pixel, int channel) =>
         channel switch { 0 => pixel.R, 1 => pixel.G, _ => pixel.B };
+}
+
+/// <summary>
+/// Fixed-capacity deterministic reservoir of palette colours: keeps the first <see cref="Capacity"/>
+/// samples offered, then replaces a uniformly chosen slot with probability <c>capacity / n</c> for
+/// the n-th sample (Algorithm R). The retained set is therefore a uniform sample of the whole
+/// animation, whatever its length, at constant memory.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Determinism is part of the contract: <see cref="GifWriter.Encode"/> and the streaming
+/// <c>GifWriter.Write</c> overload must derive the same palette from the same frame order, and two
+/// runs must produce identical bytes. The generator is a fixed-seed SplitMix64 written out below
+/// instead of <see cref="Random"/>, whose seeded sequence is not promised to stay stable across
+/// runtimes, and all arithmetic is explicitly unchecked so an overflow-checking build cannot change
+/// it.
+/// </para>
+/// <para>
+/// The cap also fixes the old defect: the previous code accumulated every frame's ~16,384 samples in
+/// one list, so cost grew with capture length (~165 million samples, ~500 MB of payload and ~768 MB
+/// of list capacity, for 10,000 frames of 1920x1080). Now the reservoir peaks at about 1.5 MB while
+/// it fills and holds 786 KB once full, whatever the input.
+/// </para>
+/// </remarks>
+internal sealed class PaletteSampleReservoir
+{
+    /// <summary>Maximum retained samples: 2^18, or 786 KB of three-byte colours.</summary>
+    internal const int Capacity = 262_144;
+
+    /// <summary>Arbitrary fixed seed; any constant works, but it must never change casually.</summary>
+    private const ulong Seed = 0x4F5049505000_0001UL;
+
+    /// <summary>Slots while the cap has not been reached; replaced by <see cref="_fixed"/> after.</summary>
+    private List<(byte R, byte G, byte B)>? _filling = new();
+
+    /// <summary>Fixed slots once the cap is reached, when replacement sampling starts.</summary>
+    private (byte R, byte G, byte B)[]? _fixed;
+
+    private int _count;
+    private long _seen;
+    private ulong _state = Seed;
+
+    /// <summary>Retained sample count, never greater than <see cref="Capacity"/>.</summary>
+    public int Count => _count;
+
+    /// <summary>Samples offered so far, retained or not.</summary>
+    public long Seen => _seen;
+
+    /// <summary>Offers one colour to the reservoir.</summary>
+    public void Add(byte r, byte g, byte b)
+    {
+        long seen = ++_seen;
+        if (_fixed is null)
+        {
+            // Below the cap every sample is kept, so small captures never pay for the full array.
+            _filling!.Add((r, g, b));
+            _count++;
+            if (_count == Capacity)
+            {
+                _fixed = new (byte R, byte G, byte B)[Capacity];
+                _filling!.CopyTo(_fixed);
+                _filling = null;
+            }
+
+            return;
+        }
+
+        long slot = NextBelow(seen);
+        if (slot < Capacity)
+        {
+            _fixed[(int)slot] = (r, g, b);
+        }
+    }
+
+    /// <summary>Copies the retained samples out in slot order.</summary>
+    public List<(byte R, byte G, byte B)> ToList()
+    {
+        if (_fixed is null)
+        {
+            return new List<(byte R, byte G, byte B)>(_filling!);
+        }
+
+        var list = new List<(byte R, byte G, byte B)>(Capacity);
+        for (int i = 0; i < Capacity; i++)
+        {
+            list.Add(_fixed[i]);
+        }
+
+        return list;
+    }
+
+    private long NextBelow(long bound) => (long)(NextUInt64() % (ulong)bound);
+
+    /// <summary>SplitMix64; pure integer arithmetic, identical on every runtime and platform.</summary>
+    private ulong NextUInt64()
+    {
+        unchecked
+        {
+            ulong z = _state += 0x9E3779B97F4A7C15UL;
+            z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9UL;
+            z = (z ^ (z >> 27)) * 0x94D049BB133111EBUL;
+            return z ^ (z >> 31);
+        }
+    }
 }

@@ -74,7 +74,15 @@ public sealed class FrameStore : IDisposable
         return _index.Count - 1;
     }
 
-    /// <summary>Materialises a frame from the store. The returned frame is a fresh copy.</summary>
+    /// <summary>
+    /// Materialises a frame from the store. The returned frame is a fresh copy.
+    /// </summary>
+    /// <remarks>
+    /// Pixels, geometry and the Bayer pattern are what the store keeps. Provenance is not part of
+    /// the file format: <see cref="RetainedFrame"/> carries the frame's
+    /// <see cref="Frame.SourceName"/> on its handle and restores it on the materialised copy, so
+    /// callers that need to name the input must go through the handle rather than read here.
+    /// </remarks>
     public Frame Read(int index)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

@@ -19,7 +19,7 @@ namespace Opipp.Parity;
 /// </remarks>
 internal static class Program
 {
-    private enum CompareMode
+    internal enum CompareMode
     {
         /// <summary>Frames are compared positionally by numeric name.</summary>
         Exact,
@@ -34,9 +34,9 @@ internal static class Program
         KnownGap,
     }
 
-    private enum CaseOutcome { Match, ExpectedDifference, Gap, Fail }
+    internal enum CaseOutcome { Match, ExpectedDifference, Gap, Fail }
 
-    private sealed record ParityCase(
+    internal sealed record ParityCase(
         string Name,
         string[] Switches,
         string Input = "ser",
@@ -190,7 +190,8 @@ internal static class Program
         return failed == 0 ? 0 : 1;
     }
 
-    private static CaseOutcome RunCase(ParityCase c, string oracle, string managed, string work, string input, bool measure)
+    internal static CaseOutcome RunCase(ParityCase c, string oracle, string managed, string work, string input,
+        bool measure, TimeSpan? timeout = null, string[]? oracleSwitches = null, string[]? managedSwitches = null)
     {
         string caseDir = Path.Combine(work, c.Name);
         string oracleOut = Path.Combine(caseDir, "oracle");
@@ -211,15 +212,28 @@ internal static class Program
             Console.WriteLine("  MEASURE: running both engines to quantify the acknowledged difference");
         }
 
-        var oracleRun = Run(oracle, [.. c.Switches, "-od=" + oracleOut, input], work);
-        var managedRun = Run(managed, [.. c.Switches, "-od=" + managedOut, input], work);
+        // oracleSwitches/managedSwitches exist for fake-engine tests, where the two sides need
+        // different behaviour from the same fixture executable; the CLI never supplies them.
+        var oracleRun = Run(oracle, [.. oracleSwitches ?? c.Switches, "-od=" + oracleOut, input], work, timeout);
+        var managedRun = Run(managed, [.. managedSwitches ?? c.Switches, "-od=" + managedOut, input], work, timeout);
 
-        Console.WriteLine($"  oracle  exit={oracleRun.ExitCode} files={CountFiles(oracleOut)}");
-        Console.WriteLine($"  managed exit={managedRun.ExitCode} files={CountFiles(managedOut)}");
-        if (oracleRun.ExitCode != 0)
+        Console.WriteLine($"  oracle  exit={ExitText(oracleRun)} files={CountFiles(oracleOut)}");
+        Console.WriteLine($"  managed exit={ExitText(managedRun)} files={CountFiles(managedOut)}");
+
+        // An engine that did not exit successfully did not produce a trustworthy artifact, even if
+        // it happened to write files and those files happen to match. Fail the side explicitly.
+        bool processesSucceeded = true;
+        if (!oracleRun.Succeeded)
         {
-            Console.WriteLine("  oracle output:");
-            foreach (var line in Tail(oracleRun.StdOut, 8)) Console.WriteLine("    " + line);
+            processesSucceeded = false;
+            Console.WriteLine($"  DIVERGENCE: oracle {FailureText(oracleRun)}");
+            PrintProcessOutput("oracle", oracleRun);
+        }
+        if (!managedRun.Succeeded)
+        {
+            processesSucceeded = false;
+            Console.WriteLine($"  DIVERGENCE: managed {FailureText(managedRun)}");
+            PrintProcessOutput("managed", managedRun);
         }
 
         var oracleFiles = ListOutputs(oracleOut);
@@ -240,40 +254,51 @@ internal static class Program
             return acknowledged ? Acknowledged(c) : CaseOutcome.Fail;
         }
 
-        bool allMatch = true;
-        for (int i = 0; i < oracleFiles.Count; i++)
+        bool allMatch = processesSucceeded;
+        var oracleDescriptions = oracleFiles.Select(Describe).ToList();
+        var managedDescriptions = managedFiles.Select(Describe).ToList();
+
+        if (c.Mode == CompareMode.SetEquality)
         {
-            var a = Describe(oracleFiles[i]);
-            var b = Describe(managedFiles[i]);
-            bool same = a.Kind == b.Kind && a.Width == b.Width && a.Height == b.Height &&
-                        a.Channels == b.Channels && a.BitDepth == b.BitDepth && a.Hash == b.Hash;
-            Console.WriteLine($"  [{i}] oracle  {Path.GetFileName(oracleFiles[i]),-24} {a}");
-            Console.WriteLine($"      managed {Path.GetFileName(managedFiles[i]),-24} {b}");
-            if (!same)
+            // Quality selection may legitimately keep the same frames in a different order, so a
+            // positional pass would reject a correct result. Compare the multisets of full frame
+            // descriptions (kind, geometry, depth and hash) instead; nothing here depends on order.
+            Console.WriteLine("  (positional pairing ignored; frames compared as a multiset)");
+            bool setsMatch = MultisetEqual(oracleDescriptions, managedDescriptions);
+            Console.WriteLine($"  frame multiset: {(setsMatch ? "MATCH" : "DIVERGENCE")} ({oracleDescriptions.Count} frames)");
+            if (!setsMatch) ReportMultisetDifference(oracleDescriptions, managedDescriptions);
+            allMatch &= setsMatch;
+        }
+        else
+        {
+            for (int i = 0; i < oracleFiles.Count; i++)
             {
-                allMatch = false;
-                Console.WriteLine("      DIVERGENCE");
-                if (a.Kind == b.Kind)
+                var a = oracleDescriptions[i];
+                var b = managedDescriptions[i];
+                bool same = a.HasHash && b.HasHash &&
+                            a.Kind == b.Kind && a.Width == b.Width && a.Height == b.Height &&
+                            a.Channels == b.Channels && a.BitDepth == b.BitDepth && a.Hash == b.Hash;
+                Console.WriteLine($"  [{i}] oracle  {Path.GetFileName(oracleFiles[i]),-24} {a}");
+                Console.WriteLine($"      managed {Path.GetFileName(managedFiles[i]),-24} {b}");
+                if (!same)
                 {
-                    if (measure) ReportDetailedDiff(oracleFiles[i], managedFiles[i], a.Width, a.Height, a.Channels, a.BitDepth);
-                    else ReportPixelDiff(oracleFiles[i], managedFiles[i], a.Width, a.Channels);
+                    allMatch = false;
+                    Console.WriteLine("      DIVERGENCE");
+                    if (!a.HasHash || !b.HasHash)
+                    {
+                        Console.WriteLine("      (unreadable or empty output; content cannot be compared)");
+                    }
+                    else if (a.Kind == b.Kind)
+                    {
+                        if (measure) ReportDetailedDiff(oracleFiles[i], managedFiles[i], a.Width, a.Height, a.Channels, a.BitDepth);
+                        else ReportPixelDiff(oracleFiles[i], managedFiles[i], a.Width, a.Channels);
+                    }
                 }
             }
         }
 
         bool layoutMatch = CompareTrees(oracleOut, managedOut);
         allMatch &= layoutMatch;
-
-        if (c.Mode == CompareMode.SetEquality)
-        {
-            // Quality selection may legitimately keep the same frames in a different order,
-            // so compare the multisets of frame hashes rather than positional pairs.
-            var oracleHashes = oracleFiles.Select(f => Describe(f).Hash).OrderBy(h => h, StringComparer.Ordinal).ToList();
-            var managedHashes = managedFiles.Select(f => Describe(f).Hash).OrderBy(h => h, StringComparer.Ordinal).ToList();
-            bool setsMatch = oracleHashes.SequenceEqual(managedHashes, StringComparer.Ordinal);
-            Console.WriteLine($"  frame multiset: {(setsMatch ? "MATCH" : "DIVERGENCE")}");
-            allMatch &= setsMatch;
-        }
 
         if (acknowledged)
         {
@@ -292,10 +317,15 @@ internal static class Program
     private static CaseOutcome Acknowledged(ParityCase c) =>
         c.Mode == CompareMode.KnownDivergence ? CaseOutcome.ExpectedDifference : CaseOutcome.Gap;
 
-    private sealed record RunResult(int ExitCode, string StdOut, string StdErr);
-
-    private static RunResult Run(string exe, string[] switches, string workDir)
+    internal sealed record RunResult(int ExitCode, string StdOut, string StdErr, bool TimedOut = false, TimeSpan Timeout = default)
     {
+        /// <summary>Only a clean exit with code 0 is a success; a killed timeout never is.</summary>
+        public bool Succeeded => !TimedOut && ExitCode == 0;
+    }
+
+    internal static RunResult Run(string exe, string[] switches, string workDir, TimeSpan? timeout = null)
+    {
+        TimeSpan limit = timeout ?? TimeSpan.FromSeconds(120);
         var psi = new ProcessStartInfo(exe)
         {
             WorkingDirectory = workDir,
@@ -307,41 +337,154 @@ internal static class Program
         };
         foreach (var s in switches) psi.ArgumentList.Add(s);
 
-        using var process = Process.Start(psi)!;
-        try
+        using var process = new Process { StartInfo = psi };
+        if (!process.Start()) throw new InvalidOperationException($"could not start {exe}");
+
+        // Start draining both pipes before doing anything that can block. A child that fills
+        // stdout or stderr (or writes a lot before hanging) must not be able to wedge the harness
+        // ahead of the timeout: the reads run on their own tasks while we wait with a deadline.
+        Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
+        Task<string> stderrTask = process.StandardError.ReadToEndAsync();
+
+        // Feeding stdin can block too, if the child never reads it and the pipe buffer fills, so it
+        // also runs on its own task; a stuck child is killed by the timeout below.
+        Task stdinTask = Task.Run(() => FeedStdin(process, switches));
+
+        int waitMs = (int)Math.Clamp(limit.TotalMilliseconds, 1, int.MaxValue);
+        bool exited = process.WaitForExit(waitMs);
+        if (!exited)
         {
-            // The WinForms front-end drives the engine purely through stdin and terminates the
-            // stream with the literal line "DONE" (Form1.do_processing_thread). Without that
-            // terminator the engine blocks forever waiting for more input, which is why an
-            // EOF-terminated pipe appears to hang. Switches come first, then the input files.
-            var switchTokens = switches.Where(t => t.StartsWith('-')).ToArray();
-            var fileTokens = switches.Where(t => !t.StartsWith('-')).ToArray();
-            foreach (var token in switchTokens) process.StandardInput.WriteLine(token);
-            foreach (var token in fileTokens) process.StandardInput.WriteLine(token);
-            process.StandardInput.WriteLine("DONE");
-            process.StandardInput.Flush();
-            process.StandardInput.Close();
-        }
-        catch (IOException)
-        {
-            // the process exited before reading stdin; that is fine
+            try { process.Kill(entireProcessTree: true); }
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+            {
+                // the process won the race and exited on its own; nothing left to kill
+            }
+
+            process.WaitForExit(10_000);
+            string partialOut = Drain(stdoutTask);
+            string partialErr = Drain(stderrTask);
+            WaitQuietly(stdinTask);
+            string timeoutNote = $"timeout after {limit.TotalSeconds:0.###}s; process killed";
+            return new RunResult(-1, partialOut,
+                string.IsNullOrEmpty(partialErr) ? timeoutNote : partialErr + Environment.NewLine + timeoutNote,
+                TimedOut: true, Timeout: limit);
         }
 
-        string stdout = process.StandardOutput.ReadToEnd();
-        string stderr = process.StandardError.ReadToEnd();
-        if (!process.WaitForExit(120_000))
-        {
-            try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
-            return new RunResult(-1, stdout, "timeout");
-        }
+        string stdout = Drain(stdoutTask);
+        string stderr = Drain(stderrTask);
+        WaitQuietly(stdinTask);
 
-        return new RunResult(process.ExitCode, stdout, stderr);
+        return new RunResult(process.ExitCode, stdout, stderr, Timeout: limit);
     }
 
-    private sealed record Description(string Kind, int Width, int Height, int Channels, int BitDepth, string Hash)
+    /// <summary>
+    /// Drives the engine through stdin the way the WinForms front-end does: switches first, then
+    /// input files, terminated by the literal line <c>DONE</c>. Expected failures (the child exiting
+    /// early or being killed) are swallowed; they are reported through the exit code, not a crash.
+    /// </summary>
+    private static void FeedStdin(Process process, string[] switches)
     {
+        try
+        {
+            var input = process.StandardInput;
+            foreach (var token in switches.Where(t => t.StartsWith('-'))) input.WriteLine(token);
+            foreach (var token in switches.Where(t => !t.StartsWith('-'))) input.WriteLine(token);
+            input.WriteLine("DONE");
+            input.Flush();
+            input.Close();
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException)
+        {
+            // the process exited (or was killed) before reading stdin; that is fine
+        }
+    }
+
+    /// <summary>Collects a reader task's text, but never waits forever for a pipe that stays open.</summary>
+    private static string Drain(Task<string> task)
+    {
+        try
+        {
+            return task.Wait(TimeSpan.FromSeconds(5)) ? task.Result : string.Empty;
+        }
+        catch (AggregateException)
+        {
+            return string.Empty;
+        }
+    }
+
+    private static void WaitQuietly(Task task)
+    {
+        try { task.Wait(TimeSpan.FromSeconds(5)); }
+        catch (AggregateException) { }
+    }
+
+    private static string ExitText(RunResult run) =>
+        run.TimedOut ? "TIMEOUT" : run.ExitCode.ToString(CultureInfo.InvariantCulture);
+
+    private static string FailureText(RunResult run) => run.TimedOut
+        ? $"timed out after {run.Timeout.TotalSeconds:0.###}s and was killed (exit code {run.ExitCode})"
+        : $"exited with code {run.ExitCode}";
+
+    private static void PrintProcessOutput(string label, RunResult run)
+    {
+        foreach (var line in Tail(run.StdOut, 8)) Console.WriteLine($"    {label} out: {line}");
+        foreach (var line in Tail(run.StdErr, 8)) Console.WriteLine($"    {label} err: {line}");
+    }
+
+    internal sealed record Description(string Kind, int Width, int Height, int Channels, int BitDepth, string Hash)
+    {
+        /// <summary>SHA-256 is 64 hex characters; anything else is a sentinel, not a real digest.</summary>
+        public bool HasHash => Hash.Length == 64;
+
         public override string ToString() =>
-            $"{Kind} {Width}x{Height}x{Channels}@{BitDepth} sha256={Hash[..16]}";
+            $"{Kind} {Width}x{Height}x{Channels}@{BitDepth} sha256={ShortHash(Hash)}";
+    }
+
+    /// <summary>Sentinels are never valid digests, so <see cref="Description.HasHash"/> rejects them.</summary>
+    internal const string UnreadableHash = "<unreadable>";
+
+    internal const string EmptyHash = "<empty>";
+
+    /// <summary>Shortens a real digest for display, but prints sentinels (and any non-digest) whole.</summary>
+    private static string ShortHash(string hash) => hash.Length > 16 ? hash[..16] : hash;
+
+    /// <summary>
+    /// Order-independent comparison of frame descriptions. Unlike a sorted hash list this also
+    /// compares kind, geometry and bit depth, and it refuses to treat two unreadable files as a
+    /// match just because both carry the same sentinel.
+    /// </summary>
+    private static bool MultisetEqual(List<Description> left, List<Description> right)
+    {
+        if (left.Count != right.Count) return false;
+
+        var counts = new Dictionary<Description, int>();
+        foreach (var d in left) counts[d] = counts.GetValueOrDefault(d) + 1;
+
+        foreach (var d in right)
+        {
+            if (!d.HasHash || !counts.TryGetValue(d, out int remaining) || remaining == 0) return false;
+            if (remaining == 1) counts.Remove(d);
+            else counts[d] = remaining - 1;
+        }
+
+        return counts.Count == 0;
+    }
+
+    private static void ReportMultisetDifference(List<Description> oracle, List<Description> managed)
+    {
+        var left = oracle.Where(d => d.HasHash).GroupBy(d => d.Hash).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        var right = managed.Where(d => d.HasHash).GroupBy(d => d.Hash).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        int shown = 0;
+        foreach (string hash in left.Keys.Union(right.Keys, StringComparer.Ordinal).OrderBy(h => h, StringComparer.Ordinal))
+        {
+            left.TryGetValue(hash, out int a);
+            right.TryGetValue(hash, out int b);
+            if (a == b) continue;
+            if (shown++ < 4) Console.WriteLine($"      frame {ShortHash(hash)}: oracle {a}, managed {b}");
+        }
+
+        int unreadable = oracle.Count(d => !d.HasHash) + managed.Count(d => !d.HasHash);
+        if (unreadable > 0) Console.WriteLine($"      {unreadable} unreadable or empty output(s)");
     }
 
     private static string FormatFamily(string path)
@@ -383,10 +526,10 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            return new Description(kind + " (unreadable: " + ex.GetType().Name + ")", 0, 0, 0, 0, "n/a");
+            return new Description(kind + " (unreadable: " + ex.GetType().Name + ")", 0, 0, 0, 0, UnreadableHash);
         }
 
-        if (frame is null) return new Description(kind + " (empty)", 0, 0, 0, 0, "n/a");
+        if (frame is null) return new Description(kind + " (empty)", 0, 0, 0, 0, EmptyHash);
 
         var bytes = new byte[frame.Samples.Length * 2];
         for (int i = 0; i < frame.Samples.Length; i++)

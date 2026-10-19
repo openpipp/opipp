@@ -108,11 +108,15 @@ public class FrameStoreTests
             Frame original = MonoFrame(3, 2, 42);
             int index = store.Append(original);
 
-            var retained = RetainedFrame.Stored(store, index);
+            var retained = RetainedFrame.Stored(store, index, "capture.ser");
 
             Assert.True(retained.IsValid);
             Assert.Equal(index, retained.Index);
+            Assert.Equal("capture.ser", retained.SourceName);
             Assert.Equal(original.Samples, retained.Frame.Samples);
+            // The store persists pixels and geometry only; the handle restores the source name, so a
+            // spilled frame describes its origin exactly like an in-memory one.
+            Assert.Equal("capture.ser", retained.Frame.SourceName);
         }
         finally
         {

@@ -1,0 +1,420 @@
+name: release
+
+# Publication is tag-triggered and gated: the solution must build, every test must pass, the
+# packaged zip must extract, and the extracted CLI must convert a generated SER file to TIFF
+# before a GitHub release is created. workflow_dispatch is a dry run and never publishes.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag name to build (for example v0.1.5-alpha). Leave empty to derive it from Directory.Build.props.'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: build, test, package, smoke-test, publish
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@v4
+
+      - name: Resolve and validate the version
+        id: meta
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          TAG_INPUT: ${{ inputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if ($env:EVENT_NAME -eq 'workflow_dispatch') {
+              $tag = "$($env:TAG_INPUT)".Trim()
+          } else {
+              $tag = $env:REF_NAME
+          }
+
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+              [xml]$props = Get-Content -LiteralPath 'Directory.Build.props' -Raw
+              $tag = 'v' + [string]$props.Project.PropertyGroup.Version
+              Write-Host "No tag given; derived '$tag' from Directory.Build.props."
+          }
+
+          if ($tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z][0-9A-Za-z0-9.]*)?$') {
+              throw "Tag '$tag' is not a release tag of the form v1.2.3 or v1.2.3-alpha."
+          }
+
+          $version = $tag.Substring(1)
+
+          # A tag that disagrees with the product version would publish a zip whose binaries and
+          # README-ALPHA.txt claim a different version. Fail before doing any work.
+          [xml]$props = Get-Content -LiteralPath 'Directory.Build.props' -Raw
+          $propsVersion = [string]$props.Project.PropertyGroup.Version
+          if ($propsVersion -ne $version) {
+              if ($env:EVENT_NAME -eq 'workflow_dispatch') {
+                  Write-Host "::warning::Directory.Build.props Version is '$propsVersion' but the dry-run tag is '$tag'."
+              } else {
+                  throw "Directory.Build.props Version is '$propsVersion' but tag '$tag' implies '$version'. Bump the version and commit before tagging."
+              }
+          }
+
+          $isPrerelease = $tag -match '-alpha'
+          $zipName = "OPIPP-$version-win-x64.zip"
+
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "zip_name=$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "prerelease=$($isPrerelease.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+          Write-Host "Releasing $tag (version $version, zip $zipName, prerelease $isPrerelease)."
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore OPIPP.slnx --nologo
+
+      - name: Build
+        run: dotnet build OPIPP.slnx -c Release --no-restore --nologo
+
+      # This is the publication gate. The release cannot be created if any test fails.
+      - name: Test
+        run: dotnet test OPIPP.slnx -c Release --no-build --nologo
+
+      - name: Publish App and CLI (self-contained win-x64)
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:GITHUB_WORKSPACE "dist\OPIPP-${env:VERSION}-win-x64"
+          if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+
+          dotnet publish src/Opipp.App -c Release -r win-x64 --self-contained true -o $stage --nologo
+          if ($LASTEXITCODE -ne 0) { throw "dotnet publish (Opipp.App) failed with exit code $LASTEXITCODE." }
+
+          dotnet publish src/Opipp.Cli -c Release -r win-x64 --self-contained true -o $stage --nologo
+          if ($LASTEXITCODE -ne 0) { throw "dotnet publish (Opipp.Cli) failed with exit code $LASTEXITCODE." }
+
+          foreach ($exe in @('Opipp.App.exe', 'Opipp.Cli.exe')) {
+              if (-not (Test-Path -LiteralPath (Join-Path $stage $exe))) {
+                  throw "$exe is missing from the publish output at $stage."
+              }
+          }
+          Write-Host "Published App and CLI to $stage."
+
+      - name: Write README-ALPHA.txt
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:GITHUB_WORKSPACE "dist\OPIPP-${env:VERSION}-win-x64"
+
+          $lines = @(
+              "OPIPP ${env:VERSION} (Open PIPP) - Windows x64",
+              "===========================================",
+              "",
+              "An independent, fully managed continuation of PIPP (Planetary Imaging",
+              "PreProcessor). ALPHA: a working preview, not an official PIPP release.",
+              "",
+              "NOT AFFILIATED WITH PIPP. Not affiliated with, endorsed by or supported by Chris",
+              "Garry or the PIPP project. New C# code, no original binaries redistributed.",
+              "Published in the belief that this is fair use.",
+              "",
+              "AI was used to build this and will keep being used. Behaviour claims are backed",
+              "by tests or parity cases; unverified items are listed as known gaps.",
+              "",
+              "What is in this folder",
+              "  Opipp.App.exe    the GUI (managed; no native pipp_dll.dll needed)",
+              "  Opipp.Cli.exe    the command-line engine, drop-in for pipp_core.exe",
+              "",
+              "Quick start",
+              "  GUI:  double-click Opipp.App.exe",
+              "  CLI:  Opipp.Cli.exe -help",
+              "        Opipp.Cli.exe -tif -od=C:\out capture.ser",
+              "",
+              "Status",
+              "  Built automatically from tag ${env:TAG} by the release workflow after the",
+              "  full test suite passed. This exact zip was extracted and smoke-tested",
+              "  (a generated SER file converted to TIFF) before the release was published.",
+              "  Parity against the original PIPP engine is not run in CI because it needs",
+              "  the original binaries, which are not redistributable; see docs/parity.md",
+              "  and docs/status.md at the tagged commit for the accounting and known gaps.",
+              "  Workflow run: ${env:RUN_URL}",
+              "",
+              "Licence",
+              "  GPLv3 or later for this repository's code and artwork. Not a licence to PIPP.",
+              "",
+              "Requires Windows 10/11 x64. Self-contained: no .NET installation needed."
+          )
+          $lines | Set-Content -LiteralPath (Join-Path $stage 'README-ALPHA.txt') -Encoding utf8
+          Write-Host "Wrote README-ALPHA.txt into $stage."
+
+      - name: Package, hash and write release notes
+        id: package
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:GITHUB_WORKSPACE "dist\OPIPP-${env:VERSION}-win-x64"
+          $zipPath = Join-Path $env:GITHUB_WORKSPACE "dist\${env:ZIP_NAME}"
+
+          if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zipPath -CompressionLevel Optimal
+
+          $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          $size = (Get-Item -LiteralPath $zipPath).Length
+          $checksumLine = "$hash  ${env:ZIP_NAME}"
+
+          "hash=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "size=$size" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "zip_path=$zipPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+          $header = @(
+              "# OPIPP ${env:VERSION} (Open PIPP) - Windows x64",
+              "",
+              "Self-contained alpha build of the managed PIPP continuation. It was built and",
+              "tested, packaged, and smoke-tested from the extracted zip by the tag-triggered",
+              "release workflow before this release was created.",
+              "",
+              "| | |",
+              "|---|---|",
+              "| Artifact | ${env:ZIP_NAME} |",
+              "| Size | $size bytes |",
+              "| SHA-256 | $hash |",
+              "| Tag | ${env:TAG} |",
+              "| Commit | $env:GITHUB_SHA |",
+              "| Workflow run | ${env:RUN_URL} |",
+              "",
+              "## Package contents",
+              "",
+              "- Opipp.App.exe - the GUI, fully managed, no pipp_dll.dll",
+              "- Opipp.Cli.exe - the command-line engine, drop-in for pipp_core.exe",
+              "- README-ALPHA.txt - quick start, status and licence notes",
+              "",
+              "## Status and licence",
+              "",
+              "ALPHA: a working preview, not an official PIPP release, and not affiliated",
+              "with Chris Garry or the PIPP project. AI was used to build this. GPLv3 or",
+              "later for this repository's code and artwork; not a licence to PIPP. See",
+              "NOTICE in the repository."
+          )
+
+          $readme = (Get-Content -LiteralPath (Join-Path $stage 'README-ALPHA.txt') -Raw) -replace "`r`n", "`n"
+          $notes = ($header -join "`n") + "`n`n" + $readme + "`n`n## Checksum`n`n    $checksumLine`n"
+          Set-Content -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'release-notes.md') -Value $notes -Encoding utf8
+
+          Write-Host "Packaged $zipPath ($size bytes, SHA-256 $hash)."
+
+      # The smoke test runs against the zip's contents, not the staging folder: that is the only
+      # way to prove the artifact a user downloads actually works.
+      - name: Smoke-test the extracted zip
+        shell: pwsh
+        env:
+          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zipPath = Join-Path $env:GITHUB_WORKSPACE "dist\${env:ZIP_NAME}"
+          $smokeRoot = Join-Path $env:RUNNER_TEMP ("opipp-smoke-" + [guid]::NewGuid().ToString('N'))
+          $appDir = Join-Path $smokeRoot 'app'
+          $outDir = Join-Path $smokeRoot 'out'
+          New-Item -ItemType Directory -Force -Path $appDir, $outDir | Out-Null
+
+          Expand-Archive -LiteralPath $zipPath -DestinationPath $appDir
+          foreach ($exe in @('Opipp.App.exe', 'Opipp.Cli.exe', 'README-ALPHA.txt')) {
+              if (-not (Test-Path -LiteralPath (Join-Path $appDir $exe))) {
+                  throw "$exe is missing from the extracted zip."
+              }
+          }
+
+          # A tiny mono SER v3 capture: 32x32, 8-bit, 4 frames, 178-byte header. No samples/ in CI.
+          $serPath = Join-Path $smokeRoot 'capture.ser'
+          $w = 32
+          $h = 32
+          $frames = 4
+          $ms = [System.IO.MemoryStream]::new()
+          $bw = [System.IO.BinaryWriter]::new($ms)
+          try {
+              $bw.Write([System.Text.Encoding]::ASCII.GetBytes('LUCAM-RECORDER'))
+              $bw.Write([int]0)      # LuID
+              $bw.Write([int]0)      # ColorID: 0 = mono
+              $bw.Write([int]1)      # little endian
+              $bw.Write([int]$w)
+              $bw.Write([int]$h)
+              $bw.Write([int]8)      # bits per plane
+              $bw.Write([int]$frames)
+              $bw.Write([byte[]]::new(120))  # observer, telescope, instrument (40 bytes each)
+              $bw.Write([long]0)     # local time
+              $bw.Write([long]0)     # UTC
+              for ($n = 0; $n -lt $frames; $n++) {
+                  for ($y = 0; $y -lt $h; $y++) {
+                      for ($x = 0; $x -lt $w; $x++) {
+                          $dx = $x - ($w / 2 + $n)
+                          $dy = $y - $h / 2
+                          if (($dx * $dx + $dy * $dy) -le 16) {
+                              $bw.Write([byte]255)
+                          } else {
+                              $bw.Write([byte]40)
+                          }
+                      }
+                  }
+              }
+              $bw.Flush()
+              $serBytes = $ms.ToArray()
+          } finally {
+              $bw.Dispose()
+              $ms.Dispose()
+          }
+          [System.IO.File]::WriteAllBytes($serPath, $serBytes)
+          if ($serBytes.Length -ne 178 + ($w * $h * $frames)) {
+              throw "Generated SER is $($serBytes.Length) bytes; expected $(178 + $w * $h * $frames)."
+          }
+
+          Push-Location $appDir
+          try {
+              & (Join-Path $appDir 'Opipp.Cli.exe') -tif '-q=10' "-od=$outDir" $serPath
+              $cliExit = $LASTEXITCODE
+          } finally {
+              Pop-Location
+          }
+          if ($cliExit -ne 0) {
+              throw "Smoke test failed: Opipp.Cli.exe exited with code $cliExit."
+          }
+
+          $tiffs = @(Get-ChildItem -LiteralPath $outDir -Recurse -File -Filter '*.tif')
+          if ($tiffs.Count -eq 0) {
+              throw "Smoke test failed: no TIFF was produced under $outDir."
+          }
+          if ($tiffs.Count -ne $frames) {
+              throw "Smoke test failed: expected $frames TIFFs from $frames frames, found $($tiffs.Count)."
+          }
+
+          $first = [System.IO.File]::ReadAllBytes($tiffs[0].FullName)
+          if ($first.Length -lt 8) {
+              throw "Smoke test failed: $($tiffs[0].FullName) is too short to be a TIFF."
+          }
+          $littleEndian = ($first[0] -eq 0x49 -and $first[1] -eq 0x49 -and $first[2] -eq 0x2A -and $first[3] -eq 0x00)
+          $bigEndian = ($first[0] -eq 0x4D -and $first[1] -eq 0x4D -and $first[2] -eq 0x00 -and $first[3] -eq 0x2A)
+          if (-not ($littleEndian -or $bigEndian)) {
+              throw "Smoke test failed: $($tiffs[0].FullName) does not start with a TIFF header."
+          }
+
+          Write-Host "Smoke test passed: $($tiffs.Count) TIFFs written under $outDir."
+
+      - name: Upload packaged zip as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OPIPP-${{ steps.meta.outputs.version }}-win-x64
+          path: |
+            dist/${{ steps.meta.outputs.zip_name }}
+            release-notes.md
+          if-no-files-found: error
+          retention-days: 14
+
+      # Draft first, verify the uploaded asset, then publish. A failed upload or a size mismatch
+      # leaves an unpublished draft rather than a public release with a broken asset.
+      - name: Create draft release with the zip
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zipPath = Join-Path $env:GITHUB_WORKSPACE "dist\${env:ZIP_NAME}"
+          $ghArgs = @(
+              'release', 'create', $env:TAG, $zipPath,
+              '--repo', $env:GH_REPO,
+              '--title', $env:TAG,
+              '--notes-file', (Join-Path $env:GITHUB_WORKSPACE 'release-notes.md'),
+              '--verify-tag',
+              '--draft'
+          )
+          if ($env:PRERELEASE -eq 'true') { $ghArgs += '--prerelease' }
+
+          & gh @ghArgs
+          if ($LASTEXITCODE -ne 0) {
+              throw "gh release create failed with exit code $LASTEXITCODE. Any draft it created was left unpublished."
+          }
+
+      - name: Verify the uploaded asset in the draft
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
+          EXPECTED_SIZE: ${{ steps.package.outputs.size }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $json = & gh release view $env:TAG --repo $env:GH_REPO --json tagName,isPrerelease,assets
+          if ($LASTEXITCODE -ne 0) { throw "gh release view failed with exit code $LASTEXITCODE." }
+          $release = $json | ConvertFrom-Json
+
+          if ($release.tagName -ne $env:TAG) {
+              throw "Release tag is '$($release.tagName)', expected '$env:TAG'."
+          }
+          if (($env:PRERELEASE -eq 'true') -ne [bool]$release.isPrerelease) {
+              throw "Release prerelease flag is '$($release.isPrerelease)', expected '$env:PRERELEASE'."
+          }
+
+          $asset = @($release.assets | Where-Object { $_.name -eq $env:ZIP_NAME })
+          if ($asset.Count -ne 1) {
+              throw "Expected exactly one asset named '$env:ZIP_NAME' on the draft, found $($asset.Count)."
+          }
+          if ($asset[0].state -ne 'uploaded') {
+              throw "Asset '$env:ZIP_NAME' state is '$($asset[0].state)', expected 'uploaded'."
+          }
+          if ([long]$asset[0].size -ne [long]$env:EXPECTED_SIZE) {
+              throw "Asset size is $($asset[0].size) bytes, expected $env:EXPECTED_SIZE."
+          }
+          Write-Host "Draft $env:TAG has $env:ZIP_NAME ($($asset[0].size) bytes, state $($asset[0].state))."
+
+      - name: Publish the release
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & gh release edit $env:TAG --repo $env:GH_REPO --draft=false
+          if ($LASTEXITCODE -ne 0) { throw "gh release edit failed with exit code $LASTEXITCODE." }
+
+          $json = & gh release view $env:TAG --repo $env:GH_REPO --json isDraft,url
+          if ($LASTEXITCODE -ne 0) { throw "gh release view failed with exit code $LASTEXITCODE." }
+          $release = $json | ConvertFrom-Json
+          if ([bool]$release.isDraft) { throw "Release $env:TAG is still a draft after publishing." }
+
+          Write-Host "Published $($release.url)"

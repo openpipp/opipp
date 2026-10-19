@@ -96,8 +96,11 @@ internal static class Program
             {
                 return RunGui(inputs, settings);
             }
-            catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException)
+            catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException or CalibrationConfigurationException)
             {
+                // A calibration master that cannot be applied is a run-level configuration failure,
+                // not a per-frame rejection; the pipeline deliberately lets it escape the frame loop.
+                // Exit 1 is this path's defined runtime-failure code, matching the errors above.
                 Console.Error.WriteLine($"Error: {ex.Message}");
                 return 1;
             }
@@ -131,8 +134,10 @@ internal static class Program
         {
             report = processor.Run(inputs);
         }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException)
+        catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException or CalibrationConfigurationException)
         {
+            // See the -gui catch above: a calibration configuration error exits 1 like the other
+            // runtime failures, and its message is the controlled diagnostic, never a stack trace.
             Console.Error.WriteLine($"Error: {ex.Message}");
             return 1;
         }

@@ -11,6 +11,10 @@ using Opipp.Core.Stacking;
 // The pipeline's animation sequencers are internal so the sequencing tests can compare the
 // arithmetic frame count with the sequence it describes without exposing them on the public API.
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Opipp.Image.Tests")]
+// The retention store's scratch directory is internal for the same reason: the retention tests
+// point a run at a directory they own so the scratch file's lifetime can be asserted without
+// racing other runs that share the process temp directory.
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Opipp.Core.Tests")]
 
 namespace Opipp.Core.Pipeline;
 
@@ -505,17 +509,39 @@ public sealed class Processor
         _protocol = protocol;
     }
 
+    /// <summary>
+    /// Directory the retention store writes its scratch file to. Defaults to the process temp
+    /// directory, which is where a run's spill file belongs; the retention tests point it at a
+    /// directory they own so the file's lifetime can be asserted without racing other runs.
+    /// </summary>
+    internal string SpillDirectory { get; init; } = Path.GetTempPath();
+
     /// <summary>Runs the pipeline over the given input files.</summary>
     /// <param name="inputFiles">Input containers.</param>
-    /// <param name="cancellationToken">Cancels between frames.</param>
+    /// <param name="cancellationToken">Cancels between input frames and between written output frames.</param>
     public ProcessingReport Run(IEnumerable<string> inputFiles, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(inputFiles);
+
+        // The scratch store is created lazily, and it must not outlive the run however the run
+        // ends: the file is only scratch, and an abandoned DeleteOnClose handle keeps it on disk
+        // (for a long capture, gigabytes of it) until the finalizer happens to close it.
+        var spill = new SpillSession(SpillDirectory);
+        try
+        {
+            return RunCore(inputFiles, spill, cancellationToken);
+        }
+        finally
+        {
+            spill.Dispose();
+        }
+    }
+
+    private ProcessingReport RunCore(IEnumerable<string> inputFiles, SpillSession spill, CancellationToken cancellationToken)
+    {
         var files = inputFiles.Where(f => !string.IsNullOrWhiteSpace(f)).ToList();
         var outputs = new List<string>();
         var failed = new List<string>();
-        FrameStore? spill = null;
-        long retainedBytes = 0;
         int inputFrames = 0, outputFrames = 0, discardedQuality = 0,
             discardedNoObject = 0, discardedPartial = 0, discardedTooSmall = 0,
             discardedNoFeature = 0, discardedNoAoi = 0, discardedStart = 0, discardedInputDrop = 0, discardedOutputDrop = 0,
@@ -655,7 +681,7 @@ public sealed class Processor
                         // -test_run: one raw BMP and one processed BMP at the output root, no log-only
                         // folder and no requested output format (verified against the oracle).
                         WriteTestRunFrames(raw, frame, outputRoot);
-                        accepted.Add((Retain(frame, accepted, ref spill, ref retainedBytes, _settings.RetentionBudgetBytes), 0, AlignmentOffset.Zero));
+                        accepted.Add((Retain(frame, accepted, spill, _settings.RetentionBudgetBytes), 0, AlignmentOffset.Zero));
                         break;
                     }
 
@@ -770,7 +796,7 @@ public sealed class Processor
                         }
                     }
 
-                    accepted.Add((Retain(frame, accepted, ref spill, ref retainedBytes, _settings.RetentionBudgetBytes), score, offset));
+                    accepted.Add((Retain(frame, accepted, spill, _settings.RetentionBudgetBytes), score, offset));
                     Report(Percent(index, window), unit.Name, index, window.Limit,
                         $"Frame {index} of {window.Limit}");
                 }
@@ -942,6 +968,7 @@ public sealed class Processor
                     var stacker = new FrameStacker(first.Width, first.Height, first.Channels, first.BitDepth, method);
                     foreach (var (frame, _, offset, _) in queue)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
                         stacker.Add(ApplyGeometry(frame.Frame, offset, shiftFill));
                     }
                     var master = ApplyOverlay(stacker.Result(), detectionThreshold);
@@ -961,9 +988,16 @@ public sealed class Processor
                     // or -gif_lossy_comp, which only ever shaped image blocks that were never written.
                     string gifPath = Path.Combine(outputRoot, baseName + ".gif");
                     // Re-enumerable frame source: the writer pulls one frame at a time, so neither the
-                    // selected frames nor the encoded GIF are held in memory.
-                    IEnumerable<Frame> GifFrames() => queue.Select(entry =>
-                        ApplyOverlay(ApplyGeometry(entry.Frame.Frame, entry.Offset, shiftFill), detectionThreshold));
+                    // selected frames nor the encoded GIF are held in memory. Cancellation is checked
+                    // per frame pulled, not only while the inputs are read.
+                    IEnumerable<Frame> GifFrames()
+                    {
+                        foreach (var entry in queue)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            yield return ApplyOverlay(ApplyGeometry(entry.Frame.Frame, entry.Offset, shiftFill), detectionThreshold);
+                        }
+                    }
                     Func<IEnumerable<Frame>> gifSource = GifFrames;
 
                     // Animation blocks are defined over frame positions, and the queue can re-read any
@@ -1005,6 +1039,7 @@ public sealed class Processor
                         int emitted = 0;
                         foreach (int index in Order())
                         {
+                            cancellationToken.ThrowIfCancellationRequested();
                             Frame frame = At(index);
                             if (pending is not null && FramesEqual(pending, frame)) continue;
                             first ??= frame;
@@ -1100,6 +1135,7 @@ public sealed class Processor
                             // is no per-channel re-materialisation (and no second decode).
                             foreach (Frame output in animated)
                             {
+                                cancellationToken.ThrowIfCancellationRequested();
                                 for (int channel = 0; channel < sinks.Count; channel++)
                                 {
                                     sinks[channel].Write(ExtractChannel(output, channel));
@@ -1120,6 +1156,7 @@ public sealed class Processor
                             _settings.AviCodec, _settings.AviQuality, _settings.AviLegacyLayout);
                         foreach (Frame output in animated)
                         {
+                            cancellationToken.ThrowIfCancellationRequested();
                             sink.Write(output);
                             outputFrames++;
                         }
@@ -1153,6 +1190,7 @@ public sealed class Processor
                     int number = firstNumber;
                     for (int q = 0; q < queue.Count; q++)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
                         var (frame, score, offset, suffix) = queue[q];
                         if (q > 0 && suffix.Length == 0) number++;
                         var output = ApplyOverlay(ApplyGeometry(frame.Frame, offset, shiftFill), detectionThreshold);
@@ -1231,8 +1269,6 @@ public sealed class Processor
         }
 
         Report(100, null, 0, 0, "Complete");
-        // Scratch store lives for the run only; DeleteOnClose is the backstop if we exit by exception.
-        spill?.Dispose();
 
         return new ProcessingReport
         {
@@ -1555,33 +1591,62 @@ public sealed class Processor
     private RetainedFrame Retain(
         Frame frame,
         List<(RetainedFrame Frame, double Score, AlignmentOffset Offset)> accepted,
-        ref FrameStore? store,
-        ref long residentBytes,
+        SpillSession spill,
         long budget)
     {
         int bytes = frame.Samples.Length * sizeof(ushort);
-        if (store is null && residentBytes + bytes <= budget)
+        if (!spill.IsSpilling && spill.ResidentBytes + bytes <= budget)
         {
-            residentBytes += bytes;
+            spill.ResidentBytes += bytes;
             return RetainedFrame.Inline(frame);
         }
 
-        store ??= new FrameStore(System.IO.Path.Combine(System.IO.Path.GetTempPath(),
-            "opipp-spill-" + Guid.NewGuid().ToString("n") + ".bin"));
+        FrameStore store = spill.Store;
 
-        // First overflow: move the frames already accepted so the whole unit has one home.
-        if (residentBytes > 0)
+        // First overflow: move the frames already accepted so the whole unit has one home. The
+        // source name travels on the handle, because the store itself persists pixels only.
+        if (spill.ResidentBytes > 0)
         {
             for (int i = 0; i < accepted.Count; i++)
             {
                 var entry = accepted[i];
-                accepted[i] = (RetainedFrame.Stored(store, store.Append(entry.Frame.Frame)),
+                accepted[i] = (RetainedFrame.Stored(store, store.Append(entry.Frame.Frame), entry.Frame.SourceName),
                     entry.Score, entry.Offset);
             }
-            residentBytes = 0;
+            spill.ResidentBytes = 0;
         }
 
-        return RetainedFrame.Stored(store, store.Append(frame));
+        return RetainedFrame.Stored(store, store.Append(frame), frame.SourceName);
+    }
+
+    /// <summary>
+    /// The run's retention store, created lazily on the first frame that overflows the budget.
+    /// It owns the scratch file, which exists for the run only: <see cref="Dispose"/> runs from a
+    /// finally block, so a cancelled or failed run releases the file immediately instead of
+    /// leaving a <see cref="FrameStore"/>'s DeleteOnClose handle to the finalizer.
+    /// </summary>
+    private sealed class SpillSession : IDisposable
+    {
+        private readonly string _directory;
+        private FrameStore? _store;
+
+        public SpillSession(string directory) => _directory = directory;
+
+        /// <summary>Pixel bytes that count against the budget while frames are still inline.</summary>
+        public long ResidentBytes { get; set; }
+
+        /// <summary>True once a frame has overflowed and the store exists.</summary>
+        public bool IsSpilling => _store is not null;
+
+        /// <summary>The store, created on first use under a fresh scratch name.</summary>
+        public FrameStore Store => _store ??= new FrameStore(System.IO.Path.Combine(
+            _directory, "opipp-spill-" + Guid.NewGuid().ToString("n") + ".bin"));
+
+        public void Dispose()
+        {
+            _store?.Dispose();
+            _store = null;
+        }
     }
 
     /// <summary>Applies PIPP's quality limiting: absolute count and/or percentage of frames kept.</summary>
