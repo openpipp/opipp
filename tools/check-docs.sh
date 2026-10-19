@@ -17,6 +17,19 @@ if [ -z "$version" ]; then
 fi
 echo "check-docs: version $version"
 
+# A partial bump shipped a 0.1.6 build whose FileVersion still said 0.1.5. Check the numeric fields
+# against the display version before anything is built or published.
+numeric="${version%%-*}"
+expected_fields="${numeric}.0"
+assembly_version="$(sed -n 's:.*<AssemblyVersion>\(.*\)</AssemblyVersion>.*:\1:p' Directory.Build.props | head -1)"
+file_version="$(sed -n 's:.*<FileVersion>\(.*\)</FileVersion>.*:\1:p' Directory.Build.props | head -1)"
+for pair in "AssemblyVersion:$assembly_version" "FileVersion:$file_version"; do
+    if [ "${pair#*:}" != "$expected_fields" ]; then
+        echo "check-docs: ${pair%%:*} is '${pair#*:}', expected '$expected_fields'"
+        fail=1
+    fi
+done
+
 for file in README.md docs/index.html docs/status.md docs/roadmap.md; do
     if ! grep -qF -- "$version" "$file"; then
         echo "check-docs: $file does not mention $version"
