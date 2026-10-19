@@ -196,18 +196,21 @@ public class GifTests
 
     // ---- Bounded palette sampling: a global reservoir cap, deterministic, shared by both encoders ----
 
-    [Fact]
-    public void StreamingWrite_MatchesEncode_WhenCaptureExceedsPaletteSampleCap()
+    [Theory]
+    [InlineData(GifQuantisation.NeuralNet)]
+    [InlineData(GifQuantisation.MedianCut)]
+    public void StreamingWrite_MatchesEncode_WhenCaptureExceedsPaletteSampleCap(GifQuantisation quantisation)
     {
         Frame[] frames = LargeColourCapture();
         long offered = (long)frames.Length * frames[0].Width * frames[0].Height;
         Assert.True(offered > GifWriter.MaxColourSamples, $"capture offers only {offered} samples");
+        var options = new GifOptions(Quantisation: quantisation);
 
         string path = TempGifPath();
         try
         {
-            byte[] buffered = GifWriter.Encode(frames);
-            int written = GifWriter.Write(path, () => frames);
+            byte[] buffered = GifWriter.Encode(frames, options);
+            int written = GifWriter.Write(path, () => frames, options);
 
             Assert.Equal(frames.Length, written);
             Assert.Equal(buffered, File.ReadAllBytes(path));
@@ -216,6 +219,67 @@ public class GifTests
         {
             if (File.Exists(path)) File.Delete(path);
         }
+    }
+
+    [Fact]
+    public void Encode_AboveCapColourCapture_KeepsThePinnedBytes()
+    {
+        // Recorded before the colour-lookup cache was bounded: 24 frames of LCG noise, 294,912
+        // samples sampled, 262,144 retained. Quantiser is the default NeuralNet (depth 8); the
+        // median-cut entry pins the same fixture through the other quantiser.
+        Frame[] frames = LargeColourCapture();
+
+        byte[] neural = GifWriter.Encode(frames);
+        byte[] median = GifWriter.Encode(
+            frames, new GifOptions(Quantisation: GifQuantisation.MedianCut));
+
+        Assert.Equal(399_466, neural.Length);
+        Assert.Equal("419B72A7A93B1A8FCBACD3D2A71CED68AB289D17C160431FF6EF43FBFA1AB1D5", Sha256(neural));
+        Assert.Equal(402_909, median.Length);
+        Assert.Equal("F0AF9213C5355B5A9A003A2A9A5EEF1AE173F8229D5D5DFFB5DC7FF8F2DEEF54", Sha256(median));
+    }
+
+    [Theory]
+    [InlineData(GifQuantisation.NeuralNet)]
+    [InlineData(GifQuantisation.MedianCut)]
+    public void BuildColourPalette_LateDistinctiveColourInfluencesTheRetainedPalette(GifQuantisation quantisation)
+    {
+        Frame[] capture = EarlyAndLateColourCapture();
+
+        (byte[] palette, _, int sampleCount) =
+            GifWriter.BuildColourPalette(capture, 128, 96, 16, quantisation);
+
+        // The reservoir was full, so only replacement sampling can explain a late colour surviving;
+        // an implementation that stopped considering samples after the cap would keep red only.
+        Assert.Equal(GifWriter.MaxColourSamples, sampleCount);
+        Assert.Contains(Enumerable.Range(0, palette.Length / 3), i =>
+            palette[(i * 3) + 0] > 200 && palette[(i * 3) + 1] < 60 && palette[(i * 3) + 2] < 60);
+        Assert.Contains(Enumerable.Range(0, palette.Length / 3), i =>
+            palette[(i * 3) + 0] < 60 && palette[(i * 3) + 1] < 60 && palette[(i * 3) + 2] > 200);
+    }
+
+    [Fact]
+    public void ColourLookupCache_NeverExceedsItsBudgetForAColourRichCapture()
+    {
+        Frame frame = DistinctColourFrame(300, 300);
+        int distinct = DistinctColours(frame);
+        Assert.True(
+            distinct > GifWriter.MaxColourCacheEntries,
+            $"frame offers only {distinct} distinct colours");
+
+        var cache = new ColourLookupCache();
+        (_, Func<Frame, byte[]> indexer, _) = GifWriter.BuildColourPalette(
+            [frame], frame.Width, frame.Height, 256, GifQuantisation.MedianCut, cache);
+
+        byte[] first = indexer(frame);
+
+        Assert.Equal(GifWriter.MaxColourCacheEntries, cache.Capacity);
+        Assert.Equal(GifWriter.MaxColourCacheEntries, cache.Count);
+
+        // Past the budget every lookup misses and recomputes; the second pass must still agree.
+        byte[] second = indexer(frame);
+        Assert.Equal(first, second);
+        Assert.Equal(GifWriter.MaxColourCacheEntries, cache.Count);
     }
 
     [Fact]
@@ -309,6 +373,59 @@ public class GifTests
         }
 
         return frames;
+    }
+
+    /// <summary>
+    /// Twenty-four 128x96 colour frames. The first twenty are pure red and the last four are pure
+    /// blue: 245,760 red samples fill most of the reservoir, then 32,768+ blue samples arrive after
+    /// the 262,144 cap and can survive only through replacement sampling.
+    /// </summary>
+    private static Frame[] EarlyAndLateColourCapture()
+    {
+        const int width = 128;
+        const int height = 96;
+        var frames = new Frame[24];
+        for (int f = 0; f < frames.Length; f++)
+        {
+            int[] samples = new int[width * height * 3];
+            bool late = f >= 20;
+            for (int i = 0; i < samples.Length; i += 3)
+            {
+                samples[i + 0] = late ? 0 : 255;
+                samples[i + 1] = 0;
+                samples[i + 2] = late ? 255 : 0;
+            }
+
+            frames[f] = Rgb(width, height, samples);
+        }
+
+        return frames;
+    }
+
+    /// <summary>One frame whose every pixel is a different 8-bit RGB colour (90,000 distinct).</summary>
+    private static Frame DistinctColourFrame(int width, int height)
+    {
+        int[] samples = new int[width * height * 3];
+        for (int p = 0; p < width * height; p++)
+        {
+            samples[(p * 3) + 0] = p & 0xFF;
+            samples[(p * 3) + 1] = (p >> 8) & 0xFF;
+            samples[(p * 3) + 2] = (p >> 16) & 0xFF;
+        }
+
+        return Rgb(width, height, samples);
+    }
+
+    private static int DistinctColours(Frame frame)
+    {
+        var seen = new HashSet<int>();
+        for (int p = 0; p < frame.Width * frame.Height; p++)
+        {
+            int i = p * 3;
+            seen.Add((frame.Samples[i] << 16) | (frame.Samples[i + 1] << 8) | frame.Samples[i + 2]);
+        }
+
+        return seen.Count;
     }
 
     /// <summary>

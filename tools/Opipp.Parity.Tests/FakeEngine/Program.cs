@@ -43,6 +43,12 @@ internal static class Program
                 Console.Out.WriteLine("fake engine: output written, failing deliberately");
                 return 3;
 
+            case "empty-ser":
+                // A valid header over zero frames: both sides agree on name, geometry, layout and
+                // log, yet no image sample exists. The verdict must not call that a match.
+                WriteEmptySer(outputDir);
+                return 0;
+
             case "malformed":
                 WriteFrame(Path.Combine(outputDir, "1.tif"), 0);
                 File.WriteAllText(Path.Combine(outputDir, "2.tif"), "this is not a TIFF file");
@@ -72,6 +78,22 @@ internal static class Program
     {
         for (int i = 0; i < payloads.Length; i++)
             WriteFrame(Path.Combine(dir, $"{i + 1}.tif"), payloads[i]);
+    }
+
+    /// <summary>
+    /// Writes a zero-frame SER with valid geometry plus the log a real engine would leave, so the
+    /// two sides differ in nothing observable except the absence of image data.
+    /// </summary>
+    private static void WriteEmptySer(string dir)
+    {
+        using (var writer = new SerWriter(Path.Combine(dir, "1.ser"), 8, 6, 1, 8, frameCount: 0))
+        {
+            // deliberately no frames
+        }
+
+        string logs = Path.Combine(dir, "logs");
+        Directory.CreateDirectory(logs);
+        File.WriteAllText(Path.Combine(logs, "input_pipp_log.txt"), "fake engine: empty SER (0 frames)\n");
     }
 
     private static void WriteFrame(string path, int payload)

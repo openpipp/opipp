@@ -10,7 +10,7 @@ order, and how each step is proven.
 | --- | --- | --- | --- |
 | **Recovery** (read the original) | binaries decompiled | 100 % | 100 % |
 | **Parity** (behave like the original) | switches wired + oracle-verified | 131/131 addressed, 76 verified | all executable areas |
-| **Verification** (prove it) | parity cases matching | **29 cases, all matching** | one per executable area |
+| **Verification** (prove it) | parity cases matching | **29 registered: 27 compared and matching, 2 declared differences** | one per executable area |
 | **Distribution** | installable build | **0.1.5-alpha published** | 1.0 |
 
 Recovery is finished. Parity is complete except one algorithm (surface tracking). The alpha is built,
@@ -45,7 +45,7 @@ continue that way. Claims in this file are expected to be backed by a test or a 
 | Build output excluded | `dist/`, `obj/`, `bin/` per project are git-ignored |
 | Secrets | none: no credentials, tokens or connection strings anywhere in the tree |
 | Tests runnable from a clone | yes - the 80 KB synthetic parity fixtures are committed |
-| CI | running on every push: build + 615 tests; parity stays out of CI because it needs the original binaries |
+| CI | running on every push: build + 629 tests; parity stays out of CI because it needs the original binaries |
 | Next release | no committed plan yet; the remaining behavioural gap is surface-feature tracking (target ≥28/30 frames) |
 
 ## Where the numbers come from
@@ -63,8 +63,8 @@ Weights are a judgement call, stated so they can be argued with.
 
 | Area | State | Now | Weight |
 | --- | --- | --- | --- |
-| Output formats (TIF, FITS, PNG, AVI, SER, BMP, Y8, colour, GIF) | all verified; SER headers byte-identical; GIF deliberately diverges (valid animation vs an image-less original file) | 99 % | 15 % |
-| Input formats (SER, TIF, FITS, PNG, BMP, AVI incl. MJPEG, DNG) | MJPEG ffmpeg-verified (mean abs diff 0.011); baseline DNG reader wired, absolute values differ from dcraw | 95 % | 15 % |
+| Output formats (TIF, FITS, PNG, AVI, SER, BMP, Y8, colour, GIF) | all verified; SER headers byte-identical; AVI output is uncompressed DIB/Y800 only (no MJPEG encoder); GIF deliberately diverges (valid animation vs an image-less original file) | 99 % | 15 % |
+| Input formats (SER, TIF, FITS, PNG, BMP, AVI incl. MJPEG, DNG) | MJPEG decode ffmpeg-verified (mean abs diff 0.011); baseline DNG reader wired, absolute values differ from dcraw | 95 % | 15 % |
 | Core image ops (stretch, flip, rotate, resize, bin, gain, gamma, mono, debayer, median) | stretch/flip/debayer/centring verified on real frames | 98 % | 15 % |
 | Calibration (dark, flat, flat-dark, masters) | `.tmp` master format recovered and byte-tested; save/load and `-flat_bayer` wired; `-flat_bayer` discard behaviour not proven | 96 % | 10 % |
 | Frame selection (`-q`, `-qmin/qmax/qinc`, `-chk/-ms`, `-qw`, `-incqv`, `-freject`) | default, Ninox and Histogram algorithms all match the engine | 97 % | 10 % |
@@ -105,7 +105,7 @@ Rebuild with the two `dotnet publish` commands in `alpha.md`. `dist/` is git-ign
 | Phase | State |
 | --- | --- |
 | 1. Drop-in parity (layout, logs, exit codes, `-gui`) | **done** — trees and logs compared, 127 on unknown switch, `-gui` byte-identical |
-| 2. Remaining formats (BMP, Y8, GIF, colour SER, AVI/MJPEG) | **done** — deliberate divergences documented |
+| 2. Remaining formats (BMP, Y8, GIF, colour SER, AVI/MJPEG input) | **done** — deliberate divergences documented |
 | 3. Calibration and master frames | **done** — `.tmp` format, save/load, `-flat_bayer` |
 | 4. Selection, alignment, stacking | **done except tracking exactness** |
 | 5. Animation and long tail | **done** — `-anim_*`, WinJUPOS, legacy AVI, RAW switches |

@@ -516,6 +516,13 @@ public sealed class Processor
     /// </summary>
     internal string SpillDirectory { get; init; } = Path.GetTempPath();
 
+    /// <summary>
+    /// Test seam raised for each queue position a SER/AVI container has just re-read and
+    /// transformed while validating output geometry. The input stage is over by then, so a test can
+    /// cancel during output preparation deterministically instead of racing the read loop.
+    /// </summary>
+    internal Action<int>? ContainerFramePrepared { get; init; }
+
     /// <summary>Runs the pipeline over the given input files.</summary>
     /// <param name="inputFiles">Input containers.</param>
     /// <param name="cancellationToken">Cancels between input frames and between written output frames.</param>
@@ -1081,14 +1088,22 @@ public sealed class Processor
                     // SER/AVI hold the whole run in one file; joining inputs of different geometry
                     // is exactly the case the engine refuses ("Frames of different sizes ...").
                     var template = ApplyGeometry(queue[0].Frame.Frame, queue[0].Offset, shiftFill);
-                    foreach (var (frame, _, offset, _) in queue)
+                    for (int q = 0; q < queue.Count; q++)
                     {
+                        // Preparing a container is a second pass over the whole selection: every
+                        // frame is re-read (possibly from the spill store) and transformed before a
+                        // byte is written. Cancellation has to reach that pass, or a cancelled run
+                        // keeps decoding a large capture to the end.
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var (frame, _, offset, _) = queue[q];
                         var check = ApplyGeometry(frame.Frame, offset, shiftFill);
                         if (check.Width != template.Width || check.Height != template.Height)
                         {
                             throw new InvalidDataException(
                                 "Frames of different sizes cannot written to an AVI or SER file");
                         }
+
+                        ContainerFramePrepared?.Invoke(q);
                     }
 
                     // Only AVI carries an animation: with -ser the engine writes per-frame .tmp

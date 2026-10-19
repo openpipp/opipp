@@ -41,7 +41,10 @@ internal static class Program
         string[] Switches,
         string Input = "ser",
         CompareMode Mode = CompareMode.Exact,
-        string? Note = null);
+        string? Note = null,
+        // Emptiness is never inferred: a case whose output legitimately contains zero frames must
+        // say so here, otherwise the verdict treats it as a failure rather than a silent match.
+        bool AllowEmptyOutput = false);
 
     private static int Main(string[] args)
     {
@@ -264,7 +267,7 @@ internal static class Program
             // positional pass would reject a correct result. Compare the multisets of full frame
             // descriptions (kind, geometry, depth and hash) instead; nothing here depends on order.
             Console.WriteLine("  (positional pairing ignored; frames compared as a multiset)");
-            bool setsMatch = MultisetEqual(oracleDescriptions, managedDescriptions);
+            bool setsMatch = MultisetEqual(oracleDescriptions, managedDescriptions, c.AllowEmptyOutput);
             Console.WriteLine($"  frame multiset: {(setsMatch ? "MATCH" : "DIVERGENCE")} ({oracleDescriptions.Count} frames)");
             if (!setsMatch) ReportMultisetDifference(oracleDescriptions, managedDescriptions);
             allMatch &= setsMatch;
@@ -275,18 +278,22 @@ internal static class Program
             {
                 var a = oracleDescriptions[i];
                 var b = managedDescriptions[i];
-                bool same = a.HasHash && b.HasHash &&
-                            a.Kind == b.Kind && a.Width == b.Width && a.Height == b.Height &&
-                            a.Channels == b.Channels && a.BitDepth == b.BitDepth && a.Hash == b.Hash;
+                bool same = DescriptionsMatch(a, b, c.AllowEmptyOutput);
                 Console.WriteLine($"  [{i}] oracle  {Path.GetFileName(oracleFiles[i]),-24} {a}");
                 Console.WriteLine($"      managed {Path.GetFileName(managedFiles[i]),-24} {b}");
                 if (!same)
                 {
                     allMatch = false;
                     Console.WriteLine("      DIVERGENCE");
-                    if (!a.HasHash || !b.HasHash)
+                    if (a.Hash == EmptyHash || b.Hash == EmptyHash)
                     {
-                        Console.WriteLine("      (unreadable or empty output; content cannot be compared)");
+                        Console.WriteLine(c.AllowEmptyOutput
+                            ? "      (empty output is declared expected, but the descriptions differ)"
+                            : "      (empty output: zero frames decoded, so no image sample was compared)");
+                    }
+                    else if (!a.HasHash || !b.HasHash)
+                    {
+                        Console.WriteLine("      (unreadable output; content cannot be compared)");
                     }
                     else if (a.Kind == b.Kind)
                     {
@@ -449,11 +456,26 @@ internal static class Program
     private static string ShortHash(string hash) => hash.Length > 16 ? hash[..16] : hash;
 
     /// <summary>
-    /// Order-independent comparison of frame descriptions. Unlike a sorted hash list this also
-    /// compares kind, geometry and bit depth, and it refuses to treat two unreadable files as a
-    /// match just because both carry the same sentinel.
+    /// Compares two descriptions. Empty outputs are never equal by default: a zero-frame container
+    /// carries no image sample, so counting it as a match would turn "nothing was compared" into a
+    /// passing comparison. Only a case that explicitly declares <see cref="ParityCase.AllowEmptyOutput"/>
+    /// may treat two empties (with identical kind and geometry) as equal.
     /// </summary>
-    private static bool MultisetEqual(List<Description> left, List<Description> right)
+    private static bool DescriptionsMatch(Description a, Description b, bool allowEmpty)
+    {
+        bool sameGeometry = a.Kind == b.Kind && a.Width == b.Width && a.Height == b.Height &&
+                            a.Channels == b.Channels && a.BitDepth == b.BitDepth;
+        if (!sameGeometry) return false;
+        if (a.HasHash && b.HasHash) return a.Hash == b.Hash;
+        return allowEmpty && a.Hash == EmptyHash && b.Hash == EmptyHash;
+    }
+
+    /// <summary>
+    /// Order-independent comparison of frame descriptions. Unlike a sorted hash list this also
+    /// compares kind, geometry and bit depth, and it refuses to treat two unreadable files (or two
+    /// empty ones, unless the case declares them) as a match just because both carry a sentinel.
+    /// </summary>
+    private static bool MultisetEqual(List<Description> left, List<Description> right, bool allowEmpty = false)
     {
         if (left.Count != right.Count) return false;
 
@@ -462,7 +484,8 @@ internal static class Program
 
         foreach (var d in right)
         {
-            if (!d.HasHash || !counts.TryGetValue(d, out int remaining) || remaining == 0) return false;
+            bool comparable = d.HasHash || (allowEmpty && d.Hash == EmptyHash);
+            if (!comparable || !counts.TryGetValue(d, out int remaining) || remaining == 0) return false;
             if (remaining == 1) counts.Remove(d);
             else counts[d] = remaining - 1;
         }
@@ -875,7 +898,12 @@ internal static class Program
     private static IEnumerable<string> Tail(string text, int lines) =>
         text.Split('\n', StringSplitOptions.RemoveEmptyEntries).TakeLast(lines).Select(l => l.TrimEnd('\r'));
 
-    /// <summary>Hashes every frame of a multi-frame container (SER/AVI) as one payload.</summary>
+    /// <summary>
+    /// Hashes every frame of a multi-frame container (SER/AVI) as one payload. A container that
+    /// decoded zero frames reports <see cref="EmptyHash"/> instead of the digest of the empty byte
+    /// sequence: two empty containers share that digest and the same header geometry, which would
+    /// otherwise be reported as a matched comparison although no image sample was examined.
+    /// </summary>
     private static Description DescribeContainer(IFrameSource source)
     {
         using (source)
@@ -893,6 +921,8 @@ internal static class Program
                 hash.AppendData(bytes);
                 frames++;
             }
+            if (frames == 0)
+                return new Description("container x0", width, height, channels, bitDepth, EmptyHash);
             string hashText = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
             return new Description($"container x{frames}", width, height, channels, bitDepth, hashText);
         }
@@ -1002,12 +1032,19 @@ internal static class Program
         return null;
     }
 
-    private static string FindRepoRoot()
+    private static string FindRepoRoot() => FindRepoRoot(AppContext.BaseDirectory);
+
+    /// <summary>
+    /// Walks up from <paramref name="startDirectory"/> to the directory holding the solution file.
+    /// The marker is <c>OPIPP.slnx</c>: the project was renamed from PIPP, and there is deliberately
+    /// no PIPP fallback, so a stale file in an ancestor cannot silently supply the wrong root.
+    /// </summary>
+    internal static string FindRepoRoot(string startDirectory)
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        var dir = new DirectoryInfo(startDirectory);
         while (dir is not null)
         {
-            if (File.Exists(Path.Combine(dir.FullName, "PIPP.slnx"))) return dir.FullName;
+            if (File.Exists(Path.Combine(dir.FullName, "OPIPP.slnx"))) return dir.FullName;
             dir = dir.Parent;
         }
         return Directory.GetCurrentDirectory();

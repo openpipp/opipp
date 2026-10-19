@@ -154,6 +154,51 @@ public sealed class RetentionTests
     }
 
     [Fact]
+    public void CancellingDuringContainerPreparation_StopsBeforeWritingTheContainer()
+    {
+        string dir = TempDir();
+        string spillDirectory = Path.Combine(dir, "spill");
+        Directory.CreateDirectory(spillDirectory);
+        try
+        {
+            string input = WriteCapture(dir, 16, 16, 6);
+            string output = Path.Combine(dir, "out");
+            using var cancellation = new CancellationTokenSource();
+            int prepared = 0;
+
+            var processor = new Processor(new PipelineSettings
+            {
+                OutputDirectory = output,
+                OutputExtension = ".ser",
+                RetentionBudgetBytes = 1, // every queued frame has to be re-read from the store
+            })
+            {
+                SpillDirectory = spillDirectory,
+                // This seam fires only while the container pass re-reads the queue, after the input
+                // stage is over, so no sleep or read-loop race is involved.
+                ContainerFramePrepared = index =>
+                {
+                    prepared++;
+                    if (index == 0) cancellation.Cancel();
+                },
+            };
+
+            Assert.ThrowsAny<OperationCanceledException>(() => processor.Run([input], cancellation.Token));
+
+            // The check sits inside the pass: one frame was prepared, then the token stopped it.
+            // Without it the pass would have re-read and transformed all six before the writer's
+            // own check noticed.
+            Assert.Equal(1, prepared);
+            Assert.Empty(Directory.GetFiles(output, "*.ser", SearchOption.AllDirectories));
+            Assert.Empty(SpillFiles(spillDirectory));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void FailingOutputPath_ReleasesTheSpillFileImmediately()
     {
         string dir = TempDir();

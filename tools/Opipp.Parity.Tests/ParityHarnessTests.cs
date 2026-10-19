@@ -75,6 +75,72 @@ public sealed class ParityHarnessTests
     }
 
     [Fact]
+    public void EmptyContainer_IsNotCountedAsAMatch()
+    {
+        // Both sides write a valid-geometry SER with zero frames, the same names, layout and log.
+        // Before the fix the SHA-256 of the empty payload matched on both sides, so this case was
+        // reported as a match although no image sample had been compared.
+        var (outcome, output) = RunFake("empty-ser", "empty-ser");
+
+        Assert.Equal(Program.CaseOutcome.Fail, outcome);
+        Assert.Contains("container x0", output, StringComparison.Ordinal);
+        Assert.Contains(Program.EmptyHash, output, StringComparison.Ordinal);
+        Assert.Contains("no image sample was compared", output, StringComparison.Ordinal);
+        // The failure is not an incidental layout/log mismatch: those still match.
+        Assert.Contains("layout: MATCH", output, StringComparison.Ordinal);
+        Assert.Contains("log: MATCH", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EmptyContainer_MatchesOnlyWhenTheCaseDeclaresIt()
+    {
+        // The escape hatch: emptiness is accepted only when the case says so up front; it is never
+        // inferred from two outputs happening to be empty in the same way.
+        var (outcome, output) = RunFake("empty-ser", "empty-ser", allowEmpty: true);
+
+        Assert.Equal(Program.CaseOutcome.Match, outcome);
+        Assert.Contains("container x0", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RepoRoot_ResolvesFromANestedWorkingDirectory()
+    {
+        string repoRoot = FindRepoRoot();
+        string probeRoot = Path.Combine(repoRoot, ".parity-root-probe-" + Guid.NewGuid().ToString("N"));
+        string nested = Path.Combine(probeRoot, "a", "b", "c");
+        Directory.CreateDirectory(nested);
+        try
+        {
+            string resolved = Program.FindRepoRoot(nested);
+            Assert.Equal(repoRoot, resolved);
+            Assert.True(File.Exists(Path.Combine(resolved, "OPIPP.slnx")));
+        }
+        finally
+        {
+            TryDelete(probeRoot);
+        }
+    }
+
+    [Fact]
+    public void RepoRoot_IgnoresAStalePippSlnxMarker()
+    {
+        // The repository was renamed to OPIPP; a PIPP.slnx in some ancestor must not be mistaken
+        // for the repository root just because it is the old name.
+        string staleRoot = Path.Combine(Path.GetTempPath(), "opipp-root-probe-" + Guid.NewGuid().ToString("N"));
+        string nested = Path.Combine(staleRoot, "nested", "deeper");
+        Directory.CreateDirectory(nested);
+        File.WriteAllText(Path.Combine(staleRoot, "PIPP.slnx"), "<Solution />");
+        try
+        {
+            Assert.NotEqual(staleRoot, Program.FindRepoRoot(nested));
+        }
+        finally
+        {
+            TryDelete(staleRoot);
+        }
+    }
+
+    [Fact]
     public void PipeBlockedEngine_StillReachesTheTimeout()
     {
         // The fake engine fills stderr, then stdout, then hangs. Reading either pipe to completion
@@ -120,7 +186,8 @@ public sealed class ParityHarnessTests
         string oracleScenario,
         string managedScenario,
         Program.CompareMode mode = Program.CompareMode.Exact,
-        TimeSpan? timeout = null)
+        TimeSpan? timeout = null,
+        bool allowEmpty = false)
     {
         string work = NewWorkDirectory();
         try
@@ -128,7 +195,7 @@ public sealed class ParityHarnessTests
             string fake = FakeEnginePath();
             string input = Path.Combine(work, "input.ser");
             File.WriteAllBytes(input, []);
-            var parityCase = new Program.ParityCase("fake", ["-tif"], Mode: mode);
+            var parityCase = new Program.ParityCase("fake", ["-tif"], Mode: mode, AllowEmptyOutput: allowEmpty);
 
             var original = Console.Out;
             var writer = new StringWriter();
@@ -173,12 +240,10 @@ public sealed class ParityHarnessTests
 
     private static string FindRepoRoot()
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            if (File.Exists(Path.Combine(dir.FullName, "OPIPP.slnx"))) return dir.FullName;
-            dir = dir.Parent;
-        }
+        // Delegate to the harness's own discovery so the test cannot disagree with production about
+        // which solution file marks the repository root.
+        string root = Program.FindRepoRoot(AppContext.BaseDirectory);
+        if (File.Exists(Path.Combine(root, "OPIPP.slnx"))) return root;
 
         throw new InvalidOperationException("repository root (OPIPP.slnx) not found");
     }

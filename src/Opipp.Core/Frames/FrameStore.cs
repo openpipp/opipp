@@ -1,3 +1,5 @@
+using System.Runtime.ExceptionServices;
+
 namespace Opipp.Core.Frames;
 
 /// <summary>
@@ -23,14 +25,24 @@ public sealed class FrameStore : IDisposable
         long Offset, int Width, int Height, int Channels, int BitDepth, BayerPattern Bayer, int SampleCount);
 
     public FrameStore(string path)
+        : this(path, static p => new FileStream(p, FileMode.Create, FileAccess.ReadWrite, FileShare.Read,
+            4096, FileOptions.DeleteOnClose))
+    {
+    }
+
+    /// <summary>
+    /// Test seam: lets a test supply the backing stream so the disposal order can be observed with
+    /// a stream whose close fails. Production code goes through the public constructor.
+    /// </summary>
+    internal FrameStore(string path, Func<string, FileStream> openStream)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(openStream);
         _path = path;
         string? directory = System.IO.Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
-        _stream = new FileStream(path, FileMode.Create, FileAccess.ReadWrite, FileShare.Read,
-            4096, FileOptions.DeleteOnClose);
+        _stream = openStream(path);
         _writer = new BinaryWriter(_stream, System.Text.Encoding.UTF8, leaveOpen: true);
     }
 
@@ -133,14 +145,41 @@ public sealed class FrameStore : IDisposable
         _stream.Flush();
     }
 
+    /// <summary>
+    /// Closes the writer and then the backing stream, and deletes the scratch file.
+    /// </summary>
+    /// <remarks>
+    /// The stream close is unconditional: it runs even when the writer flush throws (a full disk,
+    /// say), so the <see cref="FileStream"/> — and with it the DeleteOnClose handle — is never left
+    /// open. Disposal is one-shot, so <c>_disposed</c> is set before either close: a caller that
+    /// catches a failure cannot retry against a half-closed store, and <see cref="Append"/> /
+    /// <see cref="Read"/> fail fast instead of touching a closing stream. A single failure is
+    /// rethrown unchanged; if the writer and the stream both fail, both are reported so the flush
+    /// failure that caused the skip is not replaced by the close failure.
+    /// </remarks>
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+
+        Exception? writerFailure = null;
         try
         {
             _writer.Dispose();
+        }
+        catch (Exception ex)
+        {
+            writerFailure = ex;
+        }
+
+        Exception? streamFailure = null;
+        try
+        {
             _stream.Dispose();
+        }
+        catch (Exception ex)
+        {
+            streamFailure = ex;
         }
         finally
         {
@@ -153,5 +192,10 @@ public sealed class FrameStore : IDisposable
                 // Scratch file left behind; the next run uses a fresh name and the OS cleans temp.
             }
         }
+
+        if (writerFailure is not null && streamFailure is not null)
+            throw new AggregateException("FrameStore disposal failed", writerFailure, streamFailure);
+        if (writerFailure is not null) ExceptionDispatchInfo.Throw(writerFailure);
+        if (streamFailure is not null) ExceptionDispatchInfo.Throw(streamFailure);
     }
 }

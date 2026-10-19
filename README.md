@@ -20,8 +20,9 @@ projects — is `Opipp.*`.
 ## Status: early development — feedback wanted
 
 OPIPP is at **0.1.5-alpha**. The engine is functionally complete and parity-tested against the
-original across 29 cases, but one algorithm (surface-feature tracking) is still one pixel off on part
-of the real-data fixture, and the UI has not seen broad real-world use. Treat it as a working preview.
+original across 27 compared cases, with two declared differences, but one algorithm (surface-feature
+tracking) is still one pixel off on part of the real-data fixture, and the UI has not seen broad
+real-world use. Treat it as a working preview.
 
 Feedback is genuinely wanted, especially from people who image planets:
 
@@ -119,7 +120,7 @@ dotnet run --project src/Opipp.App
 ## Status
 
 Working end to end (verified by tests): SER → pipeline → FITS/TIFF/SER/AVI/GIF output, calibration
-subtract/divide, histogram stretch, quality selection, alignment, stacking and animation. **615 tests
+subtract/divide, histogram stretch, quality selection, alignment, stacking and animation. **629 tests
 pass** across eight projects; [`docs/status.md`](docs/status.md) is the authoritative summary.
 
 The CLI is a drop-in engine: it accepts the GUI's stdin protocol (switches and file paths, one per
@@ -131,7 +132,7 @@ line) as well as a normal command line, and emits the original `@PROGRESS/@PFILE
 |---|---|
 | SER v3 read/write | complete |
 | FITS read/write | complete (16-bit, Bayer keywords, BZERO) |
-| AVI read/write | uncompressed DIB/Y800 only; compressed codecs rejected with a clear error |
+| AVI | read: uncompressed DIB/Y800 and baseline MJPEG; write: uncompressed DIB/Y800 only. Other compressed codecs (ULRG, FMP4, YUY2, ...) are rejected with a clear error |
 | BMP / TIFF / PNG / PGM | complete; BMP writes 8/24bpp only (PIPP's reader rejects 16bpp), so 16-bit frames are downshifted and documented |
 | Debayer (bilinear, smooth hue) | complete; pattern indices match the engine |
 | Binning, median, mono modes, stretch, gain/gamma, flip/rotate/crop/resize | complete |
@@ -158,8 +159,11 @@ Current result: **27 of 27 compared cases match**, with two deliberate differenc
 Quality selection is compared as a multiset because it may reorder frames, and its score column is
 excluded until the quality algorithm is parity-proven.
 
-Remaining deliberate differences: colour SER output is a superset (the original's help claims mono
-only), and the `-gui` token stream does not yet match (tracked in Phase 6 of the roadmap).
+The two declared differences in the parity set are 16-bit TIFF (the original byte-swaps samples
+under an `II` header; we write spec-correct files) and GIF (the original emits an image-less file; we
+write a valid animation). The `-gui` stdout is byte-identical across all nine recorded transcript
+scenarios. Colour SER output is a documented superset of the original's mono-only help text, not a
+parity claim (see [notes/algorithms.md](notes/algorithms.md)).
 
 Details of what is observed versus reconstructed: [notes/algorithms.md](notes/algorithms.md).
 

@@ -3,9 +3,10 @@ using Opipp.Core.Frames;
 namespace Opipp.Core.Formats;
 
 /// <summary>
-/// Sequential reader for uncompressed AVI 1.0 files: 8bpp and 24bpp <c>BI_RGB</c> DIB video plus
-/// <c>Y800</c> 8bpp mono. The first video stream in the file is used. Compressed codecs (ULRG, FMP4,
-/// MJPEG, YUY2, ...) are rejected with <see cref="NotSupportedException"/> rather than misdecoded.
+/// Sequential reader for AVI 1.0 files: uncompressed 8bpp and 24bpp <c>BI_RGB</c> DIB video,
+/// <c>Y800</c> 8bpp mono, and baseline <c>MJPG</c> decoded with the managed JPEG decoder. The first
+/// video stream in the file is used. Other compressed codecs (ULRG, FMP4, YUY2, ...) are rejected with
+/// <see cref="NotSupportedException"/> rather than misdecoded.
 /// </summary>
 /// <remarks>
 /// The RIFF walk tolerates the usual real-world damage: both <c>00db</c> and <c>00dc</c> video chunk ids,

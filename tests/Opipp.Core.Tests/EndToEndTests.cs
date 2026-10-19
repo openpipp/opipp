@@ -45,6 +45,40 @@ public sealed class EndToEndTests
         return path;
     }
 
+    /// <summary>
+    /// Writes a SER file of noisy 8-bit RGB frames with a moving bright disc. The noise makes the
+    /// colour palette large enough to exercise the GIF writer's colour path; 24 frames of 128x96
+    /// offer 294,912 samples, above the 262,144 palette-sample cap.
+    /// </summary>
+    private static string WriteSyntheticColourSer(string dir, int width, int height, int frames)
+    {
+        string path = Path.Combine(dir, "colour.ser");
+        using var writer = new SerWriter(path, width, height, 3, 8);
+        uint state = 0x9E3779B9u;
+        for (int f = 0; f < frames; f++)
+        {
+            var frame = new Frame(width, height, 3, 8);
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    int pixel = y * width + x;
+                    state = (state * 1664525u) + 1013904223u;
+                    byte noise = (byte)(state >> 24);
+                    double dx = x - (width / 2 + f % 3), dy = y - height / 2;
+                    bool inDisc = dx * dx + dy * dy <= 16;
+                    frame.Samples[(pixel * 3) + 0] = (ushort)(inDisc ? 250 : 40 + (noise % 40));
+                    frame.Samples[(pixel * 3) + 1] = (ushort)(inDisc ? 180 : noise % 96);
+                    frame.Samples[(pixel * 3) + 2] = (ushort)(inDisc ? 60 : (noise * 7) % 128);
+                }
+            }
+
+            writer.Write(frame);
+        }
+
+        return path;
+    }
+
     [Fact]
     public void SerToFits_StackMean_WritesExpectedGeometryAndBrightness()
     {
@@ -263,6 +297,46 @@ public sealed class EndToEndTests
                 System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path)));
 
             Assert.Equal(inMemory.OutputFiles.Select(Hash).ToList(), onDisk.OutputFiles.Select(Hash).ToList());
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Gif_ForcedSpill_ProducesByteIdenticalOutput()
+    {
+        string dir = TempDir();
+        try
+        {
+            string input = WriteSyntheticColourSer(dir, 128, 96, 24);
+            string generous = Path.Combine(dir, "generous");
+            string spilled = Path.Combine(dir, "spilled");
+
+            var inMemory = new Processor(new PipelineSettings
+            {
+                OutputDirectory = generous,
+                OutputExtension = ".gif",
+            }).Run([input]);
+
+            var onDisk = new Processor(new PipelineSettings
+            {
+                OutputDirectory = spilled,
+                OutputExtension = ".gif",
+                RetentionBudgetBytes = 1, // every accepted frame spills to the temp store
+            }).Run([input]);
+
+            Assert.Equal(24, inMemory.OutputFrames);
+            Assert.Equal(inMemory.OutputFrames, onDisk.OutputFrames);
+            Assert.Single(inMemory.OutputFiles);
+            Assert.Single(onDisk.OutputFiles);
+
+            byte[] buffer = File.ReadAllBytes(inMemory.OutputFiles[0]);
+            byte[] disk = File.ReadAllBytes(onDisk.OutputFiles[0]);
+
+            Assert.Equal("GIF89a", System.Text.Encoding.ASCII.GetString(buffer, 0, 6));
+            Assert.Equal(buffer, disk);
         }
         finally
         {

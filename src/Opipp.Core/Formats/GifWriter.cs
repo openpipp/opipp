@@ -379,18 +379,38 @@ public static class GifWriter
     internal const int MaxColourSamples = PaletteSampleReservoir.Capacity;
 
     /// <summary>
+    /// Maximum number of RGB-to-palette-index mappings remembered while indexing one palette build.
+    /// </summary>
+    /// <remarks>
+    /// 65,536 entries (2^16) is 256x the largest palette (256 entries) and enough locality for a
+    /// colour-rich capture, while bounding the dictionary to roughly two megabytes. The budget is a
+    /// memory bound only: a miss past it still runs the deterministic <see cref="Nearest"/> search,
+    /// so it returns exactly the index an unbounded cache would have returned. Without a cap a noisy
+    /// capture could insert one entry for every distinct RGB colour it contains (up to 16,777,216),
+    /// tens to hundreds of megabytes for a large animation.
+    /// </remarks>
+    internal const int MaxColourCacheEntries = 65_536;
+
+    /// <summary>
     /// Samples every frame into a bounded, deterministic reservoir and quantises those colours into a
     /// palette. <paramref name="sampleCount"/> reports how many colours were retained and never
     /// exceeds <see cref="MaxColourSamples"/>; the returned indexer maps a frame's pixels onto the
     /// nearest palette entry.
     /// </summary>
+    /// <param name="cache">
+    /// Optional lookup memo supplied by a test to observe the bound. The encoder always passes
+    /// <see langword="null"/> and gets a fresh, bounded cache.
+    /// </param>
     /// <remarks>
     /// Traversal order is fixed: frames in enumeration order, and inside each frame the pixels at
     /// <c>0, step, 2*step, ...</c> in row-major order. Both encoders must call this with the same
-    /// frame sequence for their output to stay byte-identical.
+    /// frame sequence for their output to stay byte-identical. The colour lookup is memoised only up
+    /// to <see cref="MaxColourCacheEntries"/> entries, which cannot change the emitted indices because
+    /// <see cref="Nearest"/> is deterministic.
     /// </remarks>
     internal static (byte[] Palette, Func<Frame, byte[]> Indexer, int SampleCount) BuildColourPalette(
-        IEnumerable<Frame> frames, int width, int height, int entries, GifQuantisation quantisation)
+        IEnumerable<Frame> frames, int width, int height, int entries, GifQuantisation quantisation,
+        ColourLookupCache? cache = null)
     {
         var reservoir = new PaletteSampleReservoir();
         int step = Math.Max(1, (width * height) / 16384);
@@ -420,7 +440,10 @@ public static class GifWriter
             table[(i * PaletteBytesPerEntry) + 2] = colours[i].B;
         }
 
-        var cache = new Dictionary<int, byte>(4096);
+        // Bounded memo: past MaxColourCacheEntries a miss recomputes the nearest entry instead of
+        // remembering it. The search is deterministic, so the emitted indices are identical either
+        // way; only memory use changes.
+        cache ??= new ColourLookupCache();
         byte[] Indexer(Frame frame)
         {
             var indices = new byte[frame.Width * frame.Height];
@@ -435,7 +458,7 @@ public static class GifWriter
                 if (!cache.TryGetValue(key, out byte index))
                 {
                     index = Nearest(colours, r, g, b);
-                    cache[key] = index;
+                    cache.Remember(key, index);
                 }
 
                 indices[p] = index;
@@ -710,6 +733,42 @@ public static class GifWriter
 
     private static byte Channel((byte R, byte G, byte B) pixel, int channel) =>
         channel switch { 0 => pixel.R, 1 => pixel.G, _ => pixel.B };
+}
+
+/// <summary>
+/// Bounded memo of RGB-to-palette-index lookups for one palette build. Storing a mapping is purely
+/// an optimisation: the nearest-colour search is deterministic, so a miss after the budget is
+/// spent recomputes exactly the same index, and the GIF bytes do not depend on whether the mapping
+/// was remembered.
+/// </summary>
+internal sealed class ColourLookupCache
+{
+    /// <summary>Initial dictionary capacity. This is a hint only, not a limit.</summary>
+    private const int InitialCapacity = 4096;
+
+    private readonly Dictionary<int, byte> _entries = new(InitialCapacity);
+
+    /// <summary>Mappings currently remembered; never greater than <see cref="Capacity"/>.</summary>
+    public int Count => _entries.Count;
+
+    /// <summary>Fixed entry budget enforced by <see cref="Remember"/>.</summary>
+    public int Capacity => GifWriter.MaxColourCacheEntries;
+
+    /// <summary>Looks up a remembered mapping.</summary>
+    public bool TryGetValue(int key, out byte index) => _entries.TryGetValue(key, out index);
+
+    /// <summary>
+    /// Remembers a mapping while the budget allows. Once full, the mapping is dropped and the caller
+    /// pays for a nearest-colour search on the next occurrence; that is a time-for-memory trade with
+    /// no effect on output.
+    /// </summary>
+    public void Remember(int key, byte index)
+    {
+        if (_entries.Count < GifWriter.MaxColourCacheEntries)
+        {
+            _entries[key] = index;
+        }
+    }
 }
 
 /// <summary>
