@@ -49,6 +49,16 @@ else
     echo "check-docs: test count $counts"
 fi
 
+# CI passes the count it actually observed; agreement alone cannot catch every document being stale.
+if [ -n "${TEST_COUNT:-}" ]; then
+    if [ "$counts" != "$TEST_COUNT" ]; then
+        echo "check-docs: documents say $counts tests, the suite ran $TEST_COUNT"
+        fail=1
+    else
+        echo "check-docs: count matches the suite ($TEST_COUNT)"
+    fi
+fi
+
 # The site must show the version it is advertising, and a release-notes file should exist for it.
 if ! grep -qF ">$version<" docs/index.html; then
     echo "check-docs: docs/index.html has no '$version' pill"

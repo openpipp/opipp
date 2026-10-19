@@ -19,10 +19,18 @@ jobs:
         run: dotnet build OPIPP.slnx -c Release --nologo
 
       - name: Test
-        run: dotnet test OPIPP.slnx -c Release --no-build --nologo
+        id: test
+        shell: bash
+        run: |
+          set -o pipefail
+          dotnet test OPIPP.slnx -c Release --no-build --nologo | tee test.log
+          total=$(grep -oE "Passed: +[0-9]+" test.log | awk '{sum += $2} END {print sum}')
+          echo "count=$total" >> "$GITHUB_OUTPUT"
 
       - name: Docs consistency
         shell: bash
+        env:
+          TEST_COUNT: ${{ steps.test.outputs.count }}
         run: ./tools/check-docs.sh
 
       # The parity harness is intentionally not run here: it needs the original PIPP binaries,
