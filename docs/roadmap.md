@@ -84,7 +84,7 @@ Saturn fixture, with the remaining frames off by one pixel. Everything else is a
 | --- | --- |
 | Artifact | `OPIPP-0.1.5-alpha-win-x64.zip` on [Releases](https://github.com/openpipp/opipp/releases) (self-contained win-x64, 52.4 MB) |
 | Provenance | `Version=0.1.5-alpha` in `Directory.Build.props`; window title `OPIPP 0.1.5-alpha - Open PIPP` |
-| Verified | 615 tests, parity 27 compared / 27 matched / 2 known differences / 0 gaps, CLI conversion of 30 real frames, GUI launch, no native DLL |
+| Verified | 629 tests, parity 27 compared / 27 matched / 2 known differences / 0 gaps, CLI conversion of 30 real frames, GUI launch, no native DLL |
 | Notes | [`alpha.md`](alpha.md) |
 
 Rebuild with the two `dotnet publish` commands in `alpha.md`. `dist/` is git-ignored.
@@ -146,7 +146,7 @@ applies no shift, and Saturn reaches ≥28/30. Notes: [`../notes/tracking.md`](.
 ### 2026-10-18 — the reconstruction is named OPIPP, and the alpha ships
 
 Chosen over further parity work because the engine is functionally complete: 0.1.5-alpha is a working
-preview (615 tests, 27/27 compared parity), and shipping it makes the remaining gap concrete instead of
+preview (629 tests, 27/27 compared parity), and shipping it makes the remaining gap concrete instead of
 theoretical. Tracking at 23/30 is documented in the release notes rather than hidden.
 
 ### 2026-10-18 — coarse stage disabled until its reference capture is faithful
