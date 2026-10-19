@@ -51,12 +51,8 @@ internal sealed class SerFileProbe
 /// </remarks>
 internal static class ManagedEngineApi
 {
-	/// <summary>Version banner shown in the About dialog and in the processing output pane.</summary>
-	public static readonly string PippVersion =
-		"PIPP (managed) " + (typeof(ManagedEngineApi).Assembly.GetName().Version?.ToString() ?? "1.0.0.0");
-
-	/// <summary>dcraw is not part of the managed engine; this is shown verbatim in the About dialog.</summary>
-	public const string DcrawVersion = "not included (managed engine has no dcraw decoder)";
+	/// <summary>Version banner shown in the processing output pane.</summary>
+	public static readonly string OpippVersion = "OPIPP " + VersionInfo.Display;
 
 	/// <summary>
 	/// Probes the first video stream of an AVI file. Returns false for every other container (the

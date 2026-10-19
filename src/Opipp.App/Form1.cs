@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
@@ -2889,13 +2890,9 @@ public class Form1 : Form
 
 	private void aboutToolStripMenuItem_Click(object sender, EventArgs e)
 	{
-		// Both strings are supplied by the managed engine metadata (see ManagedEngineApi); the
-		// About dialog displays them verbatim.
-		string dcrawVersion = ManagedEngineApi.DcrawVersion;
-		string pippVersion = ManagedEngineApi.PippVersion;
 		if (helpinfo == null)
 		{
-			helpinfo = new infodialog(pippVersion, dcrawVersion);
+			helpinfo = new infodialog(VersionInfo.Display);
 			helpinfo.FormClosed += aboutToolStripMenuItem_Closed;
 			helpinfo.Show();
 		}
@@ -4280,62 +4277,81 @@ public class Form1 : Form
 		{
 			return;
 		}
-		using WebClient webClient = new WebClient();
-		string text;
+
 		try
 		{
-			text = webClient.DownloadString("https://sites.google.com/site/astropipp/version.txt");
-		}
-		catch
-		{
-			return;
-		}
-		string[] array = text.Split('\n');
-		array[0] = array[0].TrimEnd('\r', '\n');
-		if (string.Equals(version, array[0], StringComparison.Ordinal))
-		{
-			return;
-		}
-		string[] array2 = array[0].Split('.');
-		if (array2.Length < 3 || !array2[0].StartsWith("v"))
-		{
-			return;
-		}
-		array2[0] = array2[0].Substring(1);
-		int[] array3 = new int[3];
-		for (int i = 0; i < 3; i++)
-		{
-			if (!int.TryParse(array2[i], out array3[i]))
+			using WebClient webClient = new WebClient();
+			webClient.Headers[HttpRequestHeader.UserAgent] = "OPIPP/" + VersionInfo.Display;
+			string json = webClient.DownloadString("https://api.github.com/repos/openpipp/opipp/releases?per_page=10");
+			using JsonDocument document = JsonDocument.Parse(json);
+			foreach (JsonElement release in document.RootElement.EnumerateArray())
 			{
+				if (release.TryGetProperty("draft", out JsonElement draft) && draft.GetBoolean())
+				{
+					continue;
+				}
+
+				string tag = release.TryGetProperty("tag_name", out JsonElement tagElement) ? tagElement.GetString() ?? "" : "";
+				string url = release.TryGetProperty("html_url", out JsonElement urlElement) ? urlElement.GetString() ?? "" : "";
+				if (!TryParseVersion(tag, out int[] latest) || !TryParseVersion(VersionInfo.Display, out int[] current))
+				{
+					return;
+				}
+
+				if (CompareVersions(latest, current) <= 0)
+				{
+					return;
+				}
+
+				MessageBox.Show(
+					"A newer OPIPP release is available:\n\n" + tag + "\n\nDownload it from:\n" + url +
+					"\n\nThis check can be disabled under the Options menu",
+					"OPIPP Update Check", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
 				return;
 			}
 		}
-		string[] array4 = version.Split('.');
-		if (array4.Length < 3 || !array4[0].StartsWith("v"))
+		catch (Exception)
 		{
-			return;
+			// Best effort: no network, rate limiting or a malformed response must not disturb a run.
 		}
-		array4[0] = array4[0].Substring(1);
-		int[] array5 = new int[3];
-		for (int j = 0; j < 3; j++)
+	}
+
+	private static bool TryParseVersion(string text, out int[] parts)
+	{
+		parts = [];
+		string[] fields = text.Trim().TrimStart('v', 'V').Split('-', '+')[0].Split('.');
+		if (fields.Length < 2)
 		{
-			if (!int.TryParse(array4[j], out array5[j]))
+			return false;
+		}
+
+		var numbers = new List<int>(fields.Length);
+		foreach (string field in fields)
+		{
+			if (!int.TryParse(field, out int value))
 			{
-				return;
+				return false;
+			}
+			numbers.Add(value);
+		}
+
+		parts = numbers.ToArray();
+		return true;
+	}
+
+	private static int CompareVersions(int[] left, int[] right)
+	{
+		int length = Math.Max(left.Length, right.Length);
+		for (int i = 0; i < length; i++)
+		{
+			int a = i < left.Length ? left[i] : 0;
+			int b = i < right.Length ? right[i] : 0;
+			if (a != b)
+			{
+				return a.CompareTo(b);
 			}
 		}
-		for (int k = 0; k < 3; k++)
-		{
-			if (array5[k] > array3[k])
-			{
-				return;
-			}
-			if (array5[k] < array3[k])
-			{
-				break;
-			}
-		}
-		MessageBox.Show("A new version of PIPP is available:\n\n" + text + "\n\nTo upgrade from version " + version + " download the latest version from\nhttp://sites.google.com/site/astropipp/downloads\n\nThis check can be disabled under the Options menu", "PIPP Update Check", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
+		return 0;
 	}
 
 	private void EnabledChangedEventHandler(object sender, EventArgs e)
@@ -4573,7 +4589,7 @@ public class Form1 : Form
 		runBTN.Text = "Start Processing";
 		dotestrunBTN.Enabled = true;
 		dotestrunBTN.Text = "Test Options";
-		Text = "OPIPP 0.1.5-alpha - Open PIPP";
+		Text = "OPIPP " + VersionInfo.Display + " - Open PIPP";
 		((Control)tabPage1).Enabled = true;
 		((Control)tabPage7).Enabled = true;
 		((Control)tabPage2).Enabled = true;
@@ -4828,7 +4844,7 @@ public class Form1 : Form
 			((Control)tabPage3).Enabled = false;
 			((Control)tabPage5).Enabled = false;
 			((Control)tabPage4).Enabled = false;
-			outputTB.AppendText(ManagedEngineApi.PippVersion + "\r\n\r\n");
+			outputTB.AppendText(ManagedEngineApi.OpippVersion + "\r\n\r\n");
 			error_data = "";
 			Task.Factory.StartNew(() =>
 			{
@@ -9787,7 +9803,7 @@ public class Form1 : Form
 		base.Icon = (System.Drawing.Icon)resources.GetObject("$this.Icon");
 		base.MainMenuStrip = this.menuStrip1;
 		base.Name = "Form1";
-		this.Text = "OPIPP 0.1.2-alpha - Open PIPP";
+		this.Text = "OPIPP " + VersionInfo.Display + " - Open PIPP";
 		base.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.Form1_FormClosing);
 		base.Load += new System.EventHandler(this.Form1_Load);
 		this.menuStrip1.ResumeLayout(false);

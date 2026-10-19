@@ -7,8 +7,8 @@
     <FileVersion>0.1.5.0</FileVersion>
     <Product>OPIPP (Open PIPP)</Product>
     <Company>OPIPP contributors</Company>
-    <Description>Open, managed continuation of PIPP (Planetary Imaging PreProcessor) by Chris Garry.</Description>
-    <Copyright>Reconstruction of PIPP by Chris Garry; reconstruction and managed code by the OPIPP contributors.</Copyright>
+    <Description>Open, fully managed continuation of PIPP (Planetary Imaging PreProcessor). Not affiliated with the original project.</Description>
+    <Copyright>Copyright (c) 2026 OPIPP contributors. GPLv3 or later. Not affiliated with PIPP or its author.</Copyright>
       <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
   </PropertyGroup>
 </Project>

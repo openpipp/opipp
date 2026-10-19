@@ -27,4 +27,7 @@
     <EmbeddedResource Include="h_ruler_x1.png" LogicalName="PIPP_Application.Resources.h_ruler_x1.png" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="opipp-icon.png" LogicalName="Opipp.App.opipp-icon.png" />
+  </ItemGroup>
 </Project>
