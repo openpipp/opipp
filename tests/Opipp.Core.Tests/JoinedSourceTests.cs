@@ -93,10 +93,109 @@ public sealed class JoinedSourceTests
         }
     }
 
+    [Fact]
+    public void JoinedSource_CountsEveryImageInMultiFrameFits()
+    {
+        string directory = CreateDirectory();
+        try
+        {
+            // Two FITS files, two image HDUs each. The single-frame shortcut used to report 2 for
+            // this pair, and the processor stopped reading once its window was reached, so B1/B2
+            // never reached the output.
+            string[] files =
+            [
+                WriteFits(directory, "a.fits", frames: 2, seed: 100),
+                WriteFits(directory, "b.fits", frames: 2, seed: 500),
+            ];
+
+            int live = 0;
+            int maxLive = 0;
+            JoinedFrameSource.OpenForTests = (path, depth) =>
+            {
+                IFrameSource inner = FrameSourceFactory.Open(path, depth);
+                int now = Interlocked.Increment(ref live);
+                if (now > maxLive) maxLive = now;
+                return new CountingSource(inner, () => Interlocked.Decrement(ref live));
+            };
+
+            try
+            {
+                using var joined = new JoinedFrameSource(files);
+
+                Assert.Equal(4, joined.FrameCount);
+
+                var values = new List<int>();
+                while (joined.ReadFrame() is { } frame)
+                {
+                    values.Add(frame.Samples[0]);
+                }
+
+                Assert.Equal(new[] { 100, 101, 500, 501 }, values);
+                Assert.Equal(1, maxLive);
+            }
+            finally
+            {
+                JoinedFrameSource.OpenForTests = null;
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void JoinedSource_MixesFitsAndSerWithoutLosingFrames()
+    {
+        string directory = CreateDirectory();
+        try
+        {
+            string[] files =
+            [
+                WriteFits(directory, "a.fits", frames: 2, seed: 10),
+                WriteSer(directory, "b.ser", frames: 3, seed: 20),
+            ];
+
+            using var joined = new JoinedFrameSource(files);
+
+            Assert.Equal(5, joined.FrameCount);
+
+            var values = new List<int>();
+            while (joined.ReadFrame() is { } frame)
+            {
+                values.Add(frame.Samples[0]);
+            }
+
+            Assert.Equal(new[] { 10, 11, 20, 21, 22 }, values);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static string CreateDirectory()
     {
         string path = Path.Combine(Path.GetTempPath(), "opipp-join-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
+        return path;
+    }
+
+    /// <summary>Writes a 4x1 mono 16-bit FITS with several image HDUs; first sample is seed + index.</summary>
+    private static string WriteFits(string directory, string name, int frames, int seed)
+    {
+        string path = Path.Combine(directory, name);
+        using var writer = new FitsWriter(path);
+        for (int i = 0; i < frames; i++)
+        {
+            var frame = new Frame(4, 1, 1, 16);
+            frame.Samples[0] = (ushort)(seed + i);
+            frame.Samples[1] = 1;
+            frame.Samples[2] = 2;
+            frame.Samples[3] = 3;
+            writer.Write(frame);
+        }
+
         return path;
     }
 

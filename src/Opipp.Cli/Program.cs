@@ -620,7 +620,9 @@ internal static class Program
         };
 
         // Calibration masters: the full-fidelity .tmp is authoritative, the PGM is the legacy
-        // one-channel fallback used only when the .tmp is absent (see LoadMaster).
+        // one-channel fallback used only when the .tmp is absent (see LoadMaster). A null path means
+        // the switch was absent; a non-null path is a file the user named, and a missing one is an
+        // error rather than a silently uncalibrated run.
         settings.MasterDark = LoadMaster(o.MasterDarkTmpFile, o.MasterDarkPgmFile, "dark", o.DarkSubtraction);
         settings.MasterFlat = LoadMaster(o.MasterFlatTmpFile, null, "flat", o.FlatCalibration);
         settings.MasterFlatDark = LoadMaster(o.MasterFlatDarkTmpFile, null, "flat dark", o.FlatDarkSubtraction);
@@ -649,26 +651,74 @@ internal static class Program
     /// PGM handoff.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// <see cref="OpippOptions"/> records an absent path switch as <see langword="null"/>: the parser
+    /// rejects a switch token with no value, so a non-null string means the operator named that file.
+    /// Presence is tested with <c>is not null</c>, never by treating an empty string as absent.
+    /// </para>
+    /// <para>
+    /// Three states are distinct. Calibration disabled, or enabled with no path at all, loads nothing:
+    /// the GUI emits bare <c>-flat_dark</c> when it has already subtracted the flat dark itself. A
+    /// named path that cannot be resolved — no <c>.tmp</c> and, for the dark, no PGM either — is a
+    /// configuration error, because continuing would quietly deliver uncalibrated science frames.
+    /// </para>
+    /// <para>
     /// The PGM is the engine's old one-channel handoff, so a colour master is reduced to luma there
     /// and a colour capture rejects it with a channel mismatch. The <c>.tmp</c> keeps the real channel
     /// count and sample depth and is therefore authoritative. PGM is used only when no <c>.tmp</c> was
-    /// supplied or the <c>.tmp</c> file is absent — the legacy <c>-dark_pgm</c>-only handoff.
-    /// A master that exists but cannot be decoded is an explicit configuration error: continuing
-    /// without it would silently process uncalibrated frames.
+    /// supplied or the supplied <c>.tmp</c> file is absent. A master that exists but cannot be decoded
+    /// is also an explicit configuration error.
+    /// </para>
     /// </remarks>
     internal static Frame? LoadMaster(string? tmpFile, string? pgmFile, string kind, bool enabled)
     {
         if (!enabled) return null;
 
-        if (!string.IsNullOrWhiteSpace(tmpFile) && File.Exists(tmpFile))
+        // null means "switch absent" (CommandLineParser refuses a switch with no value); anything
+        // else is an explicitly named file. Do not use IsNullOrWhiteSpace here: "-flat_tmp=" names
+        // a (nonsensical) empty path, and that is still an explicit request that cannot be honoured.
+        bool tmpSupplied = tmpFile is not null;
+        bool pgmSupplied = pgmFile is not null;
+        if (!tmpSupplied && !pgmSupplied) return null; // bare -dark / -flat / -flat_dark
+
+        if (tmpSupplied && File.Exists(tmpFile))
             return ReadMaster(tmpFile!, kind);
 
         // Fallback only when the authoritative container is absent.
-        if (!string.IsNullOrWhiteSpace(pgmFile) && File.Exists(pgmFile))
+        if (pgmSupplied && File.Exists(pgmFile))
             return ReadMaster(pgmFile!, kind);
 
-        return null;
+        throw new InvalidDataException(DescribeMissingMaster(kind, tmpFile, pgmFile));
     }
+
+    /// <summary>
+    /// Diagnostic for a master the command line named but which is not on disk. It names every
+    /// supplied candidate together with the switch that supplied it, so the operator can see exactly
+    /// which path is wrong.
+    /// </summary>
+    private static string DescribeMissingMaster(string kind, string? tmpFile, string? pgmFile)
+    {
+        var supplied = new List<string>(2);
+        if (tmpFile is not null) supplied.Add($"'{tmpFile}' (from {MasterSwitch(kind, pgm: false)})");
+        if (pgmFile is not null) supplied.Add($"'{pgmFile}' (from {MasterSwitch(kind, pgm: true)})");
+
+        string subject = supplied.Count == 1
+            ? $"master {kind} frame {supplied[0]}"
+            : $"master {kind} frames {string.Join(" and ", supplied)}";
+        string enablingSwitch = "-" + kind.Replace(' ', '_');
+        string remedy = supplied.Count == 1 ? "remove the switch" : "remove the switches";
+        return $"{subject} does not exist; {enablingSwitch} is enabled, so the run cannot continue " +
+               $"without calibration. Supply an existing master or {remedy}.";
+    }
+
+    /// <summary>The command-line switch that supplies one kind of calibration master.</summary>
+    private static string MasterSwitch(string kind, bool pgm) => kind switch
+    {
+        "dark" => pgm ? "-dark_pgm" : "-dark_tmp",
+        "flat" => "-flat_tmp",
+        "flat dark" => "-flat_dark_tmp",
+        _ => "-" + kind.Replace(' ', '_') + (pgm ? "_pgm" : "_tmp"),
+    };
 
     private static Frame ReadMaster(string path, string kind)
     {

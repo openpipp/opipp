@@ -21,6 +21,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Opipp.App\Opipp.App.csproj" />
+    <!-- The GUI launches the managed engine as a separate process; referencing it guarantees the
+         apphost is built (and copied beside the tests) before these tests run. -->
+    <ProjectReference Include="..\..\src\Opipp.Cli\Opipp.Cli.csproj" />
   </ItemGroup>
 
 </Project>

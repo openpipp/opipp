@@ -31,18 +31,30 @@ public static class MasterFrameBuilder
     /// <param name="pgmPath">Destination PGM (the engine's legacy luma handoff), or null/empty to skip.</param>
     /// <param name="frameLimit">Maximum frames to accumulate; 0 or less means all frames.</param>
     /// <param name="progress">Receives 0..100 while frames are accumulated, then 100 once the outputs are published.</param>
-    /// <param name="cancellationToken">Stops the build between frames and before each write/publish.</param>
+    /// <param name="cancellationToken">Stops the build between frames and before staging or publication
+    /// begins; once the pair is being published it is not interrupted.</param>
     /// <returns>
     /// A <see cref="MasterBuildResult"/>: <see cref="MasterBuildResult.Success"/> with the actual frame
-    /// count and published paths, or a failure carrying the reason. A failed or cancelled build leaves
-    /// no output behind.
+    /// count and published paths, or a failure carrying the reason. A failed build leaves the previous
+    /// master pair exactly as it was (or no output at all when there was none), never a new PGM beside
+    /// an old <c>.tmp</c> or the reverse; if restoring that pair itself fails, the error says which
+    /// <c>.previous-</c> backups were kept.
     /// </returns>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.
-    /// Cancellation is not reported as a build failure; the caller asked for it.</exception>
+    /// Cancellation is not reported as a build failure; the caller asked for it. Cancellation is only
+    /// observed before publication starts, so a published pair is never cancelled halfway.</exception>
     /// <remarks>
-    /// Both outputs are written to temporary files next to their destinations and only renamed into
-    /// place once every write succeeded, so a failure never leaves a half-updated master set (for
-    /// example a new <c>.tmp</c> beside a stale PGM).
+    /// Publication is transactional for the duration of the call. Both outputs are first written to
+    /// staging files beside their destinations, so nothing at a final path is touched until every
+    /// write has succeeded. Each existing destination is then renamed to a private <c>.previous-</c>
+    /// backup, the PGM fallback is renamed into place first and the authoritative <c>.tmp</c> last,
+    /// and the backups are deleted once both renames have succeeded. If either rename fails, every
+    /// file already published is removed and every backup is renamed back, so the call leaves either
+    /// the complete new pair or the complete previous pair - never one output from each build. The
+    /// <c>.tmp</c> is published last so that even an abrupt process termination between the two
+    /// renames leaves the previous authoritative master in place: the loader prefers the <c>.tmp</c>
+    /// over the PGM, so that half-state still resolves to the previous master. Only if restoring a
+    /// backup itself fails does a mixed pair remain; the failure then names the kept backups.
     /// </remarks>
     public static MasterBuildResult Build(
         IReadOnlyList<string> files,
@@ -51,7 +63,23 @@ public static class MasterFrameBuilder
         string? pgmPath,
         int frameLimit,
         Action<int>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        Build(files, subtractFile, masterPath, pgmPath, frameLimit, progress, cancellationToken, null);
+
+    /// <summary>Test seam for <see cref="Build(IReadOnlyList{string}, string?, string?, string?, int, Action{int}?, CancellationToken)"/>.</summary>
+    /// <param name="beforePublish">Invoked immediately before each staging file is renamed onto its
+    /// final path; a test can throw from it to force publication to fail at a chosen step. Null uses
+    /// the real publication path unchanged.</param>
+    /// <remarks>Internal so the failure ordering can be exercised without timing or permission hacks.</remarks>
+    internal static MasterBuildResult Build(
+        IReadOnlyList<string> files,
+        string? subtractFile,
+        string? masterPath,
+        string? pgmPath,
+        int frameLimit,
+        Action<int>? progress,
+        CancellationToken cancellationToken,
+        Action<string, string>? beforePublish)
     {
         ArgumentNullException.ThrowIfNull(files);
 
@@ -159,7 +187,8 @@ public static class MasterFrameBuilder
             string? pgmFull = string.IsNullOrWhiteSpace(pgmPath) ? null : Path.GetFullPath(pgmPath!);
             string? masterStaging = masterFull is null ? null : StagingPath(masterFull);
             string? pgmStaging = pgmFull is null ? null : StagingPath(pgmFull);
-            bool pgmPublished = false;
+            var publications = new List<Publication>(2);
+            bool preserveBackups = false;
 
             try
             {
@@ -181,32 +210,82 @@ public static class MasterFrameBuilder
 
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // Publish the fallback first and the authoritative .tmp last: a .tmp is what the
-                // loader prefers, so it must never appear beside a PGM from a previous build.
+                // Publish the fallback first and the authoritative .tmp last. The two renames are a
+                // transaction: the previous pair is renamed aside first, and if either rename fails
+                // both are put back, so the destination pair is always entirely old or entirely new.
+                // Publishing the .tmp last also means a process killed between the renames leaves the
+                // previous .tmp - the file the loader prefers - in place.
                 if (pgmStaging is not null)
-                {
-                    File.Move(pgmStaging, pgmFull!, overwrite: true);
-                    pgmPublished = true;
-                }
-
+                    publications.Add(new Publication(pgmStaging, pgmFull!, BackupPath(pgmFull!)));
                 if (masterStaging is not null)
+                    publications.Add(new Publication(masterStaging, masterFull!, BackupPath(masterFull!)));
+
+                try
                 {
-                    try
+                    // Phase 1: move the previous pair aside. Renames are cheap and keep the old bytes
+                    // untouched, so they can be put back exactly if publication does not complete.
+                    foreach (Publication publication in publications)
                     {
-                        File.Move(masterStaging, masterFull!, overwrite: true);
+                        if (File.Exists(publication.Destination))
+                            File.Move(publication.Destination, publication.Backup);
                     }
-                    catch
+
+                    // Phase 2: move the staged outputs into place, PGM first, .tmp last.
+                    for (int i = 0; i < publications.Count; i++)
                     {
-                        // Do not leave a new PGM published without its .tmp beside it.
-                        if (pgmPublished) TryDelete(pgmFull!);
-                        throw;
+                        Publication publication = publications[i];
+                        beforePublish?.Invoke(publication.Staging, publication.Destination);
+                        File.Move(publication.Staging, publication.Destination, overwrite: true);
+                        publication.Published = true;
                     }
+                }
+                catch (Exception publishError)
+                {
+                    // Undo in reverse: remove any new file, then restore its backup. Restoring the
+                    // .tmp first means a crash during recovery still leaves the previous
+                    // authoritative master beside a possibly-new PGM, which the loader ignores.
+                    var restoreFailures = new List<string>();
+                    for (int i = publications.Count - 1; i >= 0; i--)
+                    {
+                        Publication publication = publications[i];
+                        if (publication.Published && !TryDelete(publication.Destination))
+                            restoreFailures.Add($"could not remove newly published '{publication.Destination}'");
+
+                        if (!File.Exists(publication.Backup)) continue;
+                        try
+                        {
+                            File.Move(publication.Backup, publication.Destination, overwrite: true);
+                        }
+                        catch (Exception restoreError)
+                        {
+                            // Rollback is best-effort for every entry: record this one and continue
+                            // so a second failure cannot be masked by the first.
+                            restoreFailures.Add(
+                                $"could not restore '{publication.Destination}' from '{publication.Backup}': {restoreError.Message}");
+                        }
+                    }
+
+                    if (restoreFailures.Count > 0)
+                    {
+                        // Keep the backups: they are the only remaining copy of the previous pair.
+                        preserveBackups = true;
+                        throw new IOException(
+                            $"Publishing the calibration master failed ({publishError.Message}), and the previous " +
+                            $"master pair could not be fully restored: {string.Join("; ", restoreFailures)}. " +
+                            "The '.previous-' backups beside the destinations were kept.", publishError);
+                    }
+
+                    throw;
                 }
             }
             finally
             {
                 if (masterStaging is not null) TryDelete(masterStaging);
                 if (pgmStaging is not null) TryDelete(pgmStaging);
+                if (!preserveBackups)
+                {
+                    foreach (Publication publication in publications) TryDelete(publication.Backup);
+                }
             }
 
             progress?.Invoke(100);
@@ -230,17 +309,33 @@ public static class MasterFrameBuilder
     private static string StagingPath(string destination) =>
         destination + ".partial-" + Guid.NewGuid().ToString("N");
 
-    private static void TryDelete(string path)
+    /// <summary>Private name the previous destination is renamed to while the new pair is published.</summary>
+    private static string BackupPath(string destination) =>
+        destination + ".previous-" + Guid.NewGuid().ToString("N");
+
+    /// <summary>One staged output and the final path it will replace.</summary>
+    private sealed class Publication(string staging, string destination, string backup)
+    {
+        public string Staging { get; } = staging;
+        public string Destination { get; } = destination;
+        public string Backup { get; } = backup;
+        public bool Published { get; set; }
+    }
+
+    private static bool TryDelete(string path)
     {
         try
         {
             if (File.Exists(path)) File.Delete(path);
+            return true;
         }
         catch (IOException)
         {
+            return false;
         }
         catch (UnauthorizedAccessException)
         {
+            return false;
         }
     }
 

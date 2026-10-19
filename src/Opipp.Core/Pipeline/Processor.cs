@@ -2420,11 +2420,13 @@ public sealed class Processor
 /// </remarks>
 public sealed class JoinedFrameSource : IFrameSource
 {
-    // Formats whose reader returns exactly one frame. Counting these without opening them is what
-    // makes a long join cheap; a multi-page format would have to be added to the container branch.
+    // Formats whose reader provably returns one frame (FrameCount => 1). Counting these without
+    // opening them is what makes a long join cheap. FITS is deliberately absent: one FITS file can
+    // hold several image HDUs, and assuming one frame silently truncated a joined sequence. DNG is
+    // absent too; it is opened and counted rather than assumed.
     private static readonly HashSet<string> SingleFrameExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".fits", ".fit", ".fts", ".bmp", ".tif", ".tiff", ".png", ".dng",
+        ".bmp", ".tif", ".tiff", ".png",
     };
 
     private readonly List<string> _files;

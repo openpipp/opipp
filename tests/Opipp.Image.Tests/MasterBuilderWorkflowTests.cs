@@ -208,7 +208,8 @@ public class MasterBuilderWorkflowTests
         {
             string input = WriteMono(dir, "dark.ser", 4, 4, 8, BayerPattern.None, (_, _) => 40);
             string masterPath = Path.Combine(dir, "pipp_master_dark.tmp");
-            // An existing directory at the PGM path makes that write fail after the .tmp was staged.
+            // An existing directory at the PGM path makes the first publication rename fail after
+            // both outputs were staged (the staging write itself succeeds).
             string pgmPath = Path.Combine(dir, "pgm-target");
             Directory.CreateDirectory(pgmPath);
 
@@ -217,6 +218,155 @@ public class MasterBuilderWorkflowTests
             Assert.False(result.Success);
             Assert.False(File.Exists(masterPath), "a half-written master set was published");
             Assert.Empty(Directory.GetFiles(dir, "*.partial-*"));
+            Assert.Empty(Directory.GetFiles(dir, "*.previous-*"));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void FailedFirstPublish_KeepsThePreviousPairIntact()
+    {
+        string dir = TempDir();
+        try
+        {
+            string oldInput = WriteMono(dir, "dark-old.ser", 4, 4, 8, BayerPattern.None, (_, _) => 40);
+            string masterPath = Path.Combine(dir, "pipp_master_dark.tmp");
+            string pgmPath = Path.Combine(dir, "pipp_master_dark.pgm");
+            Assert.True(MasterFrameBuilder.Build([oldInput], null, masterPath, pgmPath, 0).Success);
+            byte[] oldTmp = File.ReadAllBytes(masterPath);
+            byte[] oldPgm = File.ReadAllBytes(pgmPath);
+
+            string newInput = WriteMono(dir, "dark-new.ser", 4, 4, 8, BayerPattern.None, (_, _) => 200);
+            int publishes = 0;
+            MasterBuildResult result = MasterFrameBuilder.Build(
+                [newInput], null, masterPath, pgmPath, 0, null, default,
+                (_, destination) =>
+                {
+                    publishes++;
+                    Assert.Equal(Path.GetFullPath(pgmPath), destination);
+                    throw new IOException("injected PGM publish failure");
+                });
+
+            Assert.False(result.Success);
+            Assert.Contains("injected PGM publish failure", result.Error, StringComparison.Ordinal);
+            Assert.Equal(1, publishes);
+            Assert.Equal(oldTmp, File.ReadAllBytes(masterPath));
+            Assert.Equal(oldPgm, File.ReadAllBytes(pgmPath));
+            Assert.Empty(Directory.GetFiles(dir, "*.partial-*"));
+            Assert.Empty(Directory.GetFiles(dir, "*.previous-*"));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void FailedSecondPublish_RestoresThePreviousPair()
+    {
+        string dir = TempDir();
+        try
+        {
+            string oldInput = WriteMono(dir, "dark-old.ser", 4, 4, 8, BayerPattern.None, (_, _) => 40);
+            string masterPath = Path.Combine(dir, "pipp_master_dark.tmp");
+            string pgmPath = Path.Combine(dir, "pipp_master_dark.pgm");
+            MasterBuildResult first = MasterFrameBuilder.Build([oldInput], null, masterPath, pgmPath, 0);
+            Assert.True(first.Success, first.Error);
+            byte[] oldTmp = File.ReadAllBytes(masterPath);
+            byte[] oldPgm = File.ReadAllBytes(pgmPath);
+            Assert.Equal(41, MasterTmpFile.Read(masterPath)[0, 0]);
+
+            string newInput = WriteMono(dir, "dark-new.ser", 4, 4, 8, BayerPattern.None, (_, _) => 200);
+            int publishes = 0;
+            MasterBuildResult result = MasterFrameBuilder.Build(
+                [newInput], null, masterPath, pgmPath, 0, null, default,
+                (_, destination) =>
+                {
+                    publishes++;
+                    if (publishes == 2)
+                    {
+                        // The PGM rename has already succeeded; fail the authoritative .tmp one.
+                        Assert.Equal(Path.GetFullPath(masterPath), destination);
+                        throw new IOException("injected .tmp publish failure");
+                    }
+                });
+
+            Assert.False(result.Success);
+            Assert.Contains("injected .tmp publish failure", result.Error, StringComparison.Ordinal);
+            Assert.Equal(2, publishes);
+
+            // Documented guarantee: never a mixture. Both files are byte-for-byte the previous pair
+            // and both still parse as a usable master/PGM.
+            Assert.Equal(oldTmp, File.ReadAllBytes(masterPath));
+            Assert.Equal(oldPgm, File.ReadAllBytes(pgmPath));
+            Assert.Equal(41, MasterTmpFile.Read(masterPath)[0, 0]);
+            Assert.Equal(41, PgmFile.Read(pgmPath)[0, 0]);
+            Assert.Empty(Directory.GetFiles(dir, "*.partial-*"));
+            Assert.Empty(Directory.GetFiles(dir, "*.previous-*"));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void FailedSecondPublish_WithNoPreviousPair_LeavesNoOutput()
+    {
+        string dir = TempDir();
+        try
+        {
+            string input = WriteMono(dir, "dark.ser", 4, 4, 8, BayerPattern.None, (_, _) => 40);
+            string masterPath = Path.Combine(dir, "pipp_master_dark.tmp");
+            string pgmPath = Path.Combine(dir, "pipp_master_dark.pgm");
+
+            int publishes = 0;
+            MasterBuildResult result = MasterFrameBuilder.Build(
+                [input], null, masterPath, pgmPath, 0, null, default,
+                (_, _) =>
+                {
+                    if (++publishes == 2) throw new IOException("injected .tmp publish failure");
+                });
+
+            Assert.False(result.Success);
+            Assert.Equal(2, publishes);
+            Assert.False(File.Exists(masterPath));
+            Assert.False(File.Exists(pgmPath), "the PGM from the failed build was left behind");
+            Assert.Empty(Directory.GetFiles(dir, "*.partial-*"));
+            Assert.Empty(Directory.GetFiles(dir, "*.previous-*"));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SuccessfulRebuild_ReplacesBothFilesAndLeavesNoStagingOrBackups()
+    {
+        string dir = TempDir();
+        try
+        {
+            string oldInput = WriteMono(dir, "dark-old.ser", 4, 4, 8, BayerPattern.None, (_, _) => 40);
+            string masterPath = Path.Combine(dir, "pipp_master_dark.tmp");
+            string pgmPath = Path.Combine(dir, "pipp_master_dark.pgm");
+            Assert.True(MasterFrameBuilder.Build([oldInput], null, masterPath, pgmPath, 0).Success);
+            byte[] oldTmp = File.ReadAllBytes(masterPath);
+            byte[] oldPgm = File.ReadAllBytes(pgmPath);
+
+            string newInput = WriteMono(dir, "dark-new.ser", 4, 4, 8, BayerPattern.None, (_, _) => 200);
+            MasterBuildResult rebuilt = MasterFrameBuilder.Build([newInput], null, masterPath, pgmPath, 0);
+
+            Assert.True(rebuilt.Success, rebuilt.Error);
+            Assert.NotEqual(oldTmp, File.ReadAllBytes(masterPath));
+            Assert.NotEqual(oldPgm, File.ReadAllBytes(pgmPath));
+            Assert.Equal(201, MasterTmpFile.Read(masterPath)[0, 0]);
+            Assert.Equal(201, PgmFile.Read(pgmPath)[0, 0]);
+            Assert.Empty(Directory.GetFiles(dir, "*.partial-*"));
+            Assert.Empty(Directory.GetFiles(dir, "*.previous-*"));
         }
         finally
         {

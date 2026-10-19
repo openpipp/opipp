@@ -5,11 +5,11 @@ produce every figure on this page.
 
 | | |
 |---|---|
-| Version | `0.1.8-alpha` at the tagged commit |
+| Version | `0.1.9-alpha` at the tagged commit |
 | SDK | .NET 10.0.402 (local `~/.dotnet-sdk`) |
-| Tests | **713 passing, 0 failing, 0 skipped** across nine projects |
+| Tests | **744 passing, 0 failing, 0 skipped** across nine projects |
 | Parity | **27 compared, 27 matched, 2 deliberate differences, 0 gaps, 0 failed** |
-| Release | `v0.1.8-alpha`, Windows x64 zip, self-contained |
+| Release | `v0.1.9-alpha`, Windows x64 zip, self-contained |
 | History | [`journal.md`](journal.md) — dated findings, superseded details |
 
 ```bash
@@ -27,6 +27,11 @@ dotnet run --project tools/Opipp.Parity -- --real
 - Master creation (dark, flat-dark, flat) reads and writes the engine's `.tmp` masters, subtracts a
   flat-dark exactly once, keeps RGB masters three-channel, is cancellable, and publishes nothing when
   a build fails.
+- Joining reads every image in a multi-HDU FITS file, not one per file, and opens one reader at a time.
+- A cached flat master remembers whether its flat-dark was already applied, so toggling flat correction
+  off and on cannot subtract it twice; a declined Quit no longer deletes cached masters.
+- An explicitly named calibration master that does not exist stops the run with a diagnostic instead
+  of silently disabling calibration.
 - Mean, sum and median stacking are covered by exact numerical tests for mono/RGB at 8 and 16 bits,
   including saturation, fractional truncation, even-median rounding, reference subtraction and a
   32-bit overflow guard.
@@ -69,6 +74,7 @@ Documented skips: `-raw_db`, `-raw_hl`, `-raw_ocs`, `-raw_hpf` (need the statica
 | Colour GIF palette | Bounded by design (262,144-sample reservoir); large-capture RGB output intentionally differs from the pre-0.1.5 encoder |
 | Median stacking scale | Retains at most 64 frames (759 MiB for 64 RGB frames at 1920x1080); disk-backed tiled median is not implemented |
 | Final-image stacking interface | The stacker is a Core API capability; the CLI and GUI do not yet expose mean/sum/median as a user-facing control |
+| Unequal master goldens | Native master files are pinned from identical inputs; unequal-frame native fixtures that would distinguish averaging rules are still missing |
 | Bayer-marked stacking | A Bayer frame is stacked as ordinary samples and the result carries `Bayer=None`; pre-debayer the selection or accept a plain mono master |
 
 ## Deliberate divergences

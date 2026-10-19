@@ -19,15 +19,8 @@ using Opipp.Core.Pipeline;
 
 namespace PIPP_Application;
 
-public class Form1 : Form
+public partial class Form1 : Form
 {
-	private int flat_dark_frames_stacked;
-
-	private int flat_frames_stacked;
-
-	private int dark_frames_stacked;
-
-
 	private string output_directory;
 
 	private string output_directory_to_open;
@@ -78,18 +71,19 @@ public class Form1 : Form
 
 	private string temp_directory;
 
-	private string master_dark_tmp_file = "";
+	/// <summary>
+	/// Masters built earlier in this session, keyed by stage. The record carries the identity of the
+	/// inputs and, for the flat, whether the file already has the flat dark removed; a null record
+	/// means "no usable master, rebuild".
+	/// </summary>
+	private CachedMaster dark_master_cache;
 
-	private string master_dark_pgm_file = "";
+	private CachedMaster flat_dark_master_cache;
 
-	private string master_flat_dark_tmp_file = "";
+	private CachedMaster flat_master_cache;
 
-	private string master_flat_dark_pgm_file = "";
-
-	private string master_flat_tmp_file = "";
-
-	/// <summary>True when the cached/built master flat already has the flat dark removed.</summary>
-	private bool master_flat_corrected;
+	/// <summary>Exit code of the last engine run, for the status decision and for tests.</summary>
+	private int last_exit_code;
 
 	/// <summary>Cancels the in-process master-frame builds (the engine process has its own kill path).</summary>
 	private CancellationTokenSource master_build_cancellation;
@@ -1235,11 +1229,11 @@ public class Form1 : Form
 			remove_all_flat_dark_filesBUT.Enabled = true;
 			flat_dark_frame_optionsGB.Enabled = true;
 		}
-		flat_dark_frames_stacked = 0;
-		// Changing the flat-dark set invalidates a master flat that may already have had it
-		// subtracted; force the flat to be rebuilt against the current set.
-		flat_frames_stacked = 0;
-		master_flat_corrected = false;
+		// Changing the flat-dark set invalidates both masters that depend on it: the flat-dark master
+		// and the flat master, whose correction is already baked into the file. Clearing the records
+		// together is what keeps the identity and the artifact from drifting apart.
+		flat_dark_master_cache = null;
+		flat_master_cache = null;
 		tab_flat_dark_files.Text = "Flat Dark Files (" + e2.FrameCount + " frames)";
 	}
 
@@ -1272,8 +1266,9 @@ public class Form1 : Form
 
 	private void flat_dark_stbtraction_cb_changed(object sender, EventArgs e)
 	{
-		flat_frames_stacked = 0;
-		master_flat_corrected = false;
+		// The toggle decides whether the flat should carry the correction, so a flat built under the
+		// other setting no longer describes what the operator asked for.
+		flat_master_cache = null;
 		if (flat_dark_frame_subtractionCB.Enabled && flat_dark_frame_subtractionCB.Checked)
 		{
 			save_master_flat_dark_CB.Enabled = true;
@@ -1317,8 +1312,7 @@ public class Form1 : Form
 			remove_all_flat_filesBUT.Enabled = true;
 			flat_frame_optionsGB.Enabled = true;
 		}
-		flat_frames_stacked = 0;
-		master_flat_corrected = false;
+		flat_master_cache = null;
 		tab_flat_files.Text = "Flat Files (" + e2.FrameCount + " frames)";
 	}
 
@@ -1399,7 +1393,7 @@ public class Form1 : Form
 			remove_all_dark_filesBUT.Enabled = true;
 			dark_frame_optionsGB.Enabled = true;
 		}
-		dark_frames_stacked = 0;
+		dark_master_cache = null;
 		tab_dark_files.Text = "Dark Files (" + e2.FrameCount + " frames)";
 	}
 
@@ -4389,6 +4383,12 @@ public class Form1 : Form
 
 	private void pipp_process_OutputDataReceived(object sender, DataReceivedEventArgs e)
 	{
+		// The stream readers call back on a pool thread and touch controls directly; once the form
+		// is closing there is nothing left to show, and AppendText would throw on the disposed box.
+		if (IsDisposed || Disposing)
+		{
+			return;
+		}
 		if (e.Data == null)
 		{
 			pipp_process.CancelOutputRead();
@@ -4582,12 +4582,16 @@ public class Form1 : Form
 
 	private void pipp_process_ErrorDataReceived(object sender, DataReceivedEventArgs e)
 	{
+		if (IsDisposed || Disposing)
+		{
+			return;
+		}
 		if (e.Data == null)
 		{
 			pipp_process.CancelErrorRead();
 			if (error_data != "")
 			{
-				MessageBox.Show(error_data, "Processing Errors", MessageBoxButtons.OK, MessageBoxIcon.Hand);
+				show_error_message(error_data, "Processing Errors");
 			}
 		}
 		if (!string.IsNullOrEmpty(e.Data))
@@ -4598,17 +4602,27 @@ public class Form1 : Form
 
 	private void pipp_process_Exited(object sender, EventArgs e)
 	{
-		reset_processing_controls();
-		if (processed_killed)
+		if (IsDisposed || Disposing)
 		{
-			show_cancelled_state();
 			return;
 		}
-		int exitCode = pipp_process.ExitCode;
-		if (exitCode < 0)
+		if (processed_killed)
+		{
+			// Cancel has its own end state; the shared transition restores the controls as well.
+			show_cancelled_state_and_reset_controls();
+			return;
+		}
+		last_exit_code = pipp_process.ExitCode;
+		reset_processing_controls();
+
+		// The CLI reports runtime/calibration failures as 1 and configuration failures as 2.
+		// Any non-zero code means the run did not complete; treating positive codes as success
+		// marked a failed run COMPLETE and offered to open an output folder that may not exist.
+		if (last_exit_code != 0)
 		{
 			statusstateLAB.Text = "FAILED WITH ERRORS";
 			processing_failed = true;
+			outputTB.AppendText("Processing stopped with exit code " + last_exit_code.ToString() + "\r\n");
 		}
 		else
 		{
@@ -4618,7 +4632,7 @@ public class Form1 : Form
 		statusstateLAB.Left = (statusGB.Width - statusstateLAB.Width) / 2;
 		if (test_run)
 		{
-			if (exitCode >= 0)
+			if (last_exit_code == 0)
 			{
 				set_testrun_details();
 			}
@@ -4627,7 +4641,7 @@ public class Form1 : Form
 		string text = output_directory.Trim('"', ' ');
 		text += "\\logs\\pipp_options.pof";
 		save_options(text);
-		if (exitCode >= 0)
+		if (last_exit_code == 0)
 		{
 			output_directory_to_open = output_directory;
 			output_folderBTN.Enabled = true;
@@ -4672,7 +4686,10 @@ public class Form1 : Form
 	{
 		if (!exit_checks())
 		{
+			// The close was declined: the session stays alive, so its temp directory — and with it
+			// every cached master — must stay too.
 			e.Cancel = true;
+			return;
 		}
 		try
 		{
@@ -4813,6 +4830,10 @@ public class Form1 : Form
 			killpippBTN.Enabled = true;
 			processed_killed = false;
 			pipp_process_started = false;
+			// A fresh run must not inherit the previous run's failure verdict or exit code; a cancel
+			// during this run would otherwise leave processing_failed describing the earlier run.
+			processing_failed = false;
+			last_exit_code = 0;
 			// A fresh token per run: Cancel must abort the in-process master builds too, not only
 			// the engine process (which does not exist during that phase).
 			master_build_cancellation?.Dispose();
@@ -4841,11 +4862,12 @@ public class Form1 : Form
 		catch (OperationCanceledException)
 		{
 			// Cancel was pressed while the masters were being built in-process; no engine exists yet,
-			// so the stopped-build state has to be shown here.
+			// so the stopped-build state has to be shown here. This is the same transition the engine
+			// exit path uses, which is what makes Start Processing usable again after a cancelled build.
 			Invoke((MethodInvoker)(() =>
 			{
 				processed_killed = true;
-				show_cancelled_state();
+				show_cancelled_state_and_reset_controls();
 			}));
 		}
 		catch (Exception ex)
@@ -4861,201 +4883,93 @@ public class Form1 : Form
 	{
 		CancellationToken cancellationToken = master_build_cancellation?.Token ?? CancellationToken.None;
 		arg_list2.Add("-temp_dir=" + temp_directory);
-		if (dark_filelist.Items.Count > 0 && dark_frame_subtractionCB.Checked)
+
+		// Rebuild-vs-reuse and every master switch come from the planner, which keeps the cached
+		// "already corrected" state attached to the identity of the master file it describes.
+		MasterHandoffPlan plan = MasterHandoffPlanner.Create(build_master_handoff_request());
+		foreach (string argument in plan.Arguments)
 		{
-			Invoke((MethodInvoker)(() =>
+			arg_list2.Add(argument);
+		}
+
+		if (plan.Dark.Enabled)
+		{
+			append_output("Processing Dark Frames \r\n");
+			set_stacking_label(dark_frame_stackingLAB, plan.Dark.FrameLimit, "dark");
+			if (plan.Dark.Rebuild)
 			{
-				outputTB.AppendText("Processing Dark Frames \r\n");
-			}));
-			int required_frames = dark_filelist.total_frame_count;
-			if (test_run && dark_frames_stacked <= 10 && required_frames > 10)
-			{
-				required_frames = 10;
-			}
-			Invoke((MethodInvoker)(() =>
-			{
-				dark_frame_stackingLAB.Text = "Stacking " + required_frames + " dark frames";
-			}));
-			if (dark_frames_stacked < required_frames)
-			{
-				List<string> list = new List<string>();
-				for (int x = 0; x < dark_filelist.Items.Count; x++)
-				{
-					string file = "";
-					Invoke((MethodInvoker)(() =>
-					{
-						file = dark_filelist.Items[x].Text;
-					}));
-					string directory = "";
-					Invoke((MethodInvoker)(() =>
-					{
-						directory = dark_filelist.Items[x].SubItems[1].Text;
-					}));
-					string item = Path.Combine(directory, file);
-					list.Add(item);
-				}
-				master_dark_tmp_file = Path.Combine(temp_directory, "pipp_master_dark.tmp");
-				master_dark_pgm_file = Path.Combine(temp_directory, "pipp_master_dark.pgm");
-				// Managed master-dark stacker: no native stack_frames call.
-				MasterBuildResult dark_result = MasterFrameBuilder.Build(
-					list, null, master_dark_tmp_file, master_dark_pgm_file, required_frames,
-					set_dark_frame_progress, cancellationToken);
+				MasterBuildResult dark_result = run_master_build(plan.Dark, set_dark_frame_progress, cancellationToken);
 				if (!dark_result.Success)
 				{
 					report_master_build_failure("dark", dark_result);
 					return;
 				}
 				// Record the count that actually went into the master, not the requested limit.
-				dark_frames_stacked = dark_result.FrameCount;
+				dark_master_cache = plan.Dark.CreateEntry(dark_result.FrameCount);
 			}
 			else
 			{
-				Invoke((MethodInvoker)(() =>
-				{
-					outputTB.AppendText("  Using cached master dark frame \r\n");
-				}));
+				append_output("  Using cached master dark frame \r\n");
 			}
 			set_dark_frame_progress(100);
-			arg_list2.Add("-dark_tmp=" + master_dark_tmp_file);
-			arg_list2.Add("-dark_pgm=" + master_dark_pgm_file);
 		}
-		if (flat_dark_filelist.Items.Count > 0 && flat_dark_frame_subtractionCB.Checked && flat_filelist.Items.Count > 0 && flat_frame_calibrationCB.Checked)
+
+		if (plan.FlatDark.Enabled)
 		{
-			Invoke((MethodInvoker)(() =>
+			append_output("Processing Flat Dark Frames \r\n");
+			set_stacking_label(flat_dark_stackingLAB, plan.FlatDark.FrameLimit, "flat dark");
+			if (plan.FlatDark.Rebuild)
 			{
-				outputTB.AppendText("Processing Flat Dark Frames \r\n");
-			}));
-			int required_frames2 = flat_dark_filelist.total_frame_count;
-			if (test_run && flat_dark_frames_stacked <= 10 && required_frames2 > 10)
-			{
-				required_frames2 = 10;
-			}
-			Invoke((MethodInvoker)(() =>
-			{
-				flat_dark_frame_stackingLAB.Text = "Stacking " + required_frames2 + " flat dark frames";
-			}));
-			master_flat_dark_tmp_file = Path.Combine(temp_directory, "pipp_master_flat_dark.tmp");
-			master_flat_dark_pgm_file = Path.Combine(temp_directory, "pipp_master_flat_dark.pgm");
-			if (flat_dark_frames_stacked < required_frames2)
-			{
-				List<string> list2 = new List<string>();
-				for (int x2 = 0; x2 < flat_dark_filelist.Items.Count; x2++)
-				{
-					string file2 = "";
-					Invoke((MethodInvoker)(() =>
-					{
-						file2 = flat_dark_filelist.Items[x2].Text;
-					}));
-					string directory2 = "";
-					Invoke((MethodInvoker)(() =>
-					{
-						directory2 = flat_dark_filelist.Items[x2].SubItems[1].Text;
-					}));
-					string item2 = Path.Combine(directory2, file2);
-					list2.Add(item2);
-				}
-				MasterBuildResult flat_dark_result = MasterFrameBuilder.Build(
-					list2, null, master_flat_dark_tmp_file, master_flat_dark_pgm_file, required_frames2,
-					set_flat_dark_frame_progress, cancellationToken);
+				MasterBuildResult flat_dark_result = run_master_build(plan.FlatDark, set_flat_dark_frame_progress, cancellationToken);
 				if (!flat_dark_result.Success)
 				{
 					report_master_build_failure("flat dark", flat_dark_result);
 					return;
 				}
-				flat_dark_frames_stacked = flat_dark_result.FrameCount;
-				flat_frames_stacked = 0;
-				master_flat_corrected = false;
+				flat_dark_master_cache = plan.FlatDark.CreateEntry(flat_dark_result.FrameCount);
 			}
 			else
 			{
-				Invoke((MethodInvoker)(() =>
-				{
-					outputTB.AppendText("  Using cached master flat dark frame \r\n");
-				}));
+				append_output("  Using cached master flat dark frame \r\n");
 			}
 			set_flat_dark_frame_progress(100);
-			// The -flat_dark_tmp switch is added after the flat stage: when this run's flat master
-			// already has the flat dark subtracted, handing it to the engine would subtract it twice.
 		}
-		else
+
+		if (plan.Flat.Enabled)
 		{
-			master_flat_dark_tmp_file = "";
-			master_flat_dark_pgm_file = "";
-			master_flat_corrected = false;
-		}
-		if (flat_filelist.Items.Count > 0 && flat_frame_calibrationCB.Checked)
-		{
-			Invoke((MethodInvoker)(() =>
+			append_output("Processing Flat Frames \r\n");
+			set_stacking_label(flat_frame_stackingLAB, plan.Flat.FrameLimit, "flat");
+			if (plan.Flat.Rebuild)
 			{
-				outputTB.AppendText("Processing Flat Frames \r\n");
-			}));
-			int required_frames3 = flat_filelist.total_frame_count;
-			if (test_run && flat_frames_stacked <= 10 && required_frames3 > 10)
-			{
-				required_frames3 = 10;
-			}
-			Invoke((MethodInvoker)(() =>
-			{
-				flat_frame_stackingLAB.Text = "Stacking " + required_frames3 + " flat frames";
-			}));
-			if (flat_frames_stacked < required_frames3)
-			{
-				List<string> list3 = new List<string>();
-				for (int x3 = 0; x3 < flat_filelist.Items.Count; x3++)
-				{
-					string file3 = "";
-					Invoke((MethodInvoker)(() =>
-					{
-						file3 = flat_filelist.Items[x3].Text;
-					}));
-					string directory3 = "";
-					Invoke((MethodInvoker)(() =>
-					{
-						directory3 = flat_filelist.Items[x3].SubItems[1].Text;
-					}));
-					string item3 = Path.Combine(directory3, file3);
-					list3.Add(item3);
-				}
-				master_flat_tmp_file = Path.Combine(temp_directory, "pipp_master_flat.tmp");
-				string subtract = string.IsNullOrEmpty(master_flat_dark_tmp_file) ? null : master_flat_dark_tmp_file;
-				MasterBuildResult flat_result = MasterFrameBuilder.Build(
-					list3, subtract, master_flat_tmp_file, null, required_frames3,
-					set_flat_frame_progress, cancellationToken);
+				MasterBuildResult flat_result = run_master_build(plan.Flat, set_flat_frame_progress, cancellationToken);
 				if (!flat_result.Success)
 				{
 					report_master_build_failure("flat", flat_result);
 					return;
 				}
-				flat_frames_stacked = flat_result.FrameCount;
-				master_flat_corrected = subtract is not null;
+				flat_master_cache = plan.Flat.CreateEntry(flat_result.FrameCount);
 			}
 			else
 			{
-				Invoke((MethodInvoker)(() =>
-				{
-					outputTB.AppendText("  Using cached master flat frame \r\n");
-				}));
+				append_output("  Using cached master flat frame \r\n");
 			}
 			set_flat_frame_progress(100);
-			arg_list2.Add("-flat_tmp=" + master_flat_tmp_file);
-			// Only an unprepared flat needs the engine to remove the flat dark. When the GUI built
-			// the corrected master itself (or the cached one is corrected) the subtraction has
-			// already happened, and passing it again would subtract it twice.
-			if (!string.IsNullOrEmpty(master_flat_dark_tmp_file))
+			// Only a corrected flat skips the switch; say so, because -flat_dark_tmp is deliberately
+			// absent from the engine argument list for this run.
+			if (plan.FlatDark.Enabled && plan.Flat.Corrected)
 			{
-				if (master_flat_corrected)
-				{
-					Invoke((MethodInvoker)(() =>
-					{
-						outputTB.AppendText("  Flat master already has the flat dark removed\r\n");
-					}));
-				}
-				else
-				{
-					arg_list2.Add("-flat_dark_tmp=" + master_flat_dark_tmp_file);
-				}
+				append_output("  Flat master already has the flat dark removed\r\n");
 			}
 		}
+
+		// A corrected flat is handed to the engine without -flat_dark_tmp, so the engine never loads
+		// a flat-dark master and -save_flat_dark has nothing to re-emit. The front-end owns this
+		// master; save the operator's copy itself, without restoring the double subtraction.
+		if (plan.FlatDark.Enabled)
+		{
+			save_flat_dark_master(plan);
+		}
+
 		// A cancel that arrived during the master builds must not reach the engine launch: the
 		// masters it needs were abandoned. The operator's intent is CANCELLED, not a partial run.
 		cancellationToken.ThrowIfCancellationRequested();
@@ -5096,6 +5010,108 @@ public class Form1 : Form
 		}
 		pipp_stream_writer.WriteLine("DONE");
 		pipp_stream_writer.Close();
+	}
+
+	/// <summary>Reads the calibration controls into the planner's request.</summary>
+	/// <remarks>
+	/// The checkboxes are read from the worker thread exactly as the master stages always were; the
+	/// file lists are snapshotted on the UI thread, because a ListView is only safe to read there.
+	/// </remarks>
+	private MasterHandoffRequest build_master_handoff_request()
+	{
+		bool flat_enabled = flat_filelist.Items.Count > 0 && flat_frame_calibrationCB.Checked;
+		bool flat_dark_enabled = flat_dark_filelist.Items.Count > 0 && flat_dark_frame_subtractionCB.Checked;
+
+		return new MasterHandoffRequest
+		{
+			TestRun = test_run,
+			SaveFlatDark = save_master_flat_dark_CB.Checked,
+			Dark = new MasterStageRequest(MasterKind.Dark)
+			{
+				Enabled = dark_filelist.Items.Count > 0 && dark_frame_subtractionCB.Checked,
+				Files = selected_paths(dark_filelist),
+				FrameCount = dark_filelist.total_frame_count,
+				MasterPath = Path.Combine(temp_directory, "pipp_master_dark.tmp"),
+				PgmPath = Path.Combine(temp_directory, "pipp_master_dark.pgm"),
+			},
+			FlatDark = new MasterStageRequest(MasterKind.FlatDark)
+			{
+				Enabled = flat_dark_enabled && flat_enabled,
+				Files = selected_paths(flat_dark_filelist),
+				FrameCount = flat_dark_filelist.total_frame_count,
+				MasterPath = Path.Combine(temp_directory, "pipp_master_flat_dark.tmp"),
+				PgmPath = Path.Combine(temp_directory, "pipp_master_flat_dark.pgm"),
+			},
+			Flat = new MasterStageRequest(MasterKind.Flat)
+			{
+				Enabled = flat_enabled,
+				Files = selected_paths(flat_filelist),
+				FrameCount = flat_filelist.total_frame_count,
+				MasterPath = Path.Combine(temp_directory, "pipp_master_flat.tmp"),
+				PgmPath = null,
+			},
+			DarkCache = dark_master_cache,
+			FlatDarkCache = flat_dark_master_cache,
+			FlatCache = flat_master_cache,
+		};
+	}
+
+	/// <summary>Snapshots a file list's (name, directory) pairs on the UI thread.</summary>
+	private List<string> selected_paths(c_filelist list)
+	{
+		List<string> paths = new List<string>();
+		Invoke((MethodInvoker)(() =>
+		{
+			for (int i = 0; i < list.Items.Count; i++)
+			{
+				paths.Add(Path.Combine(list.Items[i].SubItems[1].Text, list.Items[i].Text));
+			}
+		}));
+		return paths;
+	}
+
+	/// <summary>Appends one line to the processing transcript from a worker thread.</summary>
+	private void append_output(string text)
+	{
+		Invoke((MethodInvoker)(() => outputTB.AppendText(text)));
+	}
+
+	/// <summary>Shows the frame count a stage is about to stack.</summary>
+	private void set_stacking_label(Label label, int frame_count, string kind)
+	{
+		Invoke((MethodInvoker)(() => label.Text = "Stacking " + frame_count + " " + kind + " frames"));
+	}
+
+	/// <summary>Runs one master build, through the test seam when one is installed.</summary>
+	private MasterBuildResult run_master_build(MasterStagePlan stage, Action<int> progress, CancellationToken cancellationToken)
+	{
+		IMasterFrameBuild build = MasterBuildOverride ?? new MasterFrameBuild();
+		return build.Build(stage.Files, stage.SubtractPath, stage.MasterPath, stage.PgmPath, stage.FrameLimit, progress, cancellationToken);
+	}
+
+	/// <summary>
+	/// Saves the front-end-built flat-dark master where -save_flat_dark would have written it.
+	/// </summary>
+	/// <remarks>
+	/// A failure here does not fail the run: the master the engine needs is already on disk, and the
+	/// TIFF is the operator's optional copy of it.
+	/// </remarks>
+	private void save_flat_dark_master(MasterHandoffPlan plan)
+	{
+		if (string.IsNullOrEmpty(plan.FlatDarkMasterToSave) || string.IsNullOrEmpty(output_directory))
+		{
+			return;
+		}
+
+		try
+		{
+			MasterHandoffArtifacts.SaveFlatDarkMaster(plan.FlatDarkMasterToSave, output_directory);
+			append_output("  Saved master flat dark frame\r\n");
+		}
+		catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
+		{
+			append_output("  Master flat dark frame could not be saved: " + ex.Message + "\r\n");
+		}
 	}
 
 	private void send_arguments_to_pipp_process(ref StreamWriter pipp_stream_writer, ref List<string> arg_list)
@@ -5165,8 +5181,32 @@ public class Form1 : Form
 	}
 
 	/// <summary>
-	/// UI-thread cancelled state. Reached from the engine-exit handler and from the in-process
-	/// master-build path, which has no engine process to fire Exited.
+	/// The single UI-thread transition to CANCELLED. Controls are restored in a finally block, so a
+	/// temp-file cleanup failure (a file still locked by a just-killed engine, for example) cannot
+	/// leave the form permanently disabled.
+	/// </summary>
+	private void show_cancelled_state_and_reset_controls()
+	{
+		try
+		{
+			show_cancelled_state();
+		}
+		catch (IOException)
+		{
+		}
+		catch (UnauthorizedAccessException)
+		{
+		}
+		finally
+		{
+			reset_processing_controls();
+		}
+	}
+
+	/// <summary>
+	/// UI-thread cancelled state. Reached through <see cref="show_cancelled_state_and_reset_controls"/>
+	/// from the engine-exit handler and from the in-process master-build path, which has no engine
+	/// process to fire Exited.
 	/// </summary>
 	private void show_cancelled_state()
 	{
@@ -5208,7 +5248,18 @@ public class Form1 : Form
 		statusstateLAB.Text = "FAILED WITH ERRORS";
 		statusstateLAB.Left = (statusGB.Width - statusstateLAB.Width) / 2;
 		processing_failed = true;
-		MessageBox.Show(message, "Processing Error", MessageBoxButtons.OK, MessageBoxIcon.Hand);
+		show_error_message(message, "Processing Error");
+	}
+
+	/// <summary>Shows a modal error, or hands it to the test seam when one is installed.</summary>
+	private void show_error_message(string message, string caption)
+	{
+		if (ErrorDialogOverride is not null)
+		{
+			ErrorDialogOverride(message, caption);
+			return;
+		}
+		MessageBox.Show(message, caption, MessageBoxButtons.OK, MessageBoxIcon.Hand);
 	}
 
 	/// <summary>
@@ -5252,8 +5303,12 @@ public class Form1 : Form
 	{
 		if (pipp_process_running)
 		{
-			DialogResult dialogResult = MessageBox.Show("Processing In Progress.\rConfirm Quit?", "PIPP Quit", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-			if (dialogResult != DialogResult.Yes)
+			// Test seam: an automated STA test cannot answer a modal confirmation, so the decision
+			// can be supplied directly. Production has no override installed and shows the dialog.
+			bool confirmed = QuitConfirmationOverride is null
+				? MessageBox.Show("Processing In Progress.\rConfirm Quit?", "PIPP Quit", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes
+				: QuitConfirmationOverride();
+			if (!confirmed)
 			{
 				return false;
 			}
@@ -5385,9 +5440,23 @@ public class Form1 : Form
 
 	protected override void Dispose(bool disposing)
 	{
-		if (disposing && components != null)
+		if (disposing)
 		{
-			components.Dispose();
+			// The engine's asynchronous stream readers marshal their callbacks through this form
+			// (pipp_process.SynchronizingObject). Once the form is disposed an arriving callback
+			// throws ObjectDisposedException on a pool thread, which terminates the process during
+			// shutdown. Detach the handlers and the marshalling target first.
+			if (pipp_process != null)
+			{
+				pipp_process.OutputDataReceived -= pipp_process_OutputDataReceived;
+				pipp_process.ErrorDataReceived -= pipp_process_ErrorDataReceived;
+				pipp_process.Exited -= pipp_process_Exited;
+				pipp_process.SynchronizingObject = null;
+			}
+			if (components != null)
+			{
+				components.Dispose();
+			}
 		}
 		base.Dispose(disposing);
 	}
