@@ -50,6 +50,11 @@ internal static class Program
         string managed = Arg(args, "--managed") ?? Path.Combine(repo, "src", "Opipp.Cli", "bin", "Debug", "net10.0", "Opipp.Cli.exe");
         string work = Arg(args, "--work") ?? Path.Combine(repo, "parity");
         bool includeRealData = Array.Exists(args, a => a == "--real");
+        // Acknowledged gaps normally never run either engine. --measure executes them anyway and
+        // prints the full pixel statistics, so a gap can be quantified rather than merely named.
+        // The outcome stays Gap/ExpectedDifference: measuring a gap does not make it a match.
+        bool measure = Array.Exists(args, a => a == "--measure");
+        string? only = Arg(args, "--only");
         string realInput = Arg(args, "--real-input") ?? Path.Combine(repo, "samples", "saturn30.ser");
 
         Console.WriteLine($"oracle : {oracle}");
@@ -145,6 +150,18 @@ internal static class Program
             cases.Add(new ParityCase("real-centre", ["-tif", "-ctr"], Input: "real"));
         }
 
+        if (only is not null)
+        {
+            var filtered = cases.Where(c => c.Name.Equals(only, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (filtered.Count == 0)
+            {
+                Console.Error.WriteLine($"no such case: {only}");
+                return 2;
+            }
+            Console.WriteLine($"only   : {only}");
+            cases = filtered;
+        }
+
         int matched = 0, expected = 0, gaps = 0, failed = 0;
         foreach (var c in cases)
         {
@@ -157,7 +174,7 @@ internal static class Program
                 "real" => realInput,
                 _ => input,
             };
-            switch (RunCase(c, oracle, managed, work, caseInput))
+            switch (RunCase(c, oracle, managed, work, caseInput, measure))
             {
                 case CaseOutcome.Match: matched++; break;
                 case CaseOutcome.ExpectedDifference: expected++; break;
@@ -172,7 +189,7 @@ internal static class Program
         return failed == 0 ? 0 : 1;
     }
 
-    private static CaseOutcome RunCase(ParityCase c, string oracle, string managed, string work, string input)
+    private static CaseOutcome RunCase(ParityCase c, string oracle, string managed, string work, string input, bool measure)
     {
         string caseDir = Path.Combine(work, c.Name);
         string oracleOut = Path.Combine(caseDir, "oracle");
@@ -181,14 +198,16 @@ internal static class Program
         Directory.CreateDirectory(oracleOut);
         Directory.CreateDirectory(managedOut);
 
+        bool acknowledged = c.Mode is CompareMode.KnownDivergence or CompareMode.KnownGap;
         Console.WriteLine();
         Console.WriteLine($"=== {c.Name}: {string.Join(' ', c.Switches)} ===");
-        if (c.Mode is CompareMode.KnownDivergence or CompareMode.KnownGap)
+        if (acknowledged)
         {
             // Deliberate differences and acknowledged gaps are reported, never counted as matches:
             // neither engine runs, so this case proves nothing about parity.
             Console.WriteLine($"  ({c.Mode}: {c.Note})");
-            return c.Mode == CompareMode.KnownDivergence ? CaseOutcome.ExpectedDifference : CaseOutcome.Gap;
+            if (!measure) return c.Mode == CompareMode.KnownDivergence ? CaseOutcome.ExpectedDifference : CaseOutcome.Gap;
+            Console.WriteLine("  MEASURE: running both engines to quantify the acknowledged difference");
         }
 
         var oracleRun = Run(oracle, [.. c.Switches, "-od=" + oracleOut, input], work);
@@ -235,7 +254,8 @@ internal static class Program
                 Console.WriteLine("      DIVERGENCE");
                 if (a.Kind == b.Kind)
                 {
-                    ReportPixelDiff(oracleFiles[i], managedFiles[i], a.Width, a.Channels);
+                    if (measure) ReportDetailedDiff(oracleFiles[i], managedFiles[i], a.Width, a.Height, a.Channels, a.BitDepth);
+                    else ReportPixelDiff(oracleFiles[i], managedFiles[i], a.Width, a.Channels);
                 }
             }
         }
@@ -252,6 +272,16 @@ internal static class Program
             bool setsMatch = oracleHashes.SequenceEqual(managedHashes, StringComparer.Ordinal);
             Console.WriteLine($"  frame multiset: {(setsMatch ? "MATCH" : "DIVERGENCE")}");
             allMatch &= setsMatch;
+        }
+
+        if (acknowledged)
+        {
+            // Measurement never changes the verdict: a gap stays a gap until a fix makes the case
+            // a real comparison, at which point its Mode is changed deliberately.
+            Console.WriteLine(allMatch
+                ? "  MEASURE: outputs are identical; this case can be promoted to a real comparison"
+                : $"  MEASURE: quantified above; remains {c.Mode}");
+            return c.Mode == CompareMode.KnownDivergence ? CaseOutcome.ExpectedDifference : CaseOutcome.Gap;
         }
 
         return allMatch ? CaseOutcome.Match : CaseOutcome.Fail;
@@ -404,6 +434,115 @@ internal static class Program
             }
         }
         Console.WriteLine($"        differing samples: {total} of {left.Length}");
+    }
+
+    /// <summary>
+    /// Quantifies a pixel difference: how many pixels differ, by how much, in which channels, and
+    /// whether the error concentrates on edges or is spread uniformly. Used by --measure so a
+    /// known gap carries numbers instead of an adjective.
+    /// </summary>
+    private static void ReportDetailedDiff(string oraclePath, string managedPath, int width, int height, int channels, int bitDepth)
+    {
+        var left = LoadSamples(oraclePath);
+        var right = LoadSamples(managedPath);
+        if (left is null || right is null || left.Length != right.Length)
+        {
+            Console.WriteLine($"        (could not align samples: {left?.Length} vs {right?.Length})");
+            return;
+        }
+
+        int pixels = width * height;
+        if (left.Length != pixels * channels || channels is < 1 or > 3)
+        {
+            Console.WriteLine($"        (unexpected sample count {left.Length} for {width}x{height}x{channels})");
+            return;
+        }
+
+        var perChannelDiff = new int[channels];
+        var perChannelSum = new long[channels];
+        var perChannelMax = new int[channels];
+        var histogram = new int[10]; // index = |delta|, last bucket is 8+
+        int diffPixels = 0, maxDelta = 0;
+        long sumDelta = 0;
+
+        var luma = new int[pixels];
+        for (int p = 0; p < pixels; p++)
+        {
+            int idx = p * channels;
+            int sum = 0;
+            bool differs = false;
+            for (int c = 0; c < channels; c++)
+            {
+                int d = Math.Abs(left[idx + c] - right[idx + c]);
+                if (d != 0)
+                {
+                    differs = true;
+                    perChannelDiff[c]++;
+                    perChannelSum[c] += d;
+                    if (d > perChannelMax[c]) perChannelMax[c] = d;
+                    if (d > maxDelta) maxDelta = d;
+                    sumDelta += d;
+                    histogram[Math.Min(d, 9)]++;
+                }
+                sum += left[idx + c];
+            }
+            if (differs) diffPixels++;
+            luma[p] = channels == 1 ? left[idx] : sum / channels;
+        }
+
+        // Local gradient of the oracle image: separates "error at detail" from "error everywhere".
+        int threshold = bitDepth <= 8 ? 24 : 6000;
+        int edgePixels = 0, edgeDiffPixels = 0, borderDiffPixels = 0;
+        long edgeDiffSum = 0, flatDiffSum = 0;
+        int flatDiffPixels = 0;
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int p = y * width + x;
+                int x0 = Math.Max(0, x - 1), x1 = Math.Min(width - 1, x + 1);
+                int y0 = Math.Max(0, y - 1), y1 = Math.Min(height - 1, y + 1);
+                int g = Math.Abs(luma[y * width + x1] - luma[y * width + x0]) +
+                        Math.Abs(luma[y1 * width + x] - luma[y0 * width + x]);
+                gradient[p] = g;
+                bool isEdge = g >= threshold;
+                if (isEdge) edgePixels++;
+
+                int idx = p * channels;
+                int pixelDelta = 0;
+                for (int c = 0; c < channels; c++) pixelDelta += Math.Abs(left[idx + c] - right[idx + c]);
+                if (pixelDelta == 0) continue;
+
+                if (isEdge) { edgeDiffPixels++; edgeDiffSum += pixelDelta; }
+                else { flatDiffPixels++; flatDiffSum += pixelDelta; }
+                if (x == 0 || y == 0 || x == width - 1 || y == height - 1) borderDiffPixels++;
+            }
+        }
+
+        int totalSamples = left.Length;
+        int diffSamples = perChannelDiff.Sum();
+        double pct(double n, double d) => d == 0 ? 0 : 100 * n / d;
+
+        Console.WriteLine($"        pixels {width}x{height}x{channels}@{bitDepth}");
+        Console.WriteLine($"        differing pixels : {diffPixels} of {pixels} ({pct(diffPixels, pixels):F1}%)");
+        Console.WriteLine($"        differing samples: {diffSamples} of {totalSamples} ({pct(diffSamples, totalSamples):F1}%)  " +
+                          string.Join(" ", Enumerable.Range(0, channels).Select(c => $"{(channels == 1 ? "Y" : "RGB"[c])}={perChannelDiff[c]}")));
+        Console.WriteLine($"        |delta| max {maxDelta}, mean {((double)sumDelta / Math.Max(1, diffSamples)):F2} over differing samples, " +
+                          $"{((double)sumDelta / Math.Max(1, totalSamples)):F3} over all samples");
+        Console.WriteLine("        |delta| histogram: " + string.Join(" ", Enumerable.Range(1, 8).Select(d => $"{d}:{histogram[d]}")) +
+                          $" 8+:{histogram[9]}");
+        Console.WriteLine("        mean |delta| per channel: " +
+                          string.Join(" ", Enumerable.Range(0, channels).Select(c =>
+                              $"{(channels == 1 ? "Y" : "RGB"[c])}={((double)perChannelSum[c] / Math.Max(1, perChannelDiff[c])):F2} (max {perChannelMax[c]})")));
+
+        if (diffPixels > 0)
+        {
+            Console.WriteLine($"        edges: {edgeDiffPixels} of {diffPixels} differing pixels sit on a local edge " +
+                              $"(gradient>={threshold}; {pct(edgePixels, pixels):F1}% of all pixels are edge pixels)");
+            Console.WriteLine($"        mean |delta| on edges {((double)edgeDiffSum / Math.Max(1, edgeDiffPixels)):F2}, " +
+                              $"in flat areas {((double)flatDiffSum / Math.Max(1, flatDiffPixels)):F2} ({flatDiffPixels} differing pixels)");
+            Console.WriteLine($"        image border: {borderDiffPixels} of {diffPixels} differing pixels");
+        }
     }
 
     private static int[]? LoadSamples(string path)

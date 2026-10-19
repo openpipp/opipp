@@ -48,13 +48,44 @@ Selection does not help: it runs after the frames have accumulated.
   `tests/Opipp.Image.Tests/ContainerStreamingTests.cs` pins the SHA-256 of a five-frame animation
   so any byte change fails.
 
-## Still open
+## Measured
 
-- `GifWriter.Write` itself writes one image block at a time and builds a colour palette from a
-  sampled pass without retaining frames. Byte-identical to the buffered encoder for mono, colour,
-  single-frame and animated output.
-- No CLI switch exposes the budget: `OPIPP_RETENTION_BUDGET_MB` is a diagnostic environment
-  override, kept off the command line so `-gui` transcripts stay engine-identical.
-- No peak-RSS measurement — the budget caps retained pixel data, not total process memory
-  (transform buffers, stacker accumulator and the reader add to it).
+`tools/Opipp.MemProbe` generates a synthetic 16-bit mono SER, runs the real `Opipp.Cli.exe` as a
+child process with `OPIPP_RETENTION_BUDGET_MB` set, samples `PeakWorkingSet64` every 25 ms (with
+`Process.Refresh()`, without which every read returns the start snapshot) and reports the peak.
+Command:
+
+```
+dotnet run --project tools/Opipp.MemProbe -- --cli <Opipp.Cli.exe> \
+    --frames <N> --width <W> --height <H> --budget-mb 32,4096
+```
+
+Host: Windows 11, .NET 10, framework-dependent Debug build of the CLI. Output: `-tif -q=10`
+(10 TIFFs from every run), so the working set is dominated by retention, not output.
+
+| Capture | Pixel data | Budget | Peak working set | Elapsed |
+|---|---:|---:|---:|---:|
+| 400 × 800×600 | 366 MB | 32 MB | **102 MB** | 6.2 s |
+| 400 × 800×600 | 366 MB | 4096 MB | **597 MB** | 6.3 s |
+| 1200 × 800×600 | 1099 MB | 32 MB | **93 MB** | 15.0 s |
+| 1200 × 800×600 | 1099 MB | 64 MB | **146 MB** | 16.7 s |
+
+Reading the table: at a 32 MB budget the peak is the same within noise for a capture three times
+larger (102 MB vs 93 MB), and it scales with the budget rather than the capture (32 → 93 MB,
+64 → 146 MB). Unbounded retention on the 366 MB capture peaks at 597 MB, i.e. the capture plus the
+runtime.
+
+Caveats: the peak includes the .NET runtime and transient transform buffers, so it is not the budget
+plus zero; the figures are from a Debug build on this host and will differ elsewhere; and a budget of
+4096 MB does not mean 4 GB was used — it means nothing spilled, which is the control case.
+
+## Notes and remaining limits
+
+- `GifWriter.Write` writes one image block at a time and builds a colour palette from a sampled pass
+  without retaining frames; byte-identical to the buffered encoder for mono, colour, single-frame and
+  animated output.
+- The budget is not a CLI switch: `OPIPP_RETENTION_BUDGET_MB` is a diagnostic environment override,
+  kept off the command line so `-gui` transcripts stay engine-identical.
+- The budget bounds retained pixel data, not total process memory — the runtime, transform buffers,
+  the reader and the stacker accumulator sit on top, as the measured table shows.
 - `FrameStacker` accumulates a running sum rather than frames, so it is already bounded.

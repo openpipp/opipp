@@ -66,19 +66,37 @@ internal static class Program
             var clock = Stopwatch.StartNew();
             using var process = Process.Start(psi)!;
             process.StandardInput.Close();
-            string stdout = process.StandardOutput.ReadToEnd();
-            string stderr = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-            clock.Stop();
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
 
-            // StartInfo.RedirectStandardInput keeps the engine protocol quiet; the CLI needs no input.
-            long peak = process.PeakWorkingSet64;
+            // PeakWorkingSet64 throws once the process object has exited, so sample it while it runs.
+            long peak = 0;
+            int samples = 0;
+            while (!process.HasExited)
+            {
+                try
+                {
+                    process.Refresh();                       // Process caches its snapshot; without this
+                    peak = Math.Max(peak, process.PeakWorkingSet64); // every read returns the start value.
+                    samples++;
+                }
+                catch (InvalidOperationException)
+                {
+                    break;
+                }
+                Thread.Sleep(25);
+            }
+
+            process.WaitForExit();
+            string stdout = stdoutTask.GetAwaiter().GetResult();
+            string stderr = stderrTask.GetAwaiter().GetResult();
+            clock.Stop();
             int outputs = Directory.Exists(outDir)
                 ? Directory.GetFiles(outDir, "*.tif", SearchOption.AllDirectories).Length
                 : 0;
 
             Console.WriteLine($"{budget + " MB",10} {peak / 1024.0 / 1024.0,9:F0} MB {clock.Elapsed.TotalSeconds,8:F1}s " +
-                              $"{outputs,8}  {process.ExitCode}");
+                              $"{outputs,8}  {process.ExitCode}  ({samples} samples)");
 
             if (process.ExitCode != 0)
             {
