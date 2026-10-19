@@ -24,7 +24,10 @@ jobs:
         run: |
           set -o pipefail
           dotnet test OPIPP.slnx -c Release --no-build --nologo | tee test.log
-          total=$(grep -oE "Passed: +[0-9]+" test.log | awk '{sum += $2} END {print sum}')
+          # The quoted count is the size of the suite, not the passes: tests that skip because a
+          # non-redistributable fixture is absent still exist and must be counted, or the number
+          # changes between a developer machine and CI.
+          total=$(grep -oE "Passed: +[0-9]+|Skipped: +[0-9]+" test.log | awk '{sum += $2} END {print sum}')
           echo "count=$total" >> "$GITHUB_OUTPUT"
 
       - name: Docs consistency

@@ -120,8 +120,8 @@ dotnet run --project src/Opipp.App
 ## Status
 
 Working end to end (verified by tests): SER → pipeline → FITS/TIFF/SER/AVI/GIF output, calibration
-subtract/divide, histogram stretch, quality selection, alignment, stacking and animation. **926 tests
-pass** across nine projects; [`docs/status.md`](docs/status.md) is the authoritative summary.
+subtract/divide, histogram stretch, quality selection, alignment, stacking and animation. **926 tests**
+across nine projects (0 failing; two skip without the evaluation capture); [`docs/status.md`](docs/status.md) is the authoritative summary.
 
 The CLI is a drop-in engine: it accepts the GUI's stdin protocol (switches and file paths, one per
 line) as well as a normal command line, and emits the original `@PROGRESS/@PFILE/...` tokens with

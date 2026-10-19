@@ -7,7 +7,7 @@ produce every figure on this page.
 |---|---|
 | Version | `0.1.11-alpha` at the tagged commit |
 | SDK | .NET 10.0.402 (local `~/.dotnet-sdk`) |
-| Tests | **926 passing, 0 failing, 0 skipped** across nine projects |
+| Tests | **926 tests, 0 failing** across nine projects (2 skip when the non-redistributable Saturn fixture is absent) |
 | Parity | **27 compared, 27 matched, 2 deliberate differences, 0 gaps, 0 failed** |
 | Release | `v0.1.11-alpha`, Windows x64 zip, self-contained |
 | History | [`journal.md`](journal.md) — dated findings, superseded details |
