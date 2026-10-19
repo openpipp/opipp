@@ -21,6 +21,10 @@ jobs:
       - name: Test
         run: dotnet test OPIPP.slnx -c Release --no-build --nologo
 
+      - name: Docs consistency
+        shell: bash
+        run: ./tools/check-docs.sh
+
       # The parity harness is intentionally not run here: it needs the original PIPP binaries,
       # which are not redistributable and are not part of this repository. Parity is verified
       # locally against bin/pipp_core.exe; see docs/parity.md.

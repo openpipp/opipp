@@ -83,6 +83,10 @@ jobs:
 
           Write-Host "Releasing $tag (version $version, zip $zipName, prerelease $isPrerelease)."
 
+      - name: Check documentation agrees with the version
+        shell: bash
+        run: ./tools/check-docs.sh
+
       - name: Set up .NET 10
         uses: actions/setup-dotnet@v4
         with:

@@ -11,7 +11,7 @@ order, and how each step is proven.
 | **Recovery** (read the original) | binaries decompiled | 100 % | 100 % |
 | **Parity** (behave like the original) | switches wired + oracle-verified | 131/131 addressed, 76 verified | all executable areas |
 | **Verification** (prove it) | parity cases matching | **29 cases, all matching** | one per executable area |
-| **Distribution** | installable build | **0.1.2-alpha published** | 1.0 |
+| **Distribution** | installable build | **0.1.5-alpha published** | 1.0 |
 
 Recovery is finished. Parity is complete except one algorithm (surface tracking). The alpha is built,
 smoke-tested and published on GitHub Releases.
@@ -82,12 +82,21 @@ Saturn fixture, with the remaining frames off by one pixel. Everything else is a
 
 | | |
 | --- | --- |
-| Artifact | `OPIPP-0.1.5-alpha-win-x64.zip` on [Releases](https://github.com/openpipp/opipp/releases) (self-contained win-x64, 50.7 MB) |
+| Artifact | `OPIPP-0.1.5-alpha-win-x64.zip` on [Releases](https://github.com/openpipp/opipp/releases) (self-contained win-x64, 52.4 MB) |
 | Provenance | `Version=0.1.5-alpha` in `Directory.Build.props`; window title `OPIPP 0.1.5-alpha - Open PIPP` |
-| Verified | 597 tests, parity 27 compared / 27 matched / 2 known differences / 0 gaps, CLI conversion of 30 real frames, GUI launch, no native DLL |
+| Verified | 615 tests, parity 27 compared / 27 matched / 2 known differences / 0 gaps, CLI conversion of 30 real frames, GUI launch, no native DLL |
 | Notes | [`alpha.md`](alpha.md) |
 
 Rebuild with the two `dotnet publish` commands in `alpha.md`. `dist/` is git-ignored.
+
+### Release history
+
+| Version | What changed |
+| --- | --- |
+| 0.1.5-alpha | SER metadata survives spilling; bounded GIF palette; calibration errors handled in the CLI; parity harness hardened; tag-triggered release workflow |
+| 0.1.4-alpha | Debayer byte-exact (27/27 compared, 0 gaps); AVI animation streamed; memory measured at two budgets |
+| 0.1.3-alpha | Calibration applied to raw frames; empty selection no longer crashes; frames spill to disk past a budget |
+| 0.1.2-alpha | First downloadable self-contained Windows build |
 
 ---
 
@@ -137,7 +146,7 @@ applies no shift, and Saturn reaches ≥28/30. Notes: [`../notes/tracking.md`](.
 ### 2026-10-18 — the reconstruction is named OPIPP, and the alpha ships
 
 Chosen over further parity work because the engine is functionally complete: 0.1.5-alpha is a working
-preview (597 tests, 27/27 compared parity), and shipping it makes the remaining gap concrete instead of
+preview (615 tests, 27/27 compared parity), and shipping it makes the remaining gap concrete instead of
 theoretical. Tracking at 23/30 is documented in the release notes rather than hidden.
 
 ### 2026-10-18 — coarse stage disabled until its reference capture is faithful
