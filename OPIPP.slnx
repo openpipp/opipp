@@ -14,6 +14,7 @@
     <Project Path="tests/Opipp.Ser.Tests/Opipp.Ser.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
+    <Project Path="tools/Opipp.Parity.Tests/FakeEngine/Opipp.Parity.FakeEngine.csproj" />
     <Project Path="tools/Opipp.Parity.Tests/Opipp.Parity.Tests.csproj" />
   </Folder>
 </Solution>
