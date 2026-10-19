@@ -119,7 +119,7 @@ dotnet run --project src/Opipp.App
 ## Status
 
 Working end to end (verified by tests): SER → pipeline → FITS/TIFF/SER output, calibration
-subtract/divide, histogram stretch, quality selection, stacking. **555 tests pass** across seven
+subtract/divide, histogram stretch, quality selection, stacking. **590 tests pass** across seven
 projects (formats 127, processing 80, CLI 77, pipeline 9).
 
 The CLI is a drop-in engine: it accepts the GUI's stdin protocol (switches and file paths, one per

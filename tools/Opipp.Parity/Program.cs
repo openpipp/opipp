@@ -504,7 +504,6 @@ internal static class Program
                 int y0 = Math.Max(0, y - 1), y1 = Math.Min(height - 1, y + 1);
                 int g = Math.Abs(luma[y * width + x1] - luma[y * width + x0]) +
                         Math.Abs(luma[y1 * width + x] - luma[y0 * width + x]);
-                gradient[p] = g;
                 bool isEdge = g >= threshold;
                 if (isEdge) edgePixels++;
 

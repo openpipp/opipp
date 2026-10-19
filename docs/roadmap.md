@@ -45,7 +45,7 @@ continue that way. Claims in this file are expected to be backed by a test or a 
 | Build output excluded | `dist/`, `obj/`, `bin/` per project are git-ignored |
 | Secrets | none: no credentials, tokens or connection strings anywhere in the tree |
 | Tests runnable from a clone | yes - the 80 KB synthetic parity fixtures are committed |
-| CI | running on every push: build + 555 tests; parity stays out of CI because it needs the original binaries |
+| CI | running on every push: build + 590 tests; parity stays out of CI because it needs the original binaries |
 | Next release | [0.1.4 plan and action items](plan-0.1.4.md) — streaming AVI animation, measured memory, debayer delta |
 
 ## Where the numbers come from
@@ -84,7 +84,7 @@ Saturn fixture, with the remaining frames off by one pixel. Everything else is a
 | --- | --- |
 | Artifact | `OPIPP-0.1.3-alpha-win-x64.zip` on [Releases](https://github.com/openpipp/opipp/releases) (self-contained win-x64, 50.7 MB) |
 | Provenance | `Version=0.1.3-alpha` in `Directory.Build.props`; window title `OPIPP 0.1.3-alpha - Open PIPP` |
-| Verified | 553 tests, 29/29 parity cases, CLI conversion of 30 real frames, GUI launch, no native DLL |
+| Verified | 590 tests, parity 26 compared / 26 matched / 2 known differences / 1 gap, CLI conversion of 30 real frames, GUI launch, no native DLL |
 | Notes | [`alpha.md`](alpha.md) |
 
 Rebuild with the two `dotnet publish` commands in `alpha.md`. `dist/` is git-ignored.
@@ -137,7 +137,7 @@ applies no shift, and Saturn reaches ≥28/30. Notes: [`../notes/tracking.md`](.
 ### 2026-10-18 — the reconstruction is named OPIPP, and the alpha ships
 
 Chosen over further parity work because the engine is functionally complete: 0.1.3-alpha is a working
-preview (553 tests, 29/29 parity), and shipping it makes the remaining gap concrete instead of
+preview (590 tests, 26/26 compared parity), and shipping it makes the remaining gap concrete instead of
 theoretical. Tracking at 23/30 is documented in the release notes rather than hidden.
 
 ### 2026-10-18 — coarse stage disabled until its reference capture is faithful

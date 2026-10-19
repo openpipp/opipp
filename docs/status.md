@@ -12,7 +12,7 @@ inventory.
 | SDK | .NET 10.0.402, local only (`~/.dotnet-sdk`) |
 | Solution | `OPIPP.slnx` (note: `.slnx`, not `.sln`) |
 | Build | `dotnet build OPIPP.slnx` - clean |
-| Tests | **553 passing, 0 failing** (7 projects) |
+| Tests | **590 passing, 0 failing** (7 projects) |
 | Managed code | `Opipp.Core` 11.8k lines, `Opipp.Cli` 0.3k, `Opipp.App` 14.5k, tests 5.5k |
 | Reference artefacts | `decompiled/` 14,277 lines C#, `ghidra/out/` 4,229 functions |
 
