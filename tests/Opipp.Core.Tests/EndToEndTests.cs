@@ -478,9 +478,10 @@ public sealed class EndToEndTests
             string pgm = Path.Combine(dir, "master.pgm");
             var percents = new List<int>();
 
-            int stacked = MasterFrameBuilder.Build(files, null, tiff, pgm, 3, percents.Add);
+            MasterBuildResult result = MasterFrameBuilder.Build(files, null, tiff, pgm, 3, percents.Add);
 
-            Assert.Equal(3, stacked);
+            Assert.True(result.Success, result.Error);
+            Assert.Equal(3, result.FrameCount);
             Assert.True(File.Exists(tiff), "master TIFF was not written");
             Assert.True(File.Exists(pgm), "master PGM was not written");
             Assert.Equal(100, percents[^1]);
@@ -505,9 +506,10 @@ public sealed class EndToEndTests
             using (var w = new SerWriter(a, 8, 8, 1, 8)) w.Write(new Frame(8, 8, 1, 8));
             using (var w = new SerWriter(b, 16, 16, 1, 8)) w.Write(new Frame(16, 16, 1, 8));
 
-            int stacked = MasterFrameBuilder.Build([a, b], null, null, null, 0);
+            MasterBuildResult result = MasterFrameBuilder.Build([a, b], null, null, null, 0);
 
-            Assert.Equal(-1, stacked);
+            Assert.False(result.Success);
+            Assert.Contains("differ in geometry", result.Error, StringComparison.Ordinal);
         }
         finally
         {

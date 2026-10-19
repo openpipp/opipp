@@ -95,16 +95,17 @@
   <p class="sub">Verified numbers, not aspirations. Everything below is measured against the original
   binaries on the same inputs.</p>
   <div class="kpi">
-    <div class="card"><div class="v">634</div><div class="l">tests passing</div></div>
+    <div class="card"><div class="v">713</div><div class="l">tests passing</div></div>
     <div class="card"><div class="v">27/27</div><div class="l">compared parity cases</div></div>
     <div class="card"><div class="v">131</div><div class="l">switches addressed</div></div>
     <div class="card"><div class="v">76</div><div class="l">verified byte-for-byte</div></div>
     <div class="card"><div class="v">≈94%</div><div class="l">weighted completeness</div></div>
   </div>
-  <p class="sub" style="margin-top:18px"><strong>0.1.7-alpha</strong> — fixes the 0.1.6 startup
-  crash, and makes the window title and About box read the assembly version so they cannot go stale.
-  The PIPP About box, icon and update check remain gone, replaced with OPIPP's own.
-  <a href="https://github.com/openpipp/opipp/releases/tag/v0.1.7-alpha">Release notes</a>.</p>
+  <p class="sub" style="margin-top:18px"><strong>0.1.8-alpha</strong> — repairs the calibration-master
+  workflow (flat-dark built and subtracted exactly once, RGB masters keep their channels, failures stop
+  the run, Cancel works), adds an exact mean/sum/median numerical matrix, and opens joined inputs one
+  reader at a time.
+  <a href="https://github.com/openpipp/opipp/releases/tag/v0.1.8-alpha">Release notes</a>.</p>
 </section>
 
 <section id="completeness">
@@ -123,7 +124,7 @@
     <div class="bar"><span class="name">Alignment &amp; tracking</span><span class="track"><span class="fill" style="width:85%"></span></span><span class="pct">85%</span></div>
     <div class="bar"><span class="name">Stacking</span><span class="track"><span class="fill" style="width:70%"></span></span><span class="pct">70%</span></div>
   </div>
-  <p class="sub" style="margin-top:18px">The one material gap is <strong>surface-feature tracking</strong>:
+  <p class="sub" style="margin-top:18px">The largest accuracy gap is <strong>surface-feature tracking</strong>:
   it is exact on 23 of 30 frames of a real Saturn capture, and one pixel off on the rest. Everything
   else is at or near exactness.</p>
 </section>

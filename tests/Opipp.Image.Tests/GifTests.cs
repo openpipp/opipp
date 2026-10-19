@@ -376,19 +376,20 @@ public class GifTests
     }
 
     /// <summary>
-    /// Twenty-four 128x96 colour frames. The first twenty are pure red and the last four are pure
-    /// blue: 245,760 red samples fill most of the reservoir, then 32,768+ blue samples arrive after
-    /// the 262,144 cap and can survive only through replacement sampling.
+    /// Twenty-six 128x96 colour frames. The first twenty-two are pure red and the last four are pure
+    /// blue: 270,336 red samples already exceed the 262,144 cap, so every blue sample arrives after
+    /// the reservoir is full and can survive only through replacement sampling. Twenty red frames
+    /// would leave 16,384 slots that blue fills directly, which is why this fixture uses 22.
     /// </summary>
     private static Frame[] EarlyAndLateColourCapture()
     {
         const int width = 128;
         const int height = 96;
-        var frames = new Frame[24];
+        var frames = new Frame[26];
         for (int f = 0; f < frames.Length; f++)
         {
             int[] samples = new int[width * height * 3];
-            bool late = f >= 20;
+            bool late = f >= 22;
             for (int i = 0; i < samples.Length; i += 3)
             {
                 samples[i + 0] = late ? 0 : 255;

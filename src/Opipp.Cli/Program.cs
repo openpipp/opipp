@@ -619,7 +619,8 @@ internal static class Program
             GuiProtocol = o.Gui,
         };
 
-        // A calibration master is only usable when the GUI/engine handed us a decodable PGM.
+        // Calibration masters: the full-fidelity .tmp is authoritative, the PGM is the legacy
+        // one-channel fallback used only when the .tmp is absent (see LoadMaster).
         settings.MasterDark = LoadMaster(o.MasterDarkTmpFile, o.MasterDarkPgmFile, "dark", o.DarkSubtraction);
         settings.MasterFlat = LoadMaster(o.MasterFlatTmpFile, null, "flat", o.FlatCalibration);
         settings.MasterFlatDark = LoadMaster(o.MasterFlatDarkTmpFile, null, "flat dark", o.FlatDarkSubtraction);
@@ -643,28 +644,44 @@ internal static class Program
         return new PixelRect(o.AreaOfInterestX ?? 0, o.AreaOfInterestY ?? 0, width, height);
     }
 
-    private static Frame? LoadMaster(string? tmpFile, string? pgmFile, string kind, bool enabled)
+    /// <summary>
+    /// Loads a calibration master, preferring the full-fidelity <c>.tmp</c> container over the legacy
+    /// PGM handoff.
+    /// </summary>
+    /// <remarks>
+    /// The PGM is the engine's old one-channel handoff, so a colour master is reduced to luma there
+    /// and a colour capture rejects it with a channel mismatch. The <c>.tmp</c> keeps the real channel
+    /// count and sample depth and is therefore authoritative. PGM is used only when no <c>.tmp</c> was
+    /// supplied or the <c>.tmp</c> file is absent — the legacy <c>-dark_pgm</c>-only handoff.
+    /// A master that exists but cannot be decoded is an explicit configuration error: continuing
+    /// without it would silently process uncalibrated frames.
+    /// </remarks>
+    internal static Frame? LoadMaster(string? tmpFile, string? pgmFile, string kind, bool enabled)
     {
         if (!enabled) return null;
 
-        foreach (var candidate in new[] { pgmFile, tmpFile })
-        {
-            if (string.IsNullOrWhiteSpace(candidate) || !File.Exists(candidate)) continue;
-            try
-            {
-                // The engine's masters are its private .tmp container (recovered in
-                // Formats/MasterTmpFile); PGM is only the legacy fallback.
-                bool isTmp = Path.GetExtension(candidate).Equals(".tmp", StringComparison.OrdinalIgnoreCase);
-                return isTmp ? MasterTmpFile.Read(candidate) : PgmFile.Read(candidate);
-            }
-            catch (Exception ex) when (ex is InvalidDataException or IOException)
-            {
-                Console.Error.WriteLine(
-                    $"Warning: master {kind} frame '{candidate}' is not a readable PGM ({ex.Message}); continuing without it");
-            }
-        }
+        if (!string.IsNullOrWhiteSpace(tmpFile) && File.Exists(tmpFile))
+            return ReadMaster(tmpFile!, kind);
+
+        // Fallback only when the authoritative container is absent.
+        if (!string.IsNullOrWhiteSpace(pgmFile) && File.Exists(pgmFile))
+            return ReadMaster(pgmFile!, kind);
 
         return null;
+    }
+
+    private static Frame ReadMaster(string path, string kind)
+    {
+        try
+        {
+            bool isTmp = Path.GetExtension(path).Equals(".tmp", StringComparison.OrdinalIgnoreCase);
+            return isTmp ? MasterTmpFile.Read(path) : PgmFile.Read(path);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidDataException(
+                $"master {kind} frame '{path}' cannot be read: {ex.Message}", ex);
+        }
     }
 
     private static PixelRect? BuildCrop(OpippOptions o)

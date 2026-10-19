@@ -4,6 +4,12 @@ using Opipp.Core.Formats;
 namespace Opipp.Core.Pipeline;
 
 /// <summary>Opens any supported container as a frame source, choosing by extension and magic bytes.</summary>
+/// <remarks>
+/// <c>.tmp</c> is accepted here because the calibration-master workflow reads a previously built
+/// <c>pipp_master_*.tmp</c> as the subtraction reference. It is deliberately absent from
+/// <see cref="Extensions"/>: that list is the set of user-selectable capture inputs, and a master is
+/// not a capture.
+/// </remarks>
 public static class FrameSourceFactory
 {
     /// <summary>Supported input extensions, lowercase, with the leading dot.</summary>
@@ -31,8 +37,62 @@ public static class FrameSourceFactory
             ".tif" or ".tiff" => new SingleFrameSource(new TiffReader(path)),
             ".png" => new SingleFrameSource(new PngReader(path)),
             ".dng" => new SingleFrameSource(new RawDngReader(path)),
+            ".tmp" => new SingleFrameSource(new MasterTmpSource(path)),
             _ => throw new NotSupportedException($"unsupported input format '{ext}'"),
         };
+    }
+}
+
+/// <summary>
+/// Adapts a <c>pipp_master_*.tmp</c> calibration master to the <see cref="IFrameSource"/> contract.
+/// </summary>
+/// <remarks>
+/// The container records geometry, colour flag and sample size but no CFA pattern, so the frame is
+/// returned with <see cref="BayerPattern.None"/>; callers that need Bayer semantics (a flat built for
+/// <c>-flat_bayer</c>) read the master from the capture pipeline, not from this handoff file.
+/// </remarks>
+public sealed class MasterTmpSource : IFrameSource
+{
+    private readonly Frame _frame;
+    private bool _read;
+
+    /// <summary>Reads the master; the raster is decoded once and reused.</summary>
+    /// <param name="path">A file written by <see cref="MasterTmpFile.Write"/> or the engine's stacker.</param>
+    /// <exception cref="InvalidDataException">The file is not a valid master container.</exception>
+    public MasterTmpSource(string path)
+    {
+        _frame = MasterTmpFile.Read(path);
+    }
+
+    /// <inheritdoc />
+    public int Width => _frame.Width;
+
+    /// <inheritdoc />
+    public int Height => _frame.Height;
+
+    /// <inheritdoc />
+    public int Channels => _frame.Channels;
+
+    /// <inheritdoc />
+    public int BitDepth => _frame.BitDepth;
+
+    /// <inheritdoc />
+    public int FrameCount => 1;
+
+    /// <inheritdoc />
+    public BayerPattern Bayer => _frame.Bayer;
+
+    /// <inheritdoc />
+    public Frame? ReadFrame()
+    {
+        if (_read) return null;
+        _read = true;
+        return _frame;
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
     }
 }
 

@@ -258,9 +258,10 @@ public class MasterTmpFileTests
             string master = Path.Combine(dir, "pipp_master_flat.tmp");
             string pgm = Path.Combine(dir, "pipp_master_flat.pgm");
 
-            int stacked = MasterFrameBuilder.Build(files, null, master, pgm, 3);
+            MasterBuildResult result = MasterFrameBuilder.Build(files, null, master, pgm, 3);
 
-            Assert.Equal(3, stacked);
+            Assert.True(result.Success, result.Error);
+            Assert.Equal(3, result.FrameCount);
             byte[] bytes = File.ReadAllBytes(master);
             Assert.Equal(MasterTmpFile.HeaderSize + 8 * 8 * 2, bytes.Length);
             Assert.NotEqual((byte)'I', bytes[0]); // not "II*\0"

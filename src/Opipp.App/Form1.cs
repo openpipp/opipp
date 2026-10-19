@@ -88,6 +88,14 @@ public class Form1 : Form
 
 	private string master_flat_tmp_file = "";
 
+	/// <summary>True when the cached/built master flat already has the flat dark removed.</summary>
+	private bool master_flat_corrected;
+
+	/// <summary>Cancels the in-process master-frame builds (the engine process has its own kill path).</summary>
+	private CancellationTokenSource master_build_cancellation;
+
+	private bool pipp_process_started;
+
 	private Stopwatch stopwatch;
 
 	private List<string> arg_list2;
@@ -1228,6 +1236,10 @@ public class Form1 : Form
 			flat_dark_frame_optionsGB.Enabled = true;
 		}
 		flat_dark_frames_stacked = 0;
+		// Changing the flat-dark set invalidates a master flat that may already have had it
+		// subtracted; force the flat to be rebuilt against the current set.
+		flat_frames_stacked = 0;
+		master_flat_corrected = false;
 		tab_flat_dark_files.Text = "Flat Dark Files (" + e2.FrameCount + " frames)";
 	}
 
@@ -1261,6 +1273,7 @@ public class Form1 : Form
 	private void flat_dark_stbtraction_cb_changed(object sender, EventArgs e)
 	{
 		flat_frames_stacked = 0;
+		master_flat_corrected = false;
 		if (flat_dark_frame_subtractionCB.Enabled && flat_dark_frame_subtractionCB.Checked)
 		{
 			save_master_flat_dark_CB.Enabled = true;
@@ -1305,6 +1318,7 @@ public class Form1 : Form
 			flat_frame_optionsGB.Enabled = true;
 		}
 		flat_frames_stacked = 0;
+		master_flat_corrected = false;
 		tab_flat_files.Text = "Flat Files (" + e2.FrameCount + " frames)";
 	}
 
@@ -4584,49 +4598,10 @@ public class Form1 : Form
 
 	private void pipp_process_Exited(object sender, EventArgs e)
 	{
-		runBTN.Enabled = true;
-		runBTN.Text = "Start Processing";
-		dotestrunBTN.Enabled = true;
-		dotestrunBTN.Text = "Test Options";
-		Text = "OPIPP " + VersionInfo.Display + " - Open PIPP";
-		((Control)tabPage1).Enabled = true;
-		((Control)tabPage7).Enabled = true;
-		((Control)tabPage2).Enabled = true;
-		((Control)tabPage3).Enabled = true;
-		((Control)tabPage5).Enabled = true;
-		((Control)tabPage4).Enabled = true;
-		pipp_process_running = false;
-		killpippBTN.Enabled = false;
-		doProcessToolStripMenuItem.Enabled = true;
-		cancelProcessingToolStripMenuItem.Enabled = false;
+		reset_processing_controls();
 		if (processed_killed)
 		{
-			statusstateLAB.Text = "CANCELLED";
-			statusstateLAB.Left = (statusGB.Width - statusstateLAB.Width) / 2;
-			dark_frame_stackingLAB.Text = "Stacking 0 dark frames";
-			set_dark_frame_progress(0);
-			flat_dark_stackingLAB.Text = "Stacking 0 flat dark frames";
-			set_flat_dark_frame_progress(0);
-			flat_stackingLAB.Text = "Stacking 0 flat frames";
-			set_flat_frame_progress(0);
-			fileLAB.Text = "File: none";
-			processfilePB.Value = 0;
-			processfileLAB.Text = "File 0 of 0";
-			processframesLAB.Text = "Processing 0 frames";
-			processPB.Value = 0;
-			progressLAB.Text = "0%";
-			qsframeLAB.Text = quality_sort_label1 + "0" + quality_sort_label2;
-			qualityPB.Value = 0;
-			qualityLAB.Text = "0%";
-			string path = output_directory.Trim('"', ' ');
-			if (Directory.Exists(path))
-			{
-				string[] files = Directory.GetFiles(path, "*.tmp");
-				foreach (string path2 in files)
-				{
-					File.Delete(path2);
-				}
-			}
+			show_cancelled_state();
 			return;
 		}
 		int exitCode = pipp_process.ExitCode;
@@ -4837,6 +4812,11 @@ public class Form1 : Form
 			cancelProcessingToolStripMenuItem.Enabled = true;
 			killpippBTN.Enabled = true;
 			processed_killed = false;
+			pipp_process_started = false;
+			// A fresh token per run: Cancel must abort the in-process master builds too, not only
+			// the engine process (which does not exist during that phase).
+			master_build_cancellation?.Dispose();
+			master_build_cancellation = new CancellationTokenSource();
 			((Control)tabPage1).Enabled = false;
 			((Control)tabPage7).Enabled = false;
 			((Control)tabPage2).Enabled = false;
@@ -4854,6 +4834,32 @@ public class Form1 : Form
 
 	private void do_processing_thread()
 	{
+		try
+		{
+			do_processing_thread_core();
+		}
+		catch (OperationCanceledException)
+		{
+			// Cancel was pressed while the masters were being built in-process; no engine exists yet,
+			// so the stopped-build state has to be shown here.
+			Invoke((MethodInvoker)(() =>
+			{
+				processed_killed = true;
+				show_cancelled_state();
+			}));
+		}
+		catch (Exception ex)
+		{
+			Invoke((MethodInvoker)(() =>
+			{
+				show_processing_start_failure("Processing could not start:" + Environment.NewLine + Environment.NewLine + ex.Message);
+			}));
+		}
+	}
+
+	private void do_processing_thread_core()
+	{
+		CancellationToken cancellationToken = master_build_cancellation?.Token ?? CancellationToken.None;
 		arg_list2.Add("-temp_dir=" + temp_directory);
 		if (dark_filelist.Items.Count > 0 && dark_frame_subtractionCB.Checked)
 		{
@@ -4888,15 +4894,19 @@ public class Form1 : Form
 					string item = Path.Combine(directory, file);
 					list.Add(item);
 				}
-				list.Add("");
 				master_dark_tmp_file = Path.Combine(temp_directory, "pipp_master_dark.tmp");
 				master_dark_pgm_file = Path.Combine(temp_directory, "pipp_master_dark.pgm");
 				// Managed master-dark stacker: no native stack_frames call.
-				int num = MasterFrameBuilder.Build(list, null, master_dark_tmp_file, master_dark_pgm_file, required_frames, set_dark_frame_progress);
-				if (num >= 0)
+				MasterBuildResult dark_result = MasterFrameBuilder.Build(
+					list, null, master_dark_tmp_file, master_dark_pgm_file, required_frames,
+					set_dark_frame_progress, cancellationToken);
+				if (!dark_result.Success)
 				{
-					dark_frames_stacked = required_frames;
+					report_master_build_failure("dark", dark_result);
+					return;
 				}
+				// Record the count that actually went into the master, not the requested limit.
+				dark_frames_stacked = dark_result.FrameCount;
 			}
 			else
 			{
@@ -4944,13 +4954,17 @@ public class Form1 : Form
 					string item2 = Path.Combine(directory2, file2);
 					list2.Add(item2);
 				}
-				list2.Add("");
-				int num2 = MasterFrameBuilder.Build(list2, null, master_flat_dark_tmp_file, master_flat_dark_pgm_file, required_frames2, set_flat_dark_frame_progress);
-				if (num2 >= 0)
+				MasterBuildResult flat_dark_result = MasterFrameBuilder.Build(
+					list2, null, master_flat_dark_tmp_file, master_flat_dark_pgm_file, required_frames2,
+					set_flat_dark_frame_progress, cancellationToken);
+				if (!flat_dark_result.Success)
 				{
-					flat_dark_frames_stacked = required_frames2;
+					report_master_build_failure("flat dark", flat_dark_result);
+					return;
 				}
+				flat_dark_frames_stacked = flat_dark_result.FrameCount;
 				flat_frames_stacked = 0;
+				master_flat_corrected = false;
 			}
 			else
 			{
@@ -4960,12 +4974,14 @@ public class Form1 : Form
 				}));
 			}
 			set_flat_dark_frame_progress(100);
-			arg_list2.Add("-flat_dark_tmp=" + master_flat_dark_tmp_file);
+			// The -flat_dark_tmp switch is added after the flat stage: when this run's flat master
+			// already has the flat dark subtracted, handing it to the engine would subtract it twice.
 		}
 		else
 		{
 			master_flat_dark_tmp_file = "";
 			master_flat_dark_pgm_file = "";
+			master_flat_corrected = false;
 		}
 		if (flat_filelist.Items.Count > 0 && flat_frame_calibrationCB.Checked)
 		{
@@ -5000,14 +5016,18 @@ public class Form1 : Form
 					string item3 = Path.Combine(directory3, file3);
 					list3.Add(item3);
 				}
-				list3.Add("");
 				master_flat_tmp_file = Path.Combine(temp_directory, "pipp_master_flat.tmp");
 				string subtract = string.IsNullOrEmpty(master_flat_dark_tmp_file) ? null : master_flat_dark_tmp_file;
-				int num3 = MasterFrameBuilder.Build(list3, subtract, master_flat_tmp_file, null, required_frames3, set_flat_frame_progress);
-				if (num3 >= 0)
+				MasterBuildResult flat_result = MasterFrameBuilder.Build(
+					list3, subtract, master_flat_tmp_file, null, required_frames3,
+					set_flat_frame_progress, cancellationToken);
+				if (!flat_result.Success)
 				{
-					flat_frames_stacked = required_frames3;
+					report_master_build_failure("flat", flat_result);
+					return;
 				}
+				flat_frames_stacked = flat_result.FrameCount;
+				master_flat_corrected = subtract is not null;
 			}
 			else
 			{
@@ -5018,7 +5038,28 @@ public class Form1 : Form
 			}
 			set_flat_frame_progress(100);
 			arg_list2.Add("-flat_tmp=" + master_flat_tmp_file);
+			// Only an unprepared flat needs the engine to remove the flat dark. When the GUI built
+			// the corrected master itself (or the cached one is corrected) the subtraction has
+			// already happened, and passing it again would subtract it twice.
+			if (!string.IsNullOrEmpty(master_flat_dark_tmp_file))
+			{
+				if (master_flat_corrected)
+				{
+					Invoke((MethodInvoker)(() =>
+					{
+						outputTB.AppendText("  Flat master already has the flat dark removed\r\n");
+					}));
+				}
+				else
+				{
+					arg_list2.Add("-flat_dark_tmp=" + master_flat_dark_tmp_file);
+				}
+			}
 		}
+		// A cancel that arrived during the master builds must not reach the engine launch: the
+		// masters it needs were abandoned. The operator's intent is CANCELLED, not a partial run.
+		cancellationToken.ThrowIfCancellationRequested();
+
 		// Engine path is centralised in EngineLocator (see the comment there about the managed replacement).
 		string text = EngineLocator.FindEngineExecutable();
 		pipp_process.StartInfo.FileName = text;
@@ -5028,6 +5069,13 @@ public class Form1 : Form
 		pipp_process.StartInfo.RedirectStandardError = true;
 		pipp_process.StartInfo.RedirectStandardInput = true;
 		pipp_process.EnableRaisingEvents = true;
+		// Close the small race where Cancel lands after the token check above but before Start:
+		// cancel_processing could not kill a process that did not exist yet.
+		if (processed_killed)
+		{
+			throw new OperationCanceledException(cancellationToken);
+		}
+		pipp_process_started = true;
 		pipp_process.Start();
 		pipp_process.BeginOutputReadLine();
 		pipp_process.BeginErrorReadLine();
@@ -5095,13 +5143,108 @@ public class Form1 : Form
 		}
 	}
 
+	/// <summary>Restores the idle controls shared by the engine-exit, cancelled and failed paths.</summary>
+	private void reset_processing_controls()
+	{
+		runBTN.Enabled = true;
+		runBTN.Text = "Start Processing";
+		dotestrunBTN.Enabled = true;
+		dotestrunBTN.Text = "Test Options";
+		Text = "OPIPP " + VersionInfo.Display + " - Open PIPP";
+		((Control)tabPage1).Enabled = true;
+		((Control)tabPage7).Enabled = true;
+		((Control)tabPage2).Enabled = true;
+		((Control)tabPage3).Enabled = true;
+		((Control)tabPage5).Enabled = true;
+		((Control)tabPage4).Enabled = true;
+		pipp_process_running = false;
+		pipp_process_started = false;
+		killpippBTN.Enabled = false;
+		doProcessToolStripMenuItem.Enabled = true;
+		cancelProcessingToolStripMenuItem.Enabled = false;
+	}
+
+	/// <summary>
+	/// UI-thread cancelled state. Reached from the engine-exit handler and from the in-process
+	/// master-build path, which has no engine process to fire Exited.
+	/// </summary>
+	private void show_cancelled_state()
+	{
+		statusstateLAB.Text = "CANCELLED";
+		statusstateLAB.Left = (statusGB.Width - statusstateLAB.Width) / 2;
+		dark_frame_stackingLAB.Text = "Stacking 0 dark frames";
+		set_dark_frame_progress(0);
+		flat_dark_stackingLAB.Text = "Stacking 0 flat dark frames";
+		set_flat_dark_frame_progress(0);
+		flat_stackingLAB.Text = "Stacking 0 flat frames";
+		set_flat_frame_progress(0);
+		fileLAB.Text = "File: none";
+		processfilePB.Value = 0;
+		processfileLAB.Text = "File 0 of 0";
+		processframesLAB.Text = "Processing 0 frames";
+		processPB.Value = 0;
+		progressLAB.Text = "0%";
+		qsframeLAB.Text = quality_sort_label1 + "0" + quality_sort_label2;
+		qualityPB.Value = 0;
+		qualityLAB.Text = "0%";
+		string path = output_directory.Trim('"', ' ');
+		if (Directory.Exists(path))
+		{
+			string[] files = Directory.GetFiles(path, "*.tmp");
+			foreach (string path2 in files)
+			{
+				File.Delete(path2);
+			}
+		}
+	}
+
+	/// <summary>
+	/// UI-thread failure state for a run that stopped before the engine was launched. The caller
+	/// never added the master switches, so no stale master can reach the engine.
+	/// </summary>
+	private void show_processing_start_failure(string message)
+	{
+		reset_processing_controls();
+		statusstateLAB.Text = "FAILED WITH ERRORS";
+		statusstateLAB.Left = (statusGB.Width - statusstateLAB.Width) / 2;
+		processing_failed = true;
+		MessageBox.Show(message, "Processing Error", MessageBoxButtons.OK, MessageBoxIcon.Hand);
+	}
+
+	/// <summary>
+	/// Reports a failed master build on the UI thread. The caller must abandon the run: a master
+	/// that was not produced must never be handed to the engine.
+	/// </summary>
+	private void report_master_build_failure(string kind, MasterBuildResult result)
+	{
+		Invoke((MethodInvoker)(() =>
+		{
+			outputTB.AppendText("  Master " + kind + " frame failed: " + result.Error + Environment.NewLine);
+			show_processing_start_failure(
+				"The master " + kind + " frame could not be built, so processing was not started."
+				+ Environment.NewLine + Environment.NewLine + result.Error);
+		}));
+	}
+
 	private void cancel_processing()
 	{
-		// There is no in-process native engine to abort: cancellation terminates the engine process.
+		// Master frames are built in-process before the engine exists, so cancellation has to stop
+		// that work as well as terminating the engine process.
 		processed_killed = true;
-		if (!pipp_process.HasExited)
+		master_build_cancellation?.Cancel();
+		if (pipp_process_started)
 		{
-			pipp_process.Kill();
+			try
+			{
+				if (!pipp_process.HasExited)
+				{
+					pipp_process.Kill();
+				}
+			}
+			catch (InvalidOperationException)
+			{
+				// The process ended between the check and the kill.
+			}
 		}
 	}
 
@@ -5114,9 +5257,11 @@ public class Form1 : Form
 			{
 				return false;
 			}
+			// Stop an in-process master build as well as the engine (which may not exist yet).
+			master_build_cancellation?.Cancel();
 			try
 			{
-				pipp_process.Kill();
+				if (pipp_process_started) pipp_process.Kill();
 			}
 			catch
 			{

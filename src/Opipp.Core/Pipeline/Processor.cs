@@ -978,7 +978,7 @@ public sealed class Processor
                         cancellationToken.ThrowIfCancellationRequested();
                         stacker.Add(ApplyGeometry(frame.Frame, offset, shiftFill));
                     }
-                    var master = ApplyOverlay(stacker.Result(), detectionThreshold);
+                    var master = ApplyOverlay(stacker.Result(cancellationToken), detectionThreshold);
                     using var sink = FrameSinkFactory.Create(masterPath, master, 1, _settings.Fps,
                         _settings.AviCodec, _settings.AviQuality);
                     sink.Write(master);
@@ -2420,63 +2420,141 @@ public sealed class Processor
 /// </remarks>
 public sealed class JoinedFrameSource : IFrameSource
 {
-    private readonly List<IFrameSource> _sources = [];
-    private int _current;
+    // Formats whose reader returns exactly one frame. Counting these without opening them is what
+    // makes a long join cheap; a multi-page format would have to be added to the container branch.
+    private static readonly HashSet<string> SingleFrameExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".fits", ".fit", ".fts", ".bmp", ".tif", ".tiff", ".png", ".dng",
+    };
 
-    /// <summary>Opens every input and concatenates its frames.</summary>
+    private readonly List<string> _files;
+    private readonly int? _serBitDepth;
+    private readonly int _width;
+    private readonly int _height;
+    private readonly int _channels;
+    private readonly int _bitDepth;
+    private readonly int _frameCount;
+    private readonly BayerPattern _bayer;
+
+    private IFrameSource? _current;
+    private int _next;
+
+    /// <summary>Test seam: wraps reader creation so a test can observe how many are open at once.</summary>
+    internal static Func<string, int?, IFrameSource>? OpenForTests;
+
+    /// <summary>Opens the inputs one at a time and concatenates their frames.</summary>
     /// <param name="files">Input containers, in order.</param>
     /// <param name="serBitDepthOverride">Optional SER bit-depth override (<c>-ser_bpp</c>).</param>
+    /// <remarks>
+    /// Only the first source is open when the constructor returns; each later source is opened when
+    /// the previous one is exhausted and disposed immediately. Opening every reader up front made a
+    /// long joined PNG sequence hold every compressed payload at once, before frame retention could
+    /// help. Frame counts are read without retaining readers, at the cost of one header pass for
+    /// multi-frame containers.
+    /// </remarks>
     public JoinedFrameSource(IEnumerable<string> files, int? serBitDepthOverride = null)
     {
         ArgumentNullException.ThrowIfNull(files);
+        _files = [.. files];
+        if (_files.Count == 0) throw new ArgumentException("no input files", nameof(files));
+        _serBitDepth = serBitDepthOverride;
+
         try
         {
-            foreach (string file in files) _sources.Add(FrameSourceFactory.Open(file, serBitDepthOverride));
+            // Count first, one reader at a time, then open the first source for reading. Counting
+            // while the first source was open would mean two live readers, and the point of this
+            // class is that live readers do not scale with the number of inputs.
+            int total = 0;
+            foreach (string file in _files)
+            {
+                total += CountFrames(file);
+            }
+
+            _frameCount = total;
+
+            _current = Open(_files[0]);
+            _width = _current.Width;
+            _height = _current.Height;
+            _channels = _current.Channels;
+            _bitDepth = _current.BitDepth;
+            _bayer = _current.Bayer;
+            _next = 1;
         }
         catch
         {
             Dispose();
             throw;
         }
-
-        if (_sources.Count == 0) throw new ArgumentException("no input files", nameof(files));
     }
 
     /// <inheritdoc />
-    public int Width => _sources[0].Width;
+    public int Width => _width;
 
     /// <inheritdoc />
-    public int Height => _sources[0].Height;
+    public int Height => _height;
 
     /// <inheritdoc />
-    public int Channels => _sources[0].Channels;
+    public int Channels => _channels;
 
     /// <inheritdoc />
-    public int BitDepth => _sources[0].BitDepth;
+    public int BitDepth => _bitDepth;
 
     /// <inheritdoc />
-    public int FrameCount => _sources.Sum(source => source.FrameCount);
+    public int FrameCount => _frameCount;
 
     /// <inheritdoc />
-    public BayerPattern Bayer => _sources[0].Bayer;
+    public BayerPattern Bayer => _bayer;
 
     /// <inheritdoc />
     public Frame? ReadFrame()
     {
-        while (_current < _sources.Count)
+        while (true)
         {
-            Frame? frame = _sources[_current].ReadFrame();
-            if (frame is not null) return frame;
-            _current++;
-        }
+            if (_current is null)
+            {
+                return null;
+            }
 
-        return null;
+            Frame? frame = _current.ReadFrame();
+            if (frame is not null)
+            {
+                return frame;
+            }
+
+            _current.Dispose();
+            _current = null;
+
+            if (_next >= _files.Count)
+            {
+                return null;
+            }
+
+            _current = Open(_files[_next++]);
+        }
     }
 
     /// <inheritdoc />
     public void Dispose()
     {
-        foreach (var source in _sources) source.Dispose();
-        _sources.Clear();
+        _current?.Dispose();
+        _current = null;
+        _next = _files.Count;
+    }
+
+    private IFrameSource Open(string path)
+    {
+        Func<string, int?, IFrameSource> opener = OpenForTests ?? FrameSourceFactory.Open;
+        return opener(path, _serBitDepth);
+    }
+
+    private int CountFrames(string path)
+    {
+        if (SingleFrameExtensions.Contains(Path.GetExtension(path)))
+        {
+            return 1;
+        }
+
+        using IFrameSource source = Open(path);
+        return source.FrameCount;
     }
 }

@@ -5,11 +5,11 @@ produce every figure on this page.
 
 | | |
 |---|---|
-| Version | `0.1.7-alpha` at the tagged commit |
+| Version | `0.1.8-alpha` at the tagged commit |
 | SDK | .NET 10.0.402 (local `~/.dotnet-sdk`) |
-| Tests | **634 passing, 0 failing, 0 skipped** across eight projects |
+| Tests | **713 passing, 0 failing, 0 skipped** across nine projects |
 | Parity | **27 compared, 27 matched, 2 deliberate differences, 0 gaps, 0 failed** |
-| Release | `v0.1.7-alpha`, Windows x64 zip, self-contained |
+| Release | `v0.1.8-alpha`, Windows x64 zip, self-contained |
 | History | [`journal.md`](journal.md) — dated findings, superseded details |
 
 ```bash
@@ -24,6 +24,12 @@ dotnet run --project tools/Opipp.Parity -- --real
 - Debayer, binning, median and mono modes, histogram stretch, gain/gamma, flip/rotate/crop/resize.
 - Dark/flat calibration, applied to raw frames before debayering and binning; a master that does not
   match the capture geometry is a controlled error, not a crash or a silently empty result.
+- Master creation (dark, flat-dark, flat) reads and writes the engine's `.tmp` masters, subtracts a
+  flat-dark exactly once, keeps RGB masters three-channel, is cancellable, and publishes nothing when
+  a build fails.
+- Mean, sum and median stacking are covered by exact numerical tests for mono/RGB at 8 and 16 bits,
+  including saturation, fractional truncation, even-median rounding, reference subtraction and a
+  32-bit overflow guard.
 - Quality sort/limit, centroid + NCC alignment, AFB box, mean/sum/median stacking.
 - Animation: forward, reverse, holds and repetitions, for AVI, GIF and still sequences.
 - The CLI is a drop-in engine: normal command line and the GUI's stdin protocol, with the original
@@ -61,6 +67,9 @@ Documented skips: `-raw_db`, `-raw_hl`, `-raw_ocs`, `-raw_hpf` (need the statica
 | 16-bit Bayer debayer | 8-bit is byte-identical and a normal parity case; the 16-bit quantisation path is unverified |
 | RAW/dcraw absolute values | `-raw_*` skips above; decoding exists but is not value-parity-proven |
 | Colour GIF palette | Bounded by design (262,144-sample reservoir); large-capture RGB output intentionally differs from the pre-0.1.5 encoder |
+| Median stacking scale | Retains at most 64 frames (759 MiB for 64 RGB frames at 1920x1080); disk-backed tiled median is not implemented |
+| Final-image stacking interface | The stacker is a Core API capability; the CLI and GUI do not yet expose mean/sum/median as a user-facing control |
+| Bayer-marked stacking | A Bayer frame is stacked as ordinary samples and the result carries `Bayer=None`; pre-debayer the selection or accept a plain mono master |
 
 ## Deliberate divergences
 
