@@ -19,7 +19,7 @@ smoke-tested and published on GitHub Releases.
 ## Status and community
 
 Early development. The engine is functionally complete and parity-tested, the GUI is ported and fully
-managed, and 0.1.2-alpha is published - but surface tracking is not exact yet and the UI has not had
+managed, and 0.1.3-alpha is published - but surface tracking is not exact yet and the UI has not had
 broad real-world use. The project is being published now specifically to get feedback from people who
 image planets, not because it is finished.
 
@@ -81,8 +81,8 @@ Saturn fixture, with the remaining frames off by one pixel. Everything else is a
 
 | | |
 | --- | --- |
-| Artifact | `OPIPP-0.1.2-alpha-win-x64.zip` on [Releases](https://github.com/openpipp/opipp/releases) (self-contained win-x64, 50.7 MB) |
-| Provenance | `Version=0.1.2-alpha` in `Directory.Build.props`; window title `OPIPP 0.1.2-alpha - Open PIPP` |
+| Artifact | `OPIPP-0.1.3-alpha-win-x64.zip` on [Releases](https://github.com/openpipp/opipp/releases) (self-contained win-x64, 50.7 MB) |
+| Provenance | `Version=0.1.3-alpha` in `Directory.Build.props`; window title `OPIPP 0.1.3-alpha - Open PIPP` |
 | Verified | 553 tests, 29/29 parity cases, CLI conversion of 30 real frames, GUI launch, no native DLL |
 | Notes | [`alpha.md`](alpha.md) |
 
@@ -100,7 +100,7 @@ Rebuild with the two `dotnet publish` commands in `alpha.md`. `dist/` is git-ign
 | 4. Selection, alignment, stacking | **done except tracking exactness** |
 | 5. Animation and long tail | **done** — `-anim_*`, WinJUPOS, legacy AVI, RAW switches |
 | 6. GUI parity | **done** — managed, `LegacyNativeApi` deleted, `-gui` verified |
-| 7. Alpha build | **done** — 0.1.2-alpha published on GitHub Releases |
+| 7. Alpha build | **done** — 0.1.3-alpha published on GitHub Releases |
 
 ### Phase 4 remainder — tracking exactness
 
@@ -135,7 +135,7 @@ applies no shift, and Saturn reaches ≥28/30. Notes: [`../notes/tracking.md`](.
 
 ### 2026-10-18 — the reconstruction is named OPIPP, and the alpha ships
 
-Chosen over further parity work because the engine is functionally complete: 0.1.2-alpha is a working
+Chosen over further parity work because the engine is functionally complete: 0.1.3-alpha is a working
 preview (553 tests, 29/29 parity), and shipping it makes the remaining gap concrete instead of
 theoretical. Tracking at 23/30 is documented in the release notes rather than hidden.
 
@@ -166,3 +166,8 @@ immediately. That ordering held: every later algorithm was validated on `samples
 - Numbers in this file are regenerated from the matrix, never remembered: see [`parity.md`](parity.md).
 - Deliberate divergences are listed in [`status.md`](status.md) with a one-line rationale each.
 - A claim of exactness must name the fixture and the command that produced it.
+
+### Calibration contract (0.1.3)
+
+Masters are applied to **raw** frames, before debayering and binning, because masters are built from raw captures (and `-dark_pgm` / `-flat_bayer` masters are single-channel). A master that does not match the capture geometry is now a fatal `CalibrationConfigurationException` naming both shapes, instead of every frame being recorded as "no object". Combined calibration + binning is covered by tests.
+

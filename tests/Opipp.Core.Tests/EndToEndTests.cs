@@ -178,6 +178,61 @@ public sealed class EndToEndTests
     }
 
     [Fact]
+    public void Calibration_WithFullResolutionMaster_AppliesBeforeBinning()
+    {
+        string dir = TempDir();
+        try
+        {
+            string input = WriteSyntheticSer(dir, 16, 16, 3, bitDepth: 8);
+            var pixels = new ushort[16 * 16];
+            Array.Fill(pixels, (ushort)10);
+            var settings = new PipelineSettings
+            {
+                OutputDirectory = Path.Combine(dir, "out"),
+                OutputExtension = ".tif",
+                Binning = 2,
+                MasterDark = new Opipp.Core.Frames.Frame(16, 16, 1, 8, pixels),
+            };
+
+            var report = new Processor(settings).Run([input]);
+
+            // Before the fix, binning ran first, the 16x16 master no longer matched the 8x8 frame,
+            // and every frame was recorded as "no object": zero output from a valid capture.
+            Assert.Equal(3, report.OutputFrames);
+            Assert.Equal(3, report.OutputFiles.Count);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Calibration_MasterWithWrongGeometry_FailsAsConfigurationError()
+    {
+        string dir = TempDir();
+        try
+        {
+            string input = WriteSyntheticSer(dir, 16, 16, 3, bitDepth: 8);
+            var settings = new PipelineSettings
+            {
+                OutputDirectory = Path.Combine(dir, "out"),
+                OutputExtension = ".tif",
+                MasterDark = new Opipp.Core.Frames.Frame(8, 8, 1, 8, new ushort[64]),
+            };
+
+            var ex = Assert.Throws<Opipp.Core.Processing.CalibrationConfigurationException>(
+                () => new Processor(settings).Run([input]));
+
+            Assert.Contains("capture", ex.Message);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void QualityLimit_ZeroFrames_WritesNothingAndDoesNotThrow()
     {
         string dir = TempDir();

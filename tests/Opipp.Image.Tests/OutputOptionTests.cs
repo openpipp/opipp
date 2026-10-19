@@ -150,7 +150,10 @@ public class OutputOptionTests
         string dir = TempDir();
         try
         {
-            string input = WriteMonoSer(dir, 16, 12, 1);
+            // A colour flat must be paired with a colour capture: calibration runs on raw frames,
+            // so a 1-channel capture against a 3-channel flat is a configuration error, not a
+            // silently empty run.
+            string input = WriteColourSer(dir, 16, 12, 1);
             string outDir = Path.Combine(dir, "out");
             var flat = new Frame(16, 12, 3, 8);
             Array.Fill(flat.Samples, (ushort)180);

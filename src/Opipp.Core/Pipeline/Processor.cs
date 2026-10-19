@@ -1317,12 +1317,59 @@ public sealed class Processor
             ? _settings.OverexposedThreshold
             : frame.BitDepth == 8 ? 255 : 65535;
 
+    private static Frame SubtractDark(Frame frame, Frame master, string name)
+    {
+        try
+        {
+            return Calibration.SubtractDark(frame, master);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new CalibrationConfigurationException(DescribeMismatch(frame, master, name, ex));
+        }
+    }
+
+    private static string DescribeMismatch(Frame frame, Frame master, string name, Exception ex) =>
+        $"{name} master is {master.Width}x{master.Height}x{master.Channels}@{master.BitDepth} but the " +
+        $"capture is {frame.Width}x{frame.Height}x{frame.Channels}@{frame.BitDepth}. Calibration runs on " +
+        "raw frames before debayering and binning, so a master must match the capture geometry. " +
+        $"({ex.Message})";
+
     /// <summary>Applies the per-frame stage chain.</summary>
     private Frame Transform(Frame raw)
     {
         var frame = raw;
 
-        // 1. colour/mono interpretation
+        // 1. calibration — sensor domain, before debayering and binning.
+        //    Masters are built from raw captures, and -dark_pgm / -flat_bayer masters are
+        //    single-channel, so the science frame must still carry the capture geometry here.
+        //    Calibrating after debayer (3 channels) or binning (smaller) always mismatched and was
+        //    recorded as "no object", which silently produced no output from a valid capture.
+        if (_settings.MasterDark is not null)
+        {
+            frame = SubtractDark(frame, _settings.MasterDark, "-dark_tmp");
+        }
+        if (_settings.MasterFlat is not null)
+        {
+            Frame flat = _settings.MasterFlat;
+            if (_settings.MasterFlatDark is not null)
+            {
+                // -flat_dark: the flat-dark is removed from the flat before normalisation.
+                flat = SubtractDark(flat, _settings.MasterFlatDark, "-flat_dark_tmp");
+            }
+            try
+            {
+                frame = _settings.FlatHasBayer
+                    ? Calibration.DivideFlatBayer(frame, flat)
+                    : Calibration.DivideFlat(frame, flat);
+            }
+            catch (ArgumentException ex)
+            {
+                throw new CalibrationConfigurationException(DescribeMismatch(frame, flat, "-flat_tmp", ex));
+            }
+        }
+
+        // 2. colour/mono interpretation
         if (_settings.ForceMono && frame.Channels == 3)
         {
             int mode = _settings.MonoMode ?? 3;
@@ -1337,29 +1384,11 @@ public sealed class Processor
             frame = Debayer.ToColour(frame, _settings.SmoothHue);
         }
 
-        // 2. binning
+        // 3. binning
         if (_settings.Binning > 1)
         {
             frame = Binning.Apply(frame, _settings.Binning,
                 _settings.BinningSum ? BinningMode.Sum : BinningMode.Average);
-        }
-
-        // 3. calibration
-        if (_settings.MasterDark is not null)
-        {
-            frame = Calibration.SubtractDark(frame, _settings.MasterDark);
-        }
-        if (_settings.MasterFlat is not null)
-        {
-            Frame flat = _settings.MasterFlat;
-            if (_settings.MasterFlatDark is not null)
-            {
-                // -flat_dark: the flat-dark is removed from the flat before normalisation.
-                flat = Calibration.SubtractDark(flat, _settings.MasterFlatDark);
-            }
-            frame = _settings.FlatHasBayer
-                ? Calibration.DivideFlatBayer(frame, flat)
-                : Calibration.DivideFlat(frame, flat);
         }
 
         // 4. linear processing

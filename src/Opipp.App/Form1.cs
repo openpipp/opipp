@@ -4573,7 +4573,7 @@ public class Form1 : Form
 		runBTN.Text = "Start Processing";
 		dotestrunBTN.Enabled = true;
 		dotestrunBTN.Text = "Test Options";
-		Text = "OPIPP 0.1.2-alpha - Open PIPP";
+		Text = "OPIPP 0.1.3-alpha - Open PIPP";
 		((Control)tabPage1).Enabled = true;
 		((Control)tabPage7).Enabled = true;
 		((Control)tabPage2).Enabled = true;
