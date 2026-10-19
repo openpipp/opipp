@@ -56,7 +56,16 @@ public sealed class Frame
     /// <summary>Frame index inside its source (0-based), used by progress and naming.</summary>
     public long Index { get; set; }
 
-    /// <summary>Source file the frame came from, if any.</summary>
+    /// <summary>
+    /// The file this frame came from, if any — a per-frame origin, not a per-run one.
+    /// </summary>
+    /// <remarks>
+    /// A joined input (<c>JoinedFrameSource</c>) reads several containers as one stream and stamps
+    /// every frame with the file it was actually read from, so a frame selected out of the second
+    /// input still names that input. The output writers read observer/telescope/instrument from this
+    /// path, which makes it the frame's capture identity as well as its file name. Retention keeps it
+    /// on the <see cref="RetainedFrame"/> handle across a spill, and the processing stages copy it.
+    /// </remarks>
     public string? SourceName { get; set; }
 
     public ref ushort this[int x, int y, int c = 0] => ref Samples[(y * Width + x) * Channels + c];

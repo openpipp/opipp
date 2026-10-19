@@ -174,6 +174,37 @@ public sealed class JoinedSourceTests
         }
     }
 
+    [Fact]
+    public void JoinedSource_StampsEachFrameWithTheFileItCameFrom()
+    {
+        string directory = CreateDirectory();
+        try
+        {
+            // Provenance is per frame, not per join: a selection can be built entirely from the second
+            // input, and the output header's identity fields are read from the file a frame names.
+            string[] files =
+            [
+                WriteSer(directory, "a.ser", frames: 2, seed: 10),
+                WriteSer(directory, "b.ser", frames: 1, seed: 20),
+                WriteSer(directory, "c.ser", frames: 2, seed: 30),
+            ];
+
+            using var joined = new JoinedFrameSource(files);
+
+            var origins = new List<string?>();
+            while (joined.ReadFrame() is { } frame)
+            {
+                origins.Add(frame.SourceName);
+            }
+
+            Assert.Equal(new[] { files[0], files[0], files[1], files[2], files[2] }, origins);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static string CreateDirectory()
     {
         string path = Path.Combine(Path.GetTempPath(), "opipp-join-" + Guid.NewGuid().ToString("N"));

@@ -217,6 +217,43 @@ public class FormatFailureContractTests
         }
     }
 
+    [Fact]
+    public void Run_WithARejectedSecondImageHeader_WritesNoFrameFromThatFile()
+    {
+        string dir = TempDir();
+        try
+        {
+            // Three valid-geometry image HDUs whose second header has BSCALE=0. The old scan caught
+            // the format error, stopped at HDU 2 and kept frame 1 of 3 as a "success".
+            string fits = RawFitsFixture.WriteThree(
+                Path.Combine(dir, "later-bscale.fits"),
+                FitsImageFault.SecondBScaleZero);
+            string outputDirectory = Path.Combine(dir, "out");
+
+            (int exitCode, string stdout, string stderr) = Run([
+                "-tif",
+                "-od=" + outputDirectory,
+                fits,
+            ]);
+
+            Assert.NotEqual(0, exitCode);
+            Assert.DoesNotContain("SUCCESS", stdout, StringComparison.Ordinal);
+            Assert.Contains("HDU 2", stderr, StringComparison.Ordinal);
+            Assert.Contains(fits, stderr, StringComparison.Ordinal);
+
+            // The truncation is gone: the reader refuses the file instead of yielding its first
+            // frame, so nothing from this input is presented as a complete conversion.
+            string[] written = Directory.Exists(outputDirectory)
+                ? Directory.GetFiles(outputDirectory, "*.tif", SearchOption.AllDirectories)
+                : [];
+            Assert.Empty(written);
+        }
+        finally
+        {
+            Delete(dir);
+        }
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Bayer phase conflict in a joined run
     // ---------------------------------------------------------------------------------------------

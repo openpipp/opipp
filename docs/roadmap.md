@@ -19,7 +19,7 @@ smoke-tested and published on GitHub Releases.
 ## Status and community
 
 Early development. The engine is functionally complete and parity-tested, the GUI is ported and fully
-managed, and 0.1.11-alpha is published - but surface tracking is not exact yet and the UI has not had
+managed, and 0.1.12-alpha is published - but surface tracking is not exact yet and the UI has not had
 broad real-world use. The project is being published now specifically to get feedback from people who
 image planets, not because it is finished.
 
@@ -45,8 +45,8 @@ continue that way. Claims in this file are expected to be backed by a test or a 
 | Build output excluded | `dist/`, `obj/`, `bin/` per project are git-ignored |
 | Secrets | none: no credentials, tokens or connection strings anywhere in the tree |
 | Tests runnable from a clone | yes - the 80 KB synthetic parity fixtures are committed |
-| CI | running on every push: build + 926 tests; parity stays out of CI because it needs the original binaries |
-| Next release | 0.1.11-alpha, a correctness patch (FITS 8-bit padding, CFA phase, partial-failure reporting, run-owned cleanup, preset support); then 0.2 with a user-facing final-image stacker |
+| CI | running on every push: build + 971 tests; parity stays out of CI because it needs the original binaries |
+| Next release | 0.2.0-alpha: final-image integration exposed in CLI and GUI (method, precision, selection, alignment, border policy, disk-backed median), with join and master building kept separate |
 
 ## Where the numbers come from
 
@@ -68,23 +68,25 @@ Weights are a judgement call, stated so they can be argued with.
 | Core image ops (stretch, flip, rotate, resize, bin, gain, gamma, mono, debayer, median) | stretch/flip/debayer/centring verified on real frames | 98 % | 15 % |
 | Calibration (dark, flat, flat-dark, masters) | `.tmp` master format recovered and byte-tested; save/load and `-flat_bayer` wired; `-flat_bayer` discard behaviour not proven | 96 % | 10 % |
 | Frame selection (`-q`, `-qmin/qmax/qinc`, `-chk/-ms`, `-qw`, `-incqv`, `-freject`) | default, Ninox and Histogram algorithms all match the engine | 97 % | 10 % |
-| Alignment (`-ctr`, tracking, `-ctrf`, stabilisation) | `-ctr` exact; **tracking 23/30 frames byte-identical** (engine algorithm ported; coarse stage not faithful) | 85 % | 10 % |
-| Stacking (mean/median, multi-file join) | engine mean (truncating) matched; `-join` wired | 70 % | 5 % |
+| Alignment (`-ctr`, tracking, `-ctrf`, stabilisation) | `-ctr` exact; **tracking 23/30 frames on one Saturn fixture** (engine algorithm ported; coarse stage not faithful); not a general accuracy figure | 85 % | 10 % |
+| Stacking (mean/sum/median, multi-file join) | arithmetic numerically tested; mean truncates at input depth; median retains at most 64 frames; final-image integration is a Core API only, not a CLI or GUI control | 70 % | 5 % |
 | Animation / GIF output | all `-anim_*` modes verified frame-for-frame | 95 % | 5 % |
 | Output layout, logs, exit codes, `-gui` stream | `-gui` stdout byte-identical across nine scenarios; logs and numbering exact | 99 % | 10 % |
 | GUI application | ported, fully managed, no `pipp_dll.dll`; start-up path guard | 92 % | 5 % |
 | **Weighted total** | | **≈ 94 %** | |
 
-The material algorithmic gap in scope is **surface tracking**: the algorithm is ported and scores 23/30 on the real
-Saturn fixture, with the remaining frames off by one pixel. Everything else is at or near exactness.
+The material algorithmic gap in scope is **surface tracking**: the algorithm is ported and scores 23/30 on one
+real Saturn fixture, with the remaining frames off by one pixel. That is a fixture-specific parity result, not a
+general accuracy percentage. The weighted total above is a planning estimate with judgement weights; the per-area
+notes, the test suite and the recorded parity cases are the evidence, and they are reported separately.
 
 ## Alpha
 
 | | |
 | --- | --- |
-| Artifact | `OPIPP-0.1.11-alpha-win-x64.zip` on [Releases](https://github.com/openpipp/opipp/releases) (self-contained win-x64, 52.4 MB) |
-| Provenance | `Version=0.1.11-alpha` in `Directory.Build.props`; window title `OPIPP 0.1.11-alpha - Open PIPP` |
-| Verified | 926 tests, parity 27 compared / 27 matched / 2 known differences / 0 gaps, CLI conversion of 30 real frames, GUI launch, no native DLL |
+| Artifact | `OPIPP-0.1.12-alpha-win-x64.zip` on [Releases](https://github.com/openpipp/opipp/releases) (self-contained win-x64, 52.4 MB) |
+| Provenance | `Version=0.1.12-alpha` in `Directory.Build.props`; window title `OPIPP 0.1.12-alpha - Open PIPP` |
+| Verified | 971 tests, parity 27 compared / 27 matched / 2 known differences / 0 gaps, CLI conversion of 30 real frames, GUI launch, no native DLL |
 | Notes | [`alpha.md`](alpha.md) |
 
 Rebuild with the two `dotnet publish` commands in `alpha.md`. `dist/` is git-ignored.
@@ -93,6 +95,7 @@ Rebuild with the two `dotnet publish` commands in `alpha.md`. `dist/` is git-ign
 
 | Version | What changed |
 | --- | --- |
+| 0.1.12-alpha | rejected later FITS IMAGE headers fail the file instead of truncating it, and `-check` shares the reader's constraints; joined stacks keep the identity of the source that actually contributed; site and roadmap separate runner results, parity and estimates |
 | 0.1.11-alpha | SER ColorID follows the transformed CFA phase; corrupt/truncated FITS and mixed-CFA joins fail controllably; `-check` audits every HDU; quality weights are storage-order invariant; final stacks keep identity metadata; pickers offer only supported formats |
 | 0.1.10-alpha | 8-bit FITS units are 2880-byte aligned; CFA phase survives flips/rotations/crops and debayered output carries none; explicit `-db=` overrides headers; partial failures exit non-zero and say so; `-check` writes nothing; cancelled runs delete only their own files; AVI presets write real files |
 | 0.1.9-alpha | FITS joins keep every image HDU; cached flat correction survives toggling and declined Quit; non-zero engine exits report failure; missing named masters fail instead of silently disabling calibration; master publication restores the previous pair on failure |
@@ -116,7 +119,7 @@ Rebuild with the two `dotnet publish` commands in `alpha.md`. `dist/` is git-ign
 | 4. Selection, alignment, stacking | **done except tracking exactness** |
 | 5. Animation and long tail | **done** — `-anim_*`, WinJUPOS, legacy AVI, RAW switches |
 | 6. GUI parity | **done** — managed, `LegacyNativeApi` deleted, `-gui` verified |
-| 7. Alpha build | **done** — 0.1.11-alpha published on GitHub Releases |
+| 7. Alpha build | **done** — 0.1.12-alpha published on GitHub Releases |
 
 ### Phase 4 remainder — tracking exactness
 
@@ -151,8 +154,8 @@ applies no shift, and Saturn reaches ≥28/30. Notes: [`../notes/tracking.md`](.
 
 ### 2026-10-18 — the reconstruction is named OPIPP, and the alpha ships
 
-Chosen over further parity work because the engine is functionally complete: 0.1.11-alpha is a working
-preview (926 tests, 27/27 compared parity), and shipping it makes the remaining gap concrete instead of
+Chosen over further parity work because the engine is functionally complete: 0.1.12-alpha is a working
+preview (971 tests, 27/27 compared parity), and shipping it makes the remaining gap concrete instead of
 theoretical. Tracking at 23/30 is documented in the release notes rather than hidden.
 
 ### 2026-10-18 — coarse stage disabled until its reference capture is faithful

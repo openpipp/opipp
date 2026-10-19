@@ -164,7 +164,9 @@ public sealed class FrameStacker
     /// The stacker copies samples before retaining them, so the caller may reuse or mutate
     /// <paramref name="frame"/> after this call without affecting the stack. The caller's buffers are
     /// never written to. The first non-empty <see cref="Frame.SourceName"/> is remembered for
-    /// <see cref="Result"/> (see its provenance rule).
+    /// <see cref="Result"/> (see its provenance rule). The name is the frame's own origin, not the
+    /// run's: a frame read from the second input of a joined stream names that input, so the master
+    /// describes the capture whose frames were actually accepted.
     /// </remarks>
     /// <exception cref="ArgumentException">Geometry or depth does not match the stacker.</exception>
     /// <exception cref="MedianFrameLimitException">Median mode exceeded its frame cap.</exception>
@@ -226,13 +228,18 @@ public sealed class FrameStacker
     /// <param name="cancellationToken">Checked periodically while the result is computed.</param>
     /// <remarks>
     /// <b>Provenance.</b> The result carries the <see cref="Frame.SourceName"/> of the first accepted
-    /// frame that had one; frames without provenance are skipped. The SER writer reads Observer,
-    /// Telescope and Instrument from the named capture, so the master keeps the selected frames'
-    /// identity metadata instead of writing empty fields. If accepted frames name different sources
-    /// whose metadata disagree, the first such frame's values win: one output header can describe one
-    /// capture, and mixing fields from several captures would invent an observer/instrument pair that
-    /// never existed. Identity metadata is not part of the pixel combination, so the rule is
-    /// independent of stack method.
+    /// frame that had one; frames without provenance are skipped. "Accepted" is <see cref="Add"/>
+    /// order, which is the order frames are delivered for combining: with quality selection the
+    /// pipeline ranks by score first, so the best-ranked frame's origin wins. Each frame's name is its
+    /// own file, so a joined run that contributed only frames from its second input reports that
+    /// input's capture; a joined run that contributed frames from several inputs reports the first
+    /// delivered (best-ranked) frame's capture. The SER writer reads Observer, Telescope and
+    /// Instrument from the named capture, so the master keeps the selected frames' identity metadata
+    /// instead of writing empty fields. If accepted frames name different sources whose metadata
+    /// disagree, the first such frame's values win: one output header can describe one capture, and
+    /// mixing fields from several captures would invent an observer/instrument pair that never
+    /// existed. Identity metadata is not part of the pixel combination, so the rule is independent of
+    /// stack method.
     /// </remarks>
     /// <exception cref="InvalidOperationException">No frames were added.</exception>
     public Frame Result(CancellationToken cancellationToken = default)

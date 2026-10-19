@@ -5,11 +5,11 @@ produce every figure on this page.
 
 | | |
 |---|---|
-| Version | `0.1.11-alpha` at the tagged commit |
+| Version | `0.1.12-alpha` at the tagged commit |
 | SDK | .NET 10.0.402 (local `~/.dotnet-sdk`) |
-| Tests | **926 tests, 0 failing** across nine projects (2 skip when the non-redistributable Saturn fixture is absent) |
+| Tests | **971 tests, 0 failing** across nine projects (2 skip when the non-redistributable Saturn fixture is absent) |
 | Parity | **27 compared, 27 matched, 2 deliberate differences, 0 gaps, 0 failed** |
-| Release | `v0.1.11-alpha`, Windows x64 zip, self-contained |
+| Release | `v0.1.12-alpha`, Windows x64 zip, self-contained |
 | History | [`journal.md`](journal.md) — dated findings, superseded details |
 
 ```bash
@@ -28,6 +28,10 @@ dotnet run --project tools/Opipp.Parity -- --real
 - Master creation (dark, flat-dark, flat) reads and writes the engine's `.tmp` masters, subtracts a
   flat-dark exactly once, keeps RGB masters three-channel, is cancellable, and publishes nothing when
   a build fails.
+- A later FITS IMAGE header that the reader rejects fails the file with the HDU named; it is never
+  silently skipped, and `-check` applies the same constraint set as the reader.
+- Joined stacks report the identity of the source that actually contributed the selected frames,
+  independently of input order.
 - Raw SER output describes the frame it actually contains: the ColorID follows the transformed CFA
   phase (all four patterns, flips, rotations, odd crops and odd translations) and binning/resize write
   mono. A mixed-phase sequence fails with a controlled error instead of a lying header.

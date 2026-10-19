@@ -476,7 +476,9 @@ internal static class Program
     /// <summary>
     /// Names every input the pipeline could not read. A joined run records its one unit under the
     /// first input's name, so the inputs are re-walked here (only on the failure path) to name the
-    /// file that actually failed and keep the diagnostic useful.
+    /// file that actually failed and keep the diagnostic useful. A batch run re-opens each failed
+    /// input for the same reason: the report carries paths, not the reader's message (which is
+    /// where a FITS fault names its HDU).
     /// </summary>
     private static IReadOnlyList<FailedInput> ResolveFailedInputs(
         ProcessingReport report,
@@ -527,9 +529,32 @@ internal static class Program
             }
         }
 
-        return report.FailedFiles
-            .Select(file => new FailedInput(file, "could not be opened or decoded"))
-            .ToArray();
+        // The report records failed paths only. Re-open each one (failure path only) so the
+        // diagnostic keeps the reader's message — including a FITS HDU number — instead of falling
+        // back to a generic reason that hides why the input was refused.
+        var failures = new List<FailedInput>(report.FailedFiles.Count);
+        foreach (string file in report.FailedFiles)
+        {
+            try
+            {
+                using IFrameSource source = FrameSourceFactory.Open(file, settings.SerBitDepth);
+                while (source.ReadFrame() is not null)
+                {
+                }
+
+                failures.Add(new FailedInput(file, "could not be opened or decoded"));
+            }
+            catch (Exception ex) when (FailureClassifier.IsControlled(ex))
+            {
+                failures.Add(new FailedInput(file, ex.Message, CouldNotOpen: false));
+            }
+            catch (Exception ex) when (FailureClassifier.IsLastResort(ex))
+            {
+                failures.Add(new FailedInput(file, DescribeException(ex), CouldNotOpen: false));
+            }
+        }
+
+        return failures;
     }
 
     /// <summary>

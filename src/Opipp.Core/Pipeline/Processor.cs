@@ -680,7 +680,17 @@ public sealed class Processor
                     inputFrames++;
                     index++;
                     raw.Index = index - 1;
-                    raw.SourceName = unit.Name;
+                    // Provenance follows the frame, not the unit. A joined stream mixes several
+                    // captures in one stream, and JoinedFrameSource stamps every frame with the file
+                    // it was actually read from, so overwriting here with the unit name (named after
+                    // files[0]) would make a stack selected from the second input claim the first
+                    // input's capture identity. Every other source is exactly one container, and the
+                    // name the unit was opened under is its authoritative origin: readers record only
+                    // a bare file name, which would not resolve for the output header lookup.
+                    if (source is not JoinedFrameSource)
+                    {
+                        raw.SourceName = unit.Name;
+                    }
 
                     if (index - 1 < window.Start)
                     {
@@ -2551,6 +2561,7 @@ public sealed class JoinedFrameSource : IFrameSource
 
     private IFrameSource? _current;
     private int _next;
+    private int _currentIndex;
 
     /// <summary>Test seam: wraps reader creation so a test can observe how many are open at once.</summary>
     internal static Func<string, int?, IFrameSource>? OpenForTests;
@@ -2564,6 +2575,14 @@ public sealed class JoinedFrameSource : IFrameSource
     /// long joined PNG sequence hold every compressed payload at once, before frame retention could
     /// help. Frame counts are read without retaining readers, at the cost of one header pass for
     /// multi-frame containers.
+    /// </para>
+    /// <para>
+    /// <b>Per-frame provenance.</b> A joined stream is the only source whose frames come from more
+    /// than one capture, so <see cref="ReadFrame"/> stamps every frame with the path of the file it
+    /// was read from (<see cref="Frame.SourceName"/>), not with the file that names the join. That
+    /// origin survives transformation, retention/spill and quality selection, so a stacked master
+    /// reports the capture whose frames actually contributed: selecting only frames from the second
+    /// input yields the second input's observer/telescope/instrument metadata.
     /// </remarks>
     public JoinedFrameSource(IEnumerable<string> files, int? serBitDepthOverride = null)
     {
@@ -2592,6 +2611,7 @@ public sealed class JoinedFrameSource : IFrameSource
             _bitDepth = _current.BitDepth;
             _bayer = _current.Bayer;
             _next = 1;
+            _currentIndex = 0;
         }
         catch
         {
@@ -2631,6 +2651,10 @@ public sealed class JoinedFrameSource : IFrameSource
             Frame? frame = _current.ReadFrame();
             if (frame is not null)
             {
+                // Provenance is per frame: the file this frame was actually read from, not the file
+                // that names the join. A joined selection can come entirely from the second input,
+                // and the output header's observer/telescope/instrument are read from this path.
+                frame.SourceName = _files[_currentIndex];
                 return frame;
             }
 
@@ -2642,6 +2666,7 @@ public sealed class JoinedFrameSource : IFrameSource
                 return null;
             }
 
+            _currentIndex = _next;
             _current = Open(_files[_next++]);
         }
     }

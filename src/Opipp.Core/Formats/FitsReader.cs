@@ -13,6 +13,242 @@ public enum FitsTruncationMode
     ZeroFill = 1,
 }
 
+/// <summary>Geometry and sample mapping of one supported FITS image HDU.</summary>
+/// <param name="Width">NAXIS1.</param>
+/// <param name="Height">NAXIS2.</param>
+/// <param name="Channels">1 for a single plane, 3 for an RGB cube.</param>
+/// <param name="BitPix">FITS BITPIX value (8, 16, 32, 64, -32 or -64).</param>
+/// <param name="BZero">BZERO (0 when absent).</param>
+/// <param name="BScale">BSCALE (1 when absent).</param>
+public sealed record FitsImageSpec(
+    int Width,
+    int Height,
+    int Channels,
+    int BitPix,
+    double BZero,
+    double BScale);
+
+/// <summary>
+/// The single decision point for which FITS IMAGE header this engine can decode.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A supported image is NAXIS 2 or 3 with a supported BITPIX, positive dimensions that fit one
+/// frame, a single plane or three RGB planes, a finite BZERO and a finite non-zero BSCALE, and
+/// PCOUNT = 0 / GCOUNT = 1 so the pixel payload is exactly the NAXIS product. The declared data
+/// section length must match that product.
+/// </para>
+/// <para>
+/// <see cref="FitsReader"/> and the CLI's whole-file <c>FitsHduAudit</c> both call
+/// <see cref="Validate"/>/<see cref="Require"/> and <see cref="DeclaredDataBytes"/>, so a header a
+/// processing run rejects can never be reported as valid by <c>-check</c>, and neither can drift
+/// from the other as keywords are added.
+/// </para>
+/// </remarks>
+public static class FitsImageConstraints
+{
+    /// <summary>True when the header declares an image: a SIMPLE primary or IMAGE extension with NAXIS 2+.</summary>
+    /// <param name="header">Parsed header.</param>
+    public static bool IsImageHdu(FitsHeader header)
+    {
+        ArgumentNullException.ThrowIfNull(header);
+        bool simple = header.GetLogical("SIMPLE") == true;
+        string? extension = header.GetString("XTENSION")?.Trim();
+        bool imageExtension = extension is not null
+            && extension.Equals("IMAGE", StringComparison.OrdinalIgnoreCase);
+
+        return (simple || imageExtension) && header.GetInteger("NAXIS") >= 2;
+    }
+
+    /// <summary>
+    /// Exact payload length the header declares: the product of every NAXISn axis, plus the
+    /// random-groups PCOUNT, times GCOUNT and bytes per value. One implementation so the reader and
+    /// the audit agree on where the next HDU starts.
+    /// </summary>
+    /// <param name="header">Parsed header.</param>
+    /// <exception cref="FitsFormatException">NAXIS is impossible or an axis is negative.</exception>
+    /// <exception cref="OverflowException">The byte count does not fit a 64-bit integer.</exception>
+    public static long DeclaredDataBytes(FitsHeader header)
+    {
+        ArgumentNullException.ThrowIfNull(header);
+        int naxis = header.GetInt32("NAXIS", 0);
+        if (naxis <= 0)
+        {
+            return 0;
+        }
+
+        if (naxis > 999)
+        {
+            throw new FitsFormatException($"Invalid FITS NAXIS value {naxis}.");
+        }
+
+        long count = 1;
+        for (int axis = 1; axis <= naxis; axis++)
+        {
+            long length = header.GetInteger(
+                "NAXIS" + axis.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? 0;
+            if (length < 0)
+            {
+                throw new FitsFormatException(
+                    $"Negative FITS NAXIS{axis.ToString(System.Globalization.CultureInfo.InvariantCulture)} value {length}.");
+            }
+
+            count = checked(count * length);
+        }
+
+        long pcount = header.GetInteger("PCOUNT") ?? 0;
+        long gcount = header.GetInteger("GCOUNT") ?? 1;
+        if (pcount < 0)
+        {
+            pcount = 0;
+        }
+
+        if (gcount <= 0)
+        {
+            gcount = 1;
+        }
+
+        long bitPix = header.GetInteger("BITPIX") ?? 8;
+        long bytesPerValue = bitPix == 0 ? 1 : Math.Abs(bitPix) / 8;
+        return checked((count + pcount) * gcount * bytesPerValue);
+    }
+
+    /// <summary>
+    /// Every reason <paramref name="header"/> cannot be decoded as an image, in a stable order;
+    /// empty when the header is acceptable. Messages do not name the HDU, so the caller can prefix
+    /// its own numbering.
+    /// </summary>
+    /// <param name="header">Parsed image header.</param>
+    /// <param name="declaredDataBytes">Value returned by <see cref="DeclaredDataBytes"/> for this header.</param>
+    public static IReadOnlyList<string> Validate(FitsHeader header, long declaredDataBytes)
+    {
+        ArgumentNullException.ThrowIfNull(header);
+        var errors = new List<string>();
+
+        int naxis = header.GetInt32("NAXIS", 0);
+        if (naxis is < 2 or > 3)
+        {
+            errors.Add($"image NAXIS={naxis} is not supported; only 2-D and 3-D images are accepted.");
+            return errors;
+        }
+
+        long bitPix = header.GetInteger("BITPIX") ?? 0;
+        bool bitPixSupported = bitPix is 8 or 16 or 32 or 64 or -32 or -64;
+        if (!bitPixSupported)
+        {
+            errors.Add($"unsupported image BITPIX value {bitPix}.");
+        }
+
+        long width = header.GetInteger("NAXIS1") ?? 0;
+        long height = header.GetInteger("NAXIS2") ?? 0;
+        if (width <= 0 || height <= 0 || width > int.MaxValue || height > int.MaxValue)
+        {
+            errors.Add($"invalid image dimensions {width} x {height}.");
+            return errors;
+        }
+
+        long depth = header.GetInteger("NAXIS3") ?? 1;
+        if (depth is not (1 or 3))
+        {
+            errors.Add($"NAXIS3={depth} is not supported; only 1 plane or 3 RGB planes are accepted.");
+            return errors;
+        }
+
+        int channels = depth == 3 ? 3 : 1;
+        long sampleCount;
+        try
+        {
+            sampleCount = checked(width * height * channels);
+        }
+        catch (OverflowException)
+        {
+            errors.Add($"image {width} x {height} with {channels} channel(s) is too large for a single frame.");
+            return errors;
+        }
+
+        if (sampleCount > int.MaxValue)
+        {
+            errors.Add($"image is too large for a single frame ({sampleCount} samples).");
+            return errors;
+        }
+
+        double bZero = header.GetReal("BZERO") ?? 0.0;
+        if (!double.IsFinite(bZero))
+        {
+            errors.Add($"BZERO={bZero} is not a finite number.");
+        }
+
+        double bScale = header.GetReal("BSCALE") ?? 1.0;
+        if (!double.IsFinite(bScale))
+        {
+            errors.Add($"BSCALE={bScale} is not a finite number.");
+        }
+        else if (bScale == 0.0)
+        {
+            errors.Add("BSCALE cannot be zero.");
+        }
+
+        long pcount = header.GetInteger("PCOUNT") ?? 0;
+        long gcount = header.GetInteger("GCOUNT") ?? 1;
+        if (pcount != 0)
+        {
+            errors.Add(
+                $"PCOUNT={pcount} is not supported for an image HDU; the payload must be exactly the NAXIS pixels.");
+        }
+
+        if (gcount != 1)
+        {
+            errors.Add($"GCOUNT={gcount} is not supported for an image HDU; one group per HDU is expected.");
+        }
+
+        if (errors.Count == 0 && bitPixSupported)
+        {
+            long expected;
+            try
+            {
+                expected = checked(sampleCount * (Math.Abs(bitPix) / 8));
+            }
+            catch (OverflowException)
+            {
+                errors.Add("the image payload size overflows a 64-bit byte count.");
+                return errors;
+            }
+
+            if (declaredDataBytes != expected)
+            {
+                errors.Add(
+                    $"the data section is {declaredDataBytes} bytes but the NAXIS/BITPIX geometry needs {expected}.");
+            }
+        }
+
+        return errors;
+    }
+
+    /// <summary>
+    /// Returns the validated geometry of an image header, or throws with every violation joined
+    /// into one message.
+    /// </summary>
+    /// <param name="header">Parsed image header.</param>
+    /// <param name="declaredDataBytes">Value returned by <see cref="DeclaredDataBytes"/> for this header.</param>
+    /// <exception cref="FitsFormatException">The header is not a supported image.</exception>
+    public static FitsImageSpec Require(FitsHeader header, long declaredDataBytes)
+    {
+        IReadOnlyList<string> errors = Validate(header, declaredDataBytes);
+        if (errors.Count > 0)
+        {
+            throw new FitsFormatException(string.Join(" ", errors));
+        }
+
+        return new FitsImageSpec(
+            (int)(header.GetInteger("NAXIS1") ?? 0),
+            (int)(header.GetInteger("NAXIS2") ?? 0),
+            (header.GetInteger("NAXIS3") ?? 1) == 3 ? 3 : 1,
+            (int)(header.GetInteger("BITPIX") ?? 0),
+            (header.GetReal("BZERO") ?? 0.0) + 0.0,
+            header.GetReal("BSCALE") ?? 1.0);
+    }
+}
+
 /// <summary>
 /// Reads the first image HDU (and any following image extensions of the same shape) from a FITS file.
 /// </summary>
@@ -36,9 +272,12 @@ public enum FitsTruncationMode
 /// </list>
 /// <para>
 /// Colour data (NAXIS = 3 with NAXIS3 = 3) is stored plane-major in the file and is returned as
-/// interleaved RGB in <see cref="Frame.Samples"/>. Extra HDUs before the first image HDU are skipped;
-/// an incomplete final 2880-byte data pad is tolerated, while a short pixel payload is reported through
-/// <see cref="IsTruncated"/> and, by default, throws on read. BAYOFFX/BAYOFFY are parsed and exposed on
+/// interleaved RGB in <see cref="Frame.Samples"/>. Non-image HDUs before the first image HDU are
+/// skipped; an incomplete final 2880-byte data pad is tolerated, while a short pixel payload is reported through
+/// <see cref="IsTruncated"/> and, by default, throws on read. A later IMAGE header the reader cannot
+/// decode is a hard error naming its HDU: silently stopping there dropped the valid frames after it
+/// while the run still reported success.
+/// BAYOFFX/BAYOFFY are parsed and exposed on
 /// the reader, but <see cref="Frame"/> has no offset field, so they do not alter the sample buffer.
 /// </para>
 /// </remarks>
@@ -253,10 +492,11 @@ public sealed class FitsReader : IFrameSource
     private void Scan(long length)
     {
         long position = 0;
-        bool firstHdu = true;
+        int hdu = 0;
 
         while (position + FitsCard.CardSize <= length)
         {
+            int number = hdu + 1;
             _stream.Position = position;
             FitsHeader header;
             int headerBytes;
@@ -264,30 +504,43 @@ public sealed class FitsReader : IFrameSource
             {
                 header = FitsHeader.Read(_stream, out headerBytes);
             }
-            catch (FitsFormatException) when (!firstHdu)
+            catch (FitsFormatException ex)
             {
-                // Trailing zero padding or an unsupported extra HDU: stop scanning.
-                break;
+                // A zero-filled tail is FITS padding after the last HDU. Anything else is a header
+                // the reader cannot walk, and stopping there would silently drop every frame after
+                // it, so name the HDU and fail the open instead.
+                if (number > 1 && IsZeroPadding(_stream, position, length))
+                {
+                    break;
+                }
+
+                throw new FitsFormatException(
+                    $"HDU {number} at offset {position} cannot be parsed: {ex.Message}", ex);
             }
 
+            hdu = number;
             long dataStart = position + headerBytes;
             long dataBytes;
             ImageHdu? image = null;
             try
             {
-                dataBytes = ComputeDataBytes(header);
-                if (IsImageHdu(header))
+                dataBytes = FitsImageConstraints.DeclaredDataBytes(header);
+                if (FitsImageConstraints.IsImageHdu(header))
                 {
-                    image = CreateImageHdu(header, dataStart, dataBytes, length);
+                    FitsImageSpec spec = FitsImageConstraints.Require(header, dataBytes);
+                    image = CreateImageHdu(header, spec, dataStart, length);
                 }
             }
-            catch (FitsFormatException) when (!firstHdu)
+            catch (FitsFormatException ex)
             {
-                break;
+                // Never swallow this for a later HDU: a rejected second IMAGE header used to stop
+                // the scan and leave a valid third frame unread while the CLI reported SUCCESS.
+                throw new FitsFormatException($"HDU {number}: {ex.Message}", ex);
             }
-            catch (OverflowException) when (!firstHdu)
+            catch (OverflowException ex)
             {
-                break;
+                throw new FitsFormatException(
+                    $"HDU {number}: the header's data section overflows a 64-bit byte count.", ex);
             }
 
             if (image is not null)
@@ -300,15 +553,15 @@ public sealed class FitsReader : IFrameSource
                 }
             }
 
-            firstHdu = false;
             long padded;
             try
             {
                 padded = RoundUp(dataBytes, FitsCard.BlockSize);
             }
-            catch (OverflowException) when (!firstHdu)
+            catch (OverflowException ex)
             {
-                break;
+                throw new FitsFormatException(
+                    $"HDU {number}: the data block end offset overflows a 64-bit file position.", ex);
             }
 
             long next = dataStart + padded;
@@ -326,71 +579,13 @@ public sealed class FitsReader : IFrameSource
         }
     }
 
-    private static bool IsImageHdu(FitsHeader header)
+    private static ImageHdu CreateImageHdu(
+        FitsHeader header,
+        FitsImageSpec spec,
+        long dataStart,
+        long fileLength)
     {
-        bool simple = header.GetLogical("SIMPLE") == true;
-        string? xtension = header.GetString("XTENSION")?.Trim();
-        bool imageExtension = xtension is not null
-            && xtension.Equals("IMAGE", StringComparison.OrdinalIgnoreCase);
-
-        if (!simple && !imageExtension)
-        {
-            return false;
-        }
-
-        return header.GetInteger("NAXIS") >= 2;
-    }
-
-    private static ImageHdu CreateImageHdu(FitsHeader header, long dataStart, long dataBytes, long fileLength)
-    {
-        int naxis = header.GetInt32("NAXIS", 0);
-        if (naxis > 3)
-        {
-            throw new FitsFormatException($"FITS NAXIS={naxis} cubes with more than 3 axes are not supported.");
-        }
-
-        long width = header.GetInteger("NAXIS1") ?? 0;
-        long height = header.GetInteger("NAXIS2") ?? 0;
-        long depth = header.GetInteger("NAXIS3") ?? 1;
-        long bitPixValue = header.GetInteger("BITPIX") ?? 0;
-
-        if (width <= 0 || height <= 0 || width > int.MaxValue || height > int.MaxValue)
-        {
-            throw new FitsFormatException($"Invalid FITS image dimensions {width} x {height}.");
-        }
-
-        if (bitPixValue is not (8 or 16 or 32 or 64 or -32 or -64))
-        {
-            throw new FitsFormatException($"Unsupported FITS BITPIX value {bitPixValue}.");
-        }
-
-        int channels = depth switch
-        {
-            1 => 1,
-            3 => 3,
-            _ => throw new FitsFormatException(
-                $"FITS NAXIS3={depth} is not supported; only single-plane or 3-plane RGB images are accepted."),
-        };
-
-        long sampleCount = checked(width * height * channels);
-        if (sampleCount > int.MaxValue)
-        {
-            throw new FitsFormatException(
-                $"FITS image is too large for a single frame ({sampleCount} samples).");
-        }
-
-        long dataBytesExact = checked(sampleCount * (Math.Abs((int)bitPixValue) / 8));
-        if (dataBytesExact != dataBytes)
-        {
-            throw new FitsFormatException("FITS image dimensions do not match the data section size.");
-        }
-
-        double bZero = (header.GetReal("BZERO") ?? 0.0) + 0.0;
-        double bScale = header.GetReal("BSCALE") ?? 1.0;
-        if (bScale == 0.0)
-        {
-            throw new FitsFormatException("BSCALE cannot be zero.");
-        }
+        long dataBytesExact = checked((long)spec.Width * spec.Height * spec.Channels * (Math.Abs(spec.BitPix) / 8));
 
         bool truncated = dataStart + dataBytesExact > fileLength;
         string? truncationMessage = truncated
@@ -403,12 +598,12 @@ public sealed class FitsReader : IFrameSource
             Header = header,
             DataOffset = dataStart,
             DataBytes = dataBytesExact,
-            Width = (int)width,
-            Height = (int)height,
-            Channels = channels,
-            BitPix = (int)bitPixValue,
-            BZero = bZero,
-            BScale = bScale,
+            Width = spec.Width,
+            Height = spec.Height,
+            Channels = spec.Channels,
+            BitPix = spec.BitPix,
+            BZero = spec.BZero,
+            BScale = spec.BScale,
             Bayer = ParseBayer(header),
             BayerOffsetX = (int)(header.GetInteger("BAYOFFX") ?? -1),
             BayerOffsetY = (int)(header.GetInteger("BAYOFFY") ?? -1),
@@ -435,46 +630,33 @@ public sealed class FitsReader : IFrameSource
         };
     }
 
-    private static long ComputeDataBytes(FitsHeader header)
+    /// <summary>True when every byte in <c>[start, end)</c> is zero (FITS block padding).</summary>
+    private static bool IsZeroPadding(Stream stream, long start, long end)
     {
-        int naxis = header.GetInt32("NAXIS", 0);
-        if (naxis <= 0)
+        var buffer = new byte[512];
+        stream.Position = start;
+        long remaining = end - start;
+        while (remaining > 0)
         {
-            return 0;
-        }
-
-        if (naxis > 999)
-        {
-            throw new FitsFormatException($"Invalid FITS NAXIS value {naxis}.");
-        }
-
-        long count = 1;
-        for (int axis = 1; axis <= naxis; axis++)
-        {
-            long length = header.GetInteger("NAXIS" + axis.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? 0;
-            if (length < 0)
+            int wanted = (int)Math.Min(buffer.Length, remaining);
+            int read = stream.Read(buffer, 0, wanted);
+            if (read <= 0)
             {
-                throw new FitsFormatException($"Negative FITS NAXIS{axis} value {length}.");
+                return true;
             }
 
-            count = checked(count * length);
+            for (int i = 0; i < read; i++)
+            {
+                if (buffer[i] != 0)
+                {
+                    return false;
+                }
+            }
+
+            remaining -= read;
         }
 
-        long pcount = header.GetInteger("PCOUNT") ?? 0;
-        long gcount = header.GetInteger("GCOUNT") ?? 1;
-        if (pcount < 0)
-        {
-            pcount = 0;
-        }
-
-        if (gcount <= 0)
-        {
-            gcount = 1;
-        }
-
-        int bitPix = (int)(header.GetInteger("BITPIX") ?? 8);
-        long bytesPerValue = bitPix == 0 ? 1 : Math.Abs((long)bitPix) / 8;
-        return checked((count + pcount) * gcount * bytesPerValue);
+        return true;
     }
 
     private static ushort[] ConvertSamples(byte[] buffer, int availableBytes, ImageHdu image, int sampleCount)

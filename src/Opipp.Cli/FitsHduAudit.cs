@@ -8,12 +8,16 @@ namespace Opipp.Cli;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The frame reader decodes one HDU per <c>ReadFrame</c> call and stops scanning silently at a
-/// malformed trailing HDU, so reading "the first frame" cannot tell a valid one-HDU file from a
-/// file whose later HDU is truncated. This audit walks the whole header chain instead: it parses
-/// every 2880-byte header block, recomputes the data offset and exact payload length from the
-/// header keywords, and verifies the payload is present. No pixel sample is decoded, so the cost is
-/// proportional to the number of HDUs, not to the file's pixel count.
+/// The frame reader decodes one HDU per <c>ReadFrame</c> call, so reading "the first frame" cannot
+/// tell a valid one-HDU file from a file whose later HDU is truncated. This audit walks the whole
+/// header chain instead: it parses every 2880-byte header block, recomputes the data offset and
+/// exact payload length from the header keywords, and verifies the payload is present. No pixel
+/// sample is decoded, so the cost is proportional to the number of HDUs, not to the file's pixel count.
+/// </para>
+/// <para>
+/// Which IMAGE headers are acceptable is not decided here: every image HDU is checked with
+/// <see cref="FitsImageConstraints.Validate"/>, the same code <see cref="FitsReader"/> uses, so
+/// <c>-check</c> cannot pass a header that a processing run rejects (and vice versa).
 /// </para>
 /// <para>
 /// A short all-zero tail is legal FITS padding and is ignored. A short non-zero tail is reported:
@@ -28,8 +32,6 @@ internal static class FitsHduAudit
     /// <param name="ImageHduCount">Number of those HDUs that declare an image.</param>
     /// <param name="Errors">Structural problems, most severe first; empty when the file is sound.</param>
     internal sealed record Result(int HduCount, int ImageHduCount, IReadOnlyList<string> Errors);
-
-    private static readonly long[] SupportedBitPix = [8, 16, 32, 64, -32, -64];
 
     /// <summary>Walks every HDU in <paramref name="path"/> and reports structural problems.</summary>
     /// <exception cref="IOException">The file cannot be opened or read.</exception>
@@ -89,7 +91,7 @@ internal static class FitsHduAudit
             long dataBytes;
             try
             {
-                dataBytes = ComputeDataBytes(header);
+                dataBytes = FitsImageConstraints.DeclaredDataBytes(header);
             }
             catch (FitsFormatException ex)
             {
@@ -117,7 +119,7 @@ internal static class FitsHduAudit
             bool image;
             try
             {
-                image = IsImageHdu(header);
+                image = FitsImageConstraints.IsImageHdu(header);
             }
             catch (FitsFormatException ex)
             {
@@ -130,7 +132,7 @@ internal static class FitsHduAudit
                 imageCount++;
                 try
                 {
-                    errors.AddRange(ValidateImageHeader(header, hduCount));
+                    errors.AddRange(ValidateImageHeader(header, dataBytes, hduCount));
                 }
                 catch (FitsFormatException ex)
                 {
@@ -166,92 +168,18 @@ internal static class FitsHduAudit
         return new Result(hduCount, imageCount, errors);
     }
 
-    private static IEnumerable<string> ValidateImageHeader(FitsHeader header, int hdu)
-    {
-        int naxis = header.GetInt32("NAXIS", 0);
-        if (naxis is < 2 or > 3)
-        {
-            yield return $"HDU {hdu}: image NAXIS={naxis} is not supported; only 2-D and 3-D images are accepted.";
-            yield break;
-        }
-
-        long bitPix = header.GetInteger("BITPIX") ?? 0;
-        if (!SupportedBitPix.Contains(bitPix))
-        {
-            yield return $"HDU {hdu}: unsupported image BITPIX value {bitPix}.";
-        }
-
-        long width = header.GetInteger("NAXIS1") ?? 0;
-        long height = header.GetInteger("NAXIS2") ?? 0;
-        if (width <= 0 || height <= 0)
-        {
-            yield return $"HDU {hdu}: invalid image dimensions {width} x {height}.";
-            yield break;
-        }
-
-        long depth = header.GetInteger("NAXIS3") ?? 1;
-        if (depth is not (1 or 3))
-        {
-            yield return $"HDU {hdu}: NAXIS3={depth} is not supported; only 1 plane or 3 RGB planes are accepted.";
-        }
-    }
-
-    private static bool IsImageHdu(FitsHeader header)
-    {
-        bool simple = header.GetLogical("SIMPLE") == true;
-        string? extension = header.GetString("XTENSION")?.Trim();
-        bool imageExtension = extension is not null &&
-                              extension.Equals("IMAGE", StringComparison.OrdinalIgnoreCase);
-        return (simple || imageExtension) && header.GetInteger("NAXIS") >= 2;
-    }
-
     /// <summary>
-    /// Exact payload length declared by the header: the product of every NAXISn axis, plus the
-    /// random-groups PCOUNT, times GCOUNT and bytes per value. Mirrors the reader's arithmetic so
-    /// the audit and a real decode agree on what "the data block" is.
+    /// Reports every reason this image header cannot be decoded. The rules themselves live in
+    /// <see cref="FitsImageConstraints.Validate"/> — the same call the frame reader makes — so
+    /// <c>-check</c> and a processing run can never disagree about a header.
     /// </summary>
-    private static long ComputeDataBytes(FitsHeader header)
+    private static IEnumerable<string> ValidateImageHeader(FitsHeader header, long dataBytes, int hdu)
     {
-        int naxis = header.GetInt32("NAXIS", 0);
-        if (naxis <= 0)
+        IReadOnlyList<string> problems = FitsImageConstraints.Validate(header, dataBytes);
+        foreach (string problem in problems)
         {
-            return 0;
+            yield return $"HDU {hdu}: {problem}";
         }
-
-        if (naxis > 999)
-        {
-            throw new FitsFormatException($"Invalid FITS NAXIS value {naxis}.");
-        }
-
-        long count = 1;
-        for (int axis = 1; axis <= naxis; axis++)
-        {
-            long axisLength = header.GetInteger(
-                "NAXIS" + axis.ToString(CultureInfo.InvariantCulture)) ?? 0;
-            if (axisLength < 0)
-            {
-                throw new FitsFormatException(
-                    $"Negative FITS NAXIS{axis.ToString(CultureInfo.InvariantCulture)} value {axisLength}.");
-            }
-
-            count = checked(count * axisLength);
-        }
-
-        long pcount = header.GetInteger("PCOUNT") ?? 0;
-        long gcount = header.GetInteger("GCOUNT") ?? 1;
-        if (pcount < 0)
-        {
-            pcount = 0;
-        }
-
-        if (gcount <= 0)
-        {
-            gcount = 1;
-        }
-
-        long bitPix = header.GetInteger("BITPIX") ?? 8;
-        long bytesPerValue = bitPix == 0 ? 1 : Math.Abs(bitPix) / 8;
-        return checked((count + pcount) * gcount * bytesPerValue);
     }
 
     private static long RoundUp(long bytes, long block)

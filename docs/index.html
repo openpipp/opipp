@@ -68,6 +68,10 @@
   .note{border-left:3px solid var(--accent);padding:10px 14px;background:#0b1424;border-radius:0 8px 8px 0;color:var(--muted)}
   .tag{display:inline-block;font-size:.75rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 9px;margin:0 6px 6px 0}
   @media (max-width:640px){ .bar{grid-template-columns:1fr;gap:6px} .bar .pct{text-align:left} }
+  .evid{width:100%;border-collapse:collapse;margin:6px 0 6px;font-size:.92rem}
+  .evid th{text-align:left;color:var(--muted);font-weight:600;padding:9px 12px;border-bottom:1px solid var(--line)}
+  .evid td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink)}
+  .evid td:first-child{color:var(--accent);white-space:nowrap}
 </style>
 </head>
 <body>
@@ -84,7 +88,7 @@
   <div class="cta">
     <a class="btn primary" href="https://github.com/openpipp/opipp/releases">Download for Windows</a>
     <a class="btn ghost" href="https://github.com/openpipp/opipp">Source on GitHub</a>
-    <span class="pill">0.1.11-alpha</span>
+    <span class="pill">0.1.12-alpha</span>
     <span class="pill">GPLv3</span>
     <span class="pill">Windows x64 · self-contained</span>
   </div>
@@ -92,27 +96,37 @@
 
 <section id="status">
   <h2><span class="num">01</span>Where it stands</h2>
-  <p class="sub">Verified numbers, not aspirations. Everything below is measured against the original
-  binaries on the same inputs.</p>
+  <p class="sub">Runner results, parity comparisons and planning estimates are labelled separately.
+  Only the parity cases are compared with the original binaries; the rest are managed tests, golden
+  files and independent decodes.</p>
   <div class="kpi">
-    <div class="card"><div class="v">926</div><div class="l">tests passing</div></div>
+    <div class="card"><div class="v">971</div><div class="l">tests, 0 failing</div></div>
     <div class="card"><div class="v">27/27</div><div class="l">compared parity cases</div></div>
     <div class="card"><div class="v">131</div><div class="l">switches addressed</div></div>
     <div class="card"><div class="v">76</div><div class="l">verified byte-for-byte</div></div>
-    <div class="card"><div class="v">≈94%</div><div class="l">weighted completeness</div></div>
+    <div class="card"><div class="v">≈94%</div><div class="l">weighted estimate</div></div>
   </div>
-  <p class="sub" style="margin-top:18px"><strong>0.1.11-alpha</strong> — raw SER output now writes the
-  ColorID of the frame it actually contains, corrupt or truncated FITS and mixed-CFA inputs fail with
-  a controlled diagnostic, <code>-check</code> audits every HDU, quality weights no longer depend on
-  storage order, final stacks keep their identity metadata, and the file picker offers only formats
-  the engine can open.
-  <a href="https://github.com/openpipp/opipp/releases/tag/v0.1.11-alpha">Release notes</a>.</p>
+  <table class="evid">
+    <tr><th>Evidence</th><th>What it establishes</th></tr>
+    <tr><td>971 managed tests</td><td>the managed engine follows the contracts in <a href="https://github.com/openpipp/opipp/blob/main/docs/status.md">status.md</a>; 2 skip in CI without the evaluation capture</td></tr>
+    <tr><td>Golden files</td><td>output matches committed native fixtures for the registered synthetic cases</td></tr>
+    <tr><td>Independent decodes</td><td>files are readable and numerically correct outside OPIPP's own readers</td></tr>
+    <tr><td>27/27 parity</td><td>every registered comparison against the original engine matches; 2 differences are deliberate</td></tr>
+    <tr><td>CI</td><td>build, suite, documentation consistency and a packaged smoke convert pass on a clean runner</td></tr>
+  </table>
+  <p class="sub" style="margin-top:18px"><strong>0.1.12-alpha</strong> — a rejected later FITS IMAGE
+  header now fails the file with the HDU named instead of silently dropping frames, <code>-check</code>
+  applies the same header constraints as the reader, and a joined stack keeps the identity of the
+  source that actually contributed the selected frames. The figures above now separate runner results,
+  parity comparisons and planning estimates.
+  <a href="https://github.com/openpipp/opipp/releases/tag/v0.1.12-alpha">Release notes</a>.</p>
 </section>
 
 <section id="completeness">
   <h2><span class="num">02</span>Completeness by area</h2>
   <p class="sub">Weighted by how much of the product each area represents. The weights are a judgement
-  call, published in the roadmap so they can be argued with.</p>
+  call, published in the roadmap so they can be argued with. These are planning estimates, not measured
+  reliability or an accuracy score.</p>
   <div class="bars">
     <div class="bar"><span class="name">Output formats</span><span class="track"><span class="fill" style="width:99%"></span></span><span class="pct">99%</span></div>
     <div class="bar"><span class="name">Core image operations</span><span class="track"><span class="fill" style="width:98%"></span></span><span class="pct">98%</span></div>
