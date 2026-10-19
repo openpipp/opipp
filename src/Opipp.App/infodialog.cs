@@ -113,14 +113,7 @@ public class infodialog : Form
         StartPosition = FormStartPosition.CenterParent;
         Text = "About OPIPP";
 
-        try
-        {
-            Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
-        }
-        catch (Exception)
-        {
-            Icon = SystemIcons.Application;
-        }
+        Icon = AppIcon.Load();
 
         Controls.AddRange([logo, title, subtitle, disclaimer, copyright, link, notes, ok]);
     }

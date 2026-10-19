@@ -27,7 +27,6 @@ public class Form1 : Form
 
 	private int dark_frames_stacked;
 
-	private string version = "v2.5.9";
 
 	private string output_directory;
 
@@ -9800,7 +9799,7 @@ public class Form1 : Form
 		base.Controls.Add(this.dotestrunBTN);
 		base.Controls.Add(this.tabControl1);
 		base.Controls.Add(this.menuStrip1);
-		base.Icon = (System.Drawing.Icon)resources.GetObject("$this.Icon");
+		base.Icon = AppIcon.Load();
 		base.MainMenuStrip = this.menuStrip1;
 		base.Name = "Form1";
 		this.Text = "OPIPP " + VersionInfo.Display + " - Open PIPP";
