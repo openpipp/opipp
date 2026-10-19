@@ -59,6 +59,12 @@ public sealed class PipelineSettings
     public string OutputDirectory { get; set; } = ".";
 
     /// <summary>
+    /// Resident pixel-byte budget for accepted frames. Past this, frames spill to a temp store so a
+    /// long capture cannot exhaust RAM. Small runs never touch the disk.
+    /// </summary>
+    public long RetentionBudgetBytes { get; set; } = 512L * 1024 * 1024;
+
+    /// <summary>
     /// Subdirectory created under <see cref="OutputDirectory"/> (<c>-osubdir</c>); everything the run
     /// writes, including <c>logs/</c> and <c>rejected/</c>, lands below it.
     /// </summary>
@@ -474,6 +480,8 @@ public sealed class Processor
         var files = inputFiles.Where(f => !string.IsNullOrWhiteSpace(f)).ToList();
         var outputs = new List<string>();
         var failed = new List<string>();
+        FrameStore? spill = null;
+        long retainedBytes = 0;
         int inputFrames = 0, outputFrames = 0, discardedQuality = 0,
             discardedNoObject = 0, discardedPartial = 0, discardedTooSmall = 0,
             discardedNoFeature = 0, discardedNoAoi = 0, discardedStart = 0, discardedInputDrop = 0, discardedOutputDrop = 0,
@@ -530,7 +538,7 @@ public sealed class Processor
 
             using (source)
             {
-                var accepted = new List<(Frame Frame, double Score, AlignmentOffset Offset)>();
+                var accepted = new List<(RetainedFrame Frame, double Score, AlignmentOffset Offset)>();
                 int? detectionThreshold = null;
                 Frame? reference = null;
                 Frame? sample = null;
@@ -613,7 +621,7 @@ public sealed class Processor
                         // -test_run: one raw BMP and one processed BMP at the output root, no log-only
                         // folder and no requested output format (verified against the oracle).
                         WriteTestRunFrames(raw, frame, outputRoot);
-                        accepted.Add((frame, 0, AlignmentOffset.Zero));
+                        accepted.Add((Retain(frame, accepted, ref spill, ref retainedBytes, _settings.RetentionBudgetBytes), 0, AlignmentOffset.Zero));
                         break;
                     }
 
@@ -728,7 +736,7 @@ public sealed class Processor
                         }
                     }
 
-                    accepted.Add((frame, score, offset));
+                    accepted.Add((Retain(frame, accepted, ref spill, ref retainedBytes, _settings.RetentionBudgetBytes), score, offset));
                     Report(Percent(index, window), unit.Name, index, window.Limit,
                         $"Frame {index} of {window.Limit}");
                 }
@@ -754,7 +762,7 @@ public sealed class Processor
                             0,
                             0,
                             0,
-                            accepted.Count > 0 ? accepted[0].Frame : null,
+                            accepted.Count > 0 ? accepted[0].Frame.Frame : null,
                             null,
                             []);
                     }
@@ -834,7 +842,7 @@ public sealed class Processor
                 var written = selected;
                 if (_settings.OutputFrameDrop > 0)
                 {
-                    written = new List<(Frame Frame, double Score, AlignmentOffset Offset)>(selected.Count);
+                    written = new List<(RetainedFrame Frame, double Score, AlignmentOffset Offset)>(selected.Count);
                     for (int i = 0; i < selected.Count; i++)
                     {
                         if (i % (_settings.OutputFrameDrop + 1) == 0) written.Add(selected[i]);
@@ -856,13 +864,13 @@ public sealed class Processor
                 bool qualitySelection = _settings.KeepFrames is not null || _settings.KeepPercent is not null;
                 if (qualitySelection && (!_settings.RenumberFrames || _settings.NoRamBuffers))
                 {
-                    written = written.OrderBy(entry => entry.Frame.Index).ToList();
+                    written = written.OrderBy(entry => entry.Frame.Frame.Index).ToList();
                 }
 
                 // -qw duplicates the top quarter twice and the next quarter once, naming the copies
                 // with a/b suffixes (oracle: -q=10 -> 00,00a,00b for the top two, 02a,03a,04a for the
                 // next three, 05..09 single; "Created 7 duplicate images").
-                var queue = new List<(Frame Frame, double Score, AlignmentOffset Offset, string Suffix)>(written.Count);
+                var queue = new List<(RetainedFrame Frame, double Score, AlignmentOffset Offset, string Suffix)>(written.Count);
                 int duplicated = 0;
                 if (_settings.QualityWeighting && qualitySelection && written.Count > 0)
                 {
@@ -896,11 +904,11 @@ public sealed class Processor
                 if (_settings.Stack is StackMethod method)
                 {
                     string masterPath = Path.Combine(outputRoot, baseName + _settings.OutputExtension);
-                    var first = ApplyGeometry(queue[0].Frame, queue[0].Offset, shiftFill);
+                    var first = ApplyGeometry(queue[0].Frame.Frame, queue[0].Offset, shiftFill);
                     var stacker = new FrameStacker(first.Width, first.Height, first.Channels, first.BitDepth, method);
                     foreach (var (frame, _, offset, _) in queue)
                     {
-                        stacker.Add(ApplyGeometry(frame, offset, shiftFill));
+                        stacker.Add(ApplyGeometry(frame.Frame, offset, shiftFill));
                     }
                     var master = ApplyOverlay(stacker.Result(), detectionThreshold);
                     using var sink = FrameSinkFactory.Create(masterPath, master, 1, _settings.Fps,
@@ -921,7 +929,7 @@ public sealed class Processor
                     var gifFrames = new List<Frame>(queue.Count);
                     foreach (var (frame, _, offset, _) in queue)
                     {
-                        gifFrames.Add(ApplyOverlay(ApplyGeometry(frame, offset, shiftFill), detectionThreshold));
+                        gifFrames.Add(ApplyOverlay(ApplyGeometry(frame.Frame, offset, shiftFill), detectionThreshold));
                     }
 
                     // The engine's animation blocks apply to GIF too, but with two differences
@@ -945,10 +953,10 @@ public sealed class Processor
                 {
                     // SER/AVI hold the whole run in one file; joining inputs of different geometry
                     // is exactly the case the engine refuses ("Frames of different sizes ...").
-                    var template = ApplyGeometry(queue[0].Frame, queue[0].Offset, shiftFill);
+                    var template = ApplyGeometry(queue[0].Frame.Frame, queue[0].Offset, shiftFill);
                     foreach (var (frame, _, offset, _) in queue)
                     {
-                        var check = ApplyGeometry(frame, offset, shiftFill);
+                        var check = ApplyGeometry(frame.Frame, offset, shiftFill);
                         if (check.Width != template.Width || check.Height != template.Height)
                         {
                             throw new InvalidDataException(
@@ -1044,7 +1052,7 @@ public sealed class Processor
                     {
                         var (frame, score, offset, suffix) = queue[q];
                         if (q > 0 && suffix.Length == 0) number++;
-                        var output = ApplyOverlay(ApplyGeometry(frame, offset, shiftFill), detectionThreshold);
+                        var output = ApplyOverlay(ApplyGeometry(frame.Frame, offset, shiftFill), detectionThreshold);
                         // -nr names a plain run's frames after their source number (1-based:
                         // -f=4 -nr wrote 01.tif..04.tif), but a quality run stays sequential because
                         // the engine has already reordered the stream itself.
@@ -1110,7 +1118,7 @@ public sealed class Processor
                         window.Start,
                         discardedInputDrop - inputDropBefore,
                         discardedOutputDrop - outputDropBefore,
-                        selected[0].Frame,
+                        selected[0].Frame.Frame,
                         detectionThreshold,
                         selected);
                 }
@@ -1120,6 +1128,9 @@ public sealed class Processor
         }
 
         Report(100, null, 0, 0, "Complete");
+        // Scratch store lives for the run only; DeleteOnClose is the backstop if we exit by exception.
+        spill?.Dispose();
+
         return new ProcessingReport
         {
             InputFrames = inputFrames,
@@ -1160,7 +1171,7 @@ public sealed class Processor
         int discardedByOutputDrop,
         Frame? sample,
         int? detectionThreshold,
-        List<(Frame Frame, double Score, AlignmentOffset Offset)> ranked)
+        List<(RetainedFrame Frame, double Score, AlignmentOffset Offset)> ranked)
     {
         string outputRoot = EffectiveOutputDirectory();
         string logDirectory = Path.Combine(outputRoot, "logs");
@@ -1271,7 +1282,7 @@ public sealed class Processor
                 // the engine truncates the percentage (74.9% prints as 74%)
                 int percent = best > 0 ? (int)(entry.Score / best * 100.0) : 100;
                 quality.Append((position + 1).ToString(CultureInfo.InvariantCulture)).Append('\t')
-                    .Append((entry.Frame.Index + 1).ToString(CultureInfo.InvariantCulture)).Append('\t')
+                    .Append((entry.Frame.Frame.Index + 1).ToString(CultureInfo.InvariantCulture)).Append('\t')
                     .Append((position + 1).ToString(CultureInfo.InvariantCulture)).Append('\t')
                     .Append(FormatQuality(entry.Score)).Append('\t')
                     .Append(percent.ToString(CultureInfo.InvariantCulture)).Append("%\r\n");
@@ -1438,9 +1449,41 @@ public sealed class Processor
         return frame;
     }
 
+    private RetainedFrame Retain(
+        Frame frame,
+        List<(RetainedFrame Frame, double Score, AlignmentOffset Offset)> accepted,
+        ref FrameStore? store,
+        ref long residentBytes,
+        long budget)
+    {
+        int bytes = frame.Samples.Length * sizeof(ushort);
+        if (store is null && residentBytes + bytes <= budget)
+        {
+            residentBytes += bytes;
+            return RetainedFrame.Inline(frame);
+        }
+
+        store ??= new FrameStore(System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+            "opipp-spill-" + Guid.NewGuid().ToString("n") + ".bin"));
+
+        // First overflow: move the frames already accepted so the whole unit has one home.
+        if (residentBytes > 0)
+        {
+            for (int i = 0; i < accepted.Count; i++)
+            {
+                var entry = accepted[i];
+                accepted[i] = (RetainedFrame.Stored(store, store.Append(entry.Frame.Frame)),
+                    entry.Score, entry.Offset);
+            }
+            residentBytes = 0;
+        }
+
+        return RetainedFrame.Stored(store, store.Append(frame));
+    }
+
     /// <summary>Applies PIPP's quality limiting: absolute count and/or percentage of frames kept.</summary>
-    private List<(Frame Frame, double Score, AlignmentOffset Offset)> Select(
-        List<(Frame Frame, double Score, AlignmentOffset Offset)> accepted, out int dropped)
+    private List<(RetainedFrame Frame, double Score, AlignmentOffset Offset)> Select(
+        List<(RetainedFrame Frame, double Score, AlignmentOffset Offset)> accepted, out int dropped)
     {
         int keep = accepted.Count;
         if (_settings.KeepFrames is int n) keep = Math.Min(keep, Math.Max(0, n));
@@ -1456,7 +1499,7 @@ public sealed class Processor
         }
 
         var ranked = QualityMetrics.Rank(accepted.Select(a => a.Score).ToArray());
-        var result = new List<(Frame, double, AlignmentOffset)>(keep);
+        var result = new List<(RetainedFrame, double, AlignmentOffset)>(keep);
         for (int i = 0; i < keep; i++)
         {
             var entry = ranked[i];
@@ -1641,14 +1684,14 @@ public sealed class Processor
 
     /// <summary>Applies the geometry and overlay stages to every queued frame, in queue order.</summary>
     private List<Frame> BuildGeometryFrames(
-        List<(Frame Frame, double Score, AlignmentOffset Offset, string Suffix)> queue,
+        List<(RetainedFrame Frame, double Score, AlignmentOffset Offset, string Suffix)> queue,
         ushort? shiftFill,
         int? detectionThreshold)
     {
         var frames = new List<Frame>(queue.Count);
         foreach (var (frame, _, offset, _) in queue)
         {
-            frames.Add(ApplyOverlay(ApplyGeometry(frame, offset, shiftFill), detectionThreshold));
+            frames.Add(ApplyOverlay(ApplyGeometry(frame.Frame, offset, shiftFill), detectionThreshold));
         }
 
         return frames;
@@ -1663,7 +1706,7 @@ public sealed class Processor
     /// appends two more 1s, and <c>-anim_all_rep=2</c> writes three copies.
     /// </summary>
     private List<Frame> BuildAviAnimation(
-        List<(Frame Frame, double Score, AlignmentOffset Offset, string Suffix)> queue,
+        List<(RetainedFrame Frame, double Score, AlignmentOffset Offset, string Suffix)> queue,
         ushort? shiftFill,
         int? detectionThreshold)
     {

@@ -233,6 +233,44 @@ public sealed class EndToEndTests
     }
 
     [Fact]
+    public void ForcedSpill_ProducesByteIdenticalOutput()
+    {
+        string dir = TempDir();
+        try
+        {
+            string input = WriteSyntheticSer(dir, 32, 32, 24, bitDepth: 8);
+            string generous = Path.Combine(dir, "generous");
+            string spilled = Path.Combine(dir, "spilled");
+
+            var inMemory = new Processor(new PipelineSettings
+            {
+                OutputDirectory = generous,
+                OutputExtension = ".tif",
+            }).Run([input]);
+
+            var onDisk = new Processor(new PipelineSettings
+            {
+                OutputDirectory = spilled,
+                OutputExtension = ".tif",
+                RetentionBudgetBytes = 1, // every accepted frame spills to the temp store
+            }).Run([input]);
+
+            Assert.Equal(24, inMemory.OutputFrames);
+            Assert.Equal(inMemory.OutputFrames, onDisk.OutputFrames);
+            Assert.Equal(inMemory.OutputFiles.Count, onDisk.OutputFiles.Count);
+
+            static string Hash(string path) => Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path)));
+
+            Assert.Equal(inMemory.OutputFiles.Select(Hash).ToList(), onDisk.OutputFiles.Select(Hash).ToList());
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void QualityLimit_ZeroFrames_WritesNothingAndDoesNotThrow()
     {
         string dir = TempDir();
