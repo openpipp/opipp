@@ -33,6 +33,38 @@ They run the three stretch-sensitive option sets (`-tif`, `-hs=204`, `-hs=204 -h
 check that exposed the image-dependent stretch: a synthetic disc whose bright tail saturates at 255
 cannot tell a constant gain apart from a measured white point.
 
+## Quantifying a known gap (`--measure`)
+
+Acknowledged cases (`KnownGap`, `KnownDivergence`) normally skip both engines, so nothing is learned
+about the size of the difference. `--measure` runs them anyway and prints pixel statistics:
+
+```bash
+dotnet run --project tools/Opipp.Parity --no-build -- --measure
+dotnet run --project tools/Opipp.Parity --no-build -- --measure --only debayer-interpolated
+```
+
+For each differing frame it reports differing pixels and samples (per channel), max/mean absolute
+delta, a delta histogram, and whether the difference sits on local edges or in flat areas. The
+verdict does not change: a measured gap still counts as a gap, never as a match. `--only <name>`
+runs a single case.
+
+## Debayer
+
+`debayer-interpolated` (`-tif -db -db=2 -db_type=0`) is a real comparison as of this harness. The
+original's bi-linear demosaic uses two rules the port initially missed:
+
+- **Truncating integer division.** Averages are C++ `/` (floor), not round-half-up. Green at an
+  R/B site is one `(N+E+S+W)/4`, not `((E+W)/2 + (N+S)/2)/2`.
+- **A dcraw-style `border_interpolate(1)` pass.** The outer one-pixel ring is not interpolated;
+  each channel there is the mean of the mosaic's samples of that colour inside the clipped 3x3
+  window, computed after (and overriding) the interpolation.
+
+Measured before the fix: 1147-1161 of 3072 pixels differed (37.3-37.8%), max |delta| 3, mean 1.04
+over differing samples (0.21 over all samples), and the error was spread through flat areas - 1046
+of 1147 differing pixels were not on a local edge, so it was never an edge-adaptive-kernel problem.
+After the fix all four frames are byte-identical, and the same mosaic decoded as patterns 0-3 also
+matches the oracle. 16-bit Bayer input is not covered by this case.
+
 ## Adding a case
 
 1. Add a `ParityCase("name", ["-switches"], Input: "fixture")` entry.

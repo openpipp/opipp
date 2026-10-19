@@ -119,7 +119,7 @@ dotnet run --project src/Opipp.App
 ## Status
 
 Working end to end (verified by tests): SER → pipeline → FITS/TIFF/SER output, calibration
-subtract/divide, histogram stretch, quality selection, stacking. **590 tests pass** across seven
+subtract/divide, histogram stretch, quality selection, stacking. **597 tests pass** across seven
 projects (formats 127, processing 80, CLI 77, pipeline 9).
 
 The CLI is a drop-in engine: it accepts the GUI's stdin protocol (switches and file paths, one per
@@ -152,7 +152,7 @@ same switches and compares the produced frames by SHA-256 of their sample data:
 dotnet run --project tools/Opipp.Parity
 ```
 
-Current result: **26 of 26 compared cases match**, with two deliberate differences and one acknowledged gap declared separately (29 cases in total), comparing pixel content, directory layout (`capture/1.tif`,
+Current result: **27 of 27 compared cases match**, with two deliberate differences declared separately (29 cases in total), comparing pixel content, directory layout (`capture/1.tif`,
 `logs/capture_pipp_log.txt`) and log text as well as pixels — plain TIFF, `-hs=204` stretch,
 `-flip_x`, `-fits`, `-png`, `-avi`, `-db=2` debayer, `-ctr` centring and `-q=2` quality selection.
 Quality selection is compared as a multiset because it may reorder frames, and its score column is

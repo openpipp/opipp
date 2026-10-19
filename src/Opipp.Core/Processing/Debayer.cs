@@ -5,10 +5,14 @@ namespace Opipp.Core.Processing;
 /// <summary>
 /// Bayer mosaic demosaicing.
 /// PIPP exposes two algorithms: the default bi-linear interpolation and an optional
-/// "smooth hue" pass (<c>-sh</c>). The bi-linear kernel here matches the classic 3x3
-/// bilinear reconstruction; smooth hue interpolates the colour <em>differences</em>
-/// (R-G, B-G) and re-adds the green plane, which is the standard constant-hue method
-/// PIPP's help text describes as "slower than the default bi-linear algorithm".
+/// "smooth hue" pass (<c>-sh</c>). The bi-linear kernel matches the original engine exactly:
+/// integer averages truncate (C++ division semantics, not round-half-up), and the outer one-pixel
+/// ring is not interpolated at all - it is recomputed from the mosaic by a dcraw-style
+/// <c>border_interpolate(1)</c> pass (mean of the same-colour samples in the clipped 3x3 window).
+/// Verified against <c>bin/pipp_core.exe</c> by the parity harness case <c>debayer-interpolated</c>.
+/// The smooth-hue refinement interpolates the colour <em>differences</em> (R-G, B-G) and re-adds
+/// the green plane, which is the standard constant-hue method PIPP's help text describes as
+/// "slower than the default bi-linear algorithm".
 /// </summary>
 public static class Debayer
 {
@@ -74,9 +78,9 @@ public static class Debayer
                 int idx = (y * w + x) * 3;
                 o[idx + c] = (ushort)v;
 
-                int diag = (At(x - 1, y - 1) + At(x + 1, y - 1) + At(x - 1, y + 1) + At(x + 1, y + 1) + 2) / 4;
-                int horiz = (At(x - 1, y) + At(x + 1, y) + 1) / 2;
-                int vert = (At(x, y - 1) + At(x, y + 1) + 1) / 2;
+                int diag = (At(x - 1, y - 1) + At(x + 1, y - 1) + At(x - 1, y + 1) + At(x + 1, y + 1)) / 4;
+                int horiz = (At(x - 1, y) + At(x + 1, y)) / 2;
+                int vert = (At(x, y - 1) + At(x, y + 1)) / 2;
 
                 switch (c)
                 {
@@ -95,11 +99,11 @@ public static class Debayer
                         }
                         break;
                     case 0: // red site: green average of 4, blue from diagonals
-                        o[idx + 1] = (ushort)((horiz + vert + 1) / 2);
+                        o[idx + 1] = (ushort)((At(x - 1, y) + At(x + 1, y) + At(x, y - 1) + At(x, y + 1)) / 4);
                         o[idx + 2] = (ushort)diag;
                         break;
                     default: // blue site
-                        o[idx + 1] = (ushort)((horiz + vert + 1) / 2);
+                        o[idx + 1] = (ushort)((At(x - 1, y) + At(x + 1, y) + At(x, y - 1) + At(x, y + 1)) / 4);
                         o[idx + 0] = (ushort)diag;
                         break;
                 }
@@ -111,7 +115,61 @@ public static class Debayer
             ApplySmoothHue(dst, pattern, w, h);
         }
 
+        // The original fills the outer ring last, from the mosaic rather than from the interpolated
+        // planes, so it overwrites both the bilinear and the smooth-hue result there.
+        if (w > 2 && h > 2)
+        {
+            FillBorder(dst, frame, (c00, c01, c10, c11), w, h);
+        }
+
         return dst;
+    }
+
+    /// <summary>
+    /// dcraw's <c>border_interpolate(1)</c>: the outer one-pixel ring is not interpolated. Each
+    /// channel there is the mean of the mosaic samples carrying that colour inside the clipped 3x3
+    /// window around the pixel, using the same truncating integer division as the interior.
+    /// </summary>
+    private static void FillBorder(Frame rgb, Frame mosaic, (int c00, int c01, int c10, int c11) tile, int w, int h)
+    {
+        var o = rgb.Samples;
+        var src = mosaic.Samples;
+
+        int SiteColor(int x, int y) => ((y & 1) == 0)
+            ? (((x & 1) == 0) ? tile.c00 : tile.c01)
+            : (((x & 1) == 0) ? tile.c10 : tile.c11);
+
+        Span<int> sum = stackalloc int[3];
+        Span<int> count = stackalloc int[3];
+
+        for (int y = 0; y < h; y++)
+        {
+            bool rowOnBorder = y == 0 || y == h - 1;
+            for (int x = 0; x < w; x++)
+            {
+                if (!rowOnBorder && x != 0 && x != w - 1) continue;
+
+                sum.Clear();
+                count.Clear();
+                int y0 = Math.Max(0, y - 1), y1 = Math.Min(h - 1, y + 1);
+                int x0 = Math.Max(0, x - 1), x1 = Math.Min(w - 1, x + 1);
+                for (int yy = y0; yy <= y1; yy++)
+                {
+                    for (int xx = x0; xx <= x1; xx++)
+                    {
+                        int c = SiteColor(xx, yy);
+                        sum[c] += src[yy * w + xx];
+                        count[c]++;
+                    }
+                }
+
+                int idx = (y * w + x) * 3;
+                for (int c = 0; c < 3; c++)
+                {
+                    if (count[c] != 0) o[idx + c] = (ushort)(sum[c] / count[c]);
+                }
+            }
+        }
     }
 
     /// <summary>

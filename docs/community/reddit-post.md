@@ -28,7 +28,7 @@ anything unverified is listed as a known gap rather than described as working.
 
 **Where it actually is (0.1.1-alpha):**
 
-- 590 tests, and 26 parity cases compared byte-for-byte against the original binaries (plus two deliberate differences and one documented gap)
+- 597 tests, and 27 parity cases compared byte-for-byte against the original binaries (plus two deliberate differences)
 - all 131 command-line switches addressed; 76 verified byte-for-byte
 - GUI is fully managed - no native DLL required
 - **known gap:** surface-feature tracking matches 23 of 30 frames exactly on a real Saturn capture;

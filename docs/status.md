@@ -12,14 +12,14 @@ inventory.
 | SDK | .NET 10.0.402, local only (`~/.dotnet-sdk`) |
 | Solution | `OPIPP.slnx` (note: `.slnx`, not `.sln`) |
 | Build | `dotnet build OPIPP.slnx` - clean |
-| Tests | **590 passing, 0 failing** (7 projects) |
+| Tests | **597 passing, 0 failing** (7 projects) |
 | Managed code | `Opipp.Core` 11.8k lines, `Opipp.Cli` 0.3k, `Opipp.App` 14.5k, tests 5.5k |
 | Reference artefacts | `decompiled/` 14,277 lines C#, `ghidra/out/` 4,229 functions |
 
 ## Parity
 
 `dotnet run --project tools/Opipp.Parity` → **ALL CASES MATCH** (18 cases: 15 verified, 2 deliberate
-divergences, 1 known gap; pixel content, directory layout and log text compared). Adding `--real`
+divergences, 0 gaps; pixel content, directory layout and log text compared). Adding `--real`
 runs four more cases against the 30-frame Saturn capture in `samples/` (git-ignored), which also all
 match.
 
@@ -32,7 +32,7 @@ match.
 | png-out | `-png` | pixels |
 | avi-out | `-avi` | frames via container reader |
 | db-pattern-only | `-tif -db=2 -db_type=0` | pixels (the pattern-only **no-op**) |
-| debayer-interpolated | `-tif -db -db=2 -db_type=0` | *known gap* |
+| debayer-interpolated | `-tif -db -db=2 -db_type=0` | **exact** (byte-identical, promoted 0.1.4) |
 | stretch-colour | `-tif -hs=204` (RGB input) | pixels: smallest channel gain |
 | stretch-colour-rgb | `-tif -hs=204 -hsrgb` (RGB input) | pixels: per-channel gains |
 | centre | `-tif -ctr -ms=5` | pixels |

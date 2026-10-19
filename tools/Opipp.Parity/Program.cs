@@ -98,11 +98,12 @@ internal static class Program
             // present. This case therefore pins the pattern-only no-op (both engines keep the frame
             // mono), which is a real part of the switch's contract but not interpolation.
             new ParityCase("db-pattern-only", ["-tif", "-db=2", "-db_type=0"], Input: "bayer"),
-            // Real debayering (-db + pattern) does not match yet: our interpolation differs from the
-            // original by 1 LSB on ~37% of interior pixels (up to 3 at the edges). Phase 2/4 work.
-            new ParityCase("debayer-interpolated", ["-tif", "-db", "-db=2", "-db_type=0"], Input: "bayer",
-                Mode: CompareMode.KnownGap,
-                Note: "debayer interpolation differs by 1 LSB on ~37% of pixels"),
+            // Real debayering (-db + pattern): bilinear with truncating integer division plus a
+            // dcraw-style border_interpolate(1) pass over the outer ring. That recipe is
+            // byte-identical to the original on this fixture (and on the same mosaic read as all
+            // four patterns); before it was found the result differed by up to 3 LSB on 37% of
+            // pixels. Use --measure to re-quantify if this ever regresses.
+            new ParityCase("debayer-interpolated", ["-tif", "-db", "-db=2", "-db_type=0"], Input: "bayer"),
             // colour stretch: the colour fixture has different per-channel tails (240/200/120), so the
             // smallest-gain rule and the -hsrgb per-channel gains are both observable
             new ParityCase("stretch-colour", ["-tif", "-hs=204"], Input: "colour"),
@@ -227,7 +228,7 @@ internal static class Program
         if (oracleFiles.Count == 0)
         {
             Console.WriteLine("  DIVERGENCE: oracle produced no files");
-            return CaseOutcome.Fail;
+            return acknowledged ? Acknowledged(c) : CaseOutcome.Fail;
         }
 
         Console.WriteLine($"  oracle names : {string.Join(", ", oracleFiles.Select(f => Path.GetRelativePath(oracleOut, f)))}");
@@ -236,7 +237,7 @@ internal static class Program
         if (oracleFiles.Count != managedFiles.Count)
         {
             Console.WriteLine("  DIVERGENCE: file count differs");
-            return CaseOutcome.Fail;
+            return acknowledged ? Acknowledged(c) : CaseOutcome.Fail;
         }
 
         bool allMatch = true;
@@ -281,11 +282,15 @@ internal static class Program
             Console.WriteLine(allMatch
                 ? "  MEASURE: outputs are identical; this case can be promoted to a real comparison"
                 : $"  MEASURE: quantified above; remains {c.Mode}");
-            return c.Mode == CompareMode.KnownDivergence ? CaseOutcome.ExpectedDifference : CaseOutcome.Gap;
+            return Acknowledged(c);
         }
 
         return allMatch ? CaseOutcome.Match : CaseOutcome.Fail;
     }
+
+    /// <summary>The verdict for an acknowledged case: never a match, never a failure.</summary>
+    private static CaseOutcome Acknowledged(ParityCase c) =>
+        c.Mode == CompareMode.KnownDivergence ? CaseOutcome.ExpectedDifference : CaseOutcome.Gap;
 
     private sealed record RunResult(int ExitCode, string StdOut, string StdErr);
 
