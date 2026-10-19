@@ -43,6 +43,13 @@ internal sealed class FitsFileProbe
 	public bool IsTruncated;
 }
 
+/// <summary>Metadata the source file list needs from one uncompressed DNG.</summary>
+internal sealed class DngFileProbe
+{
+	public int Width;
+	public int Height;
+}
+
 /// <summary>
 /// Managed replacement for the helper entry points the ported WinForms UI used to reach through
 /// the former native engine DLL (<c>video_check</c>, <c>ser_check</c>, <c>ser_info</c>/<c>avi_info</c>/<c>fits_info</c>,
@@ -124,6 +131,30 @@ internal static class ManagedEngineApi
 			return probe.FrameCount > 0 && probe.Width > 0 && probe.Height > 0;
 		}
 		catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or FitsFormatException)
+		{
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// Probes a DNG header. Fails for the variants <c>RawDngReader</c> rejects (compressed, tiled,
+	/// non-2x2 CFA, BigTIFF, ...) so the file list can refuse them at add time instead of letting
+	/// the run die on its first frame.
+	/// </summary>
+	public static bool TryProbeDng(string path, out DngFileProbe probe)
+	{
+		probe = null;
+		try
+		{
+			ImageInfo info = RawDngReader.Probe(new FileInfo(path));
+			probe = new DngFileProbe
+			{
+				Width = info.Width,
+				Height = info.Height,
+			};
+			return probe.Width > 0 && probe.Height > 0;
+		}
+		catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
 		{
 			return false;
 		}

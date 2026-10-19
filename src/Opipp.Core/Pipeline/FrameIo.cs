@@ -171,10 +171,9 @@ public static class FrameSinkFactory
         {
             ".ser" => new SerWriter(path, SerHeader.CreateOutput(
                 template.Width, template.Height, template.Channels, template.BitDepth, frameCountHint,
-                // The engine carries the input capture metadata onto its SER output. The template
-                // frame's SourceName is the input file (Processor sets it from the input unit), so
-                // reading that file's header reproduces the carry-across without threading the
-                // source through every sink call site.
+                // The template is the delivered frame: its Bayer marker is already phase-corrected
+                // for flips/rotations/crops and cleared by binning/resize, so CreateOutput derives the
+                // ColorID from it. The source header only supplies the capture text fields.
                 SerHeader.TryReadFromSource(template.SourceName), template.Bayer)),
             ".fits" or ".fit" => new FitsWriter(path),
             ".avi" => new AviWriter(path, template.Width, template.Height, new AviWriterOptions

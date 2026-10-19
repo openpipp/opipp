@@ -50,6 +50,11 @@ internal enum RunOutcome
 /// one or more inputs failed, so the frames on disk are explicitly incomplete. 130 is the
 /// conventional cancelled-process code (no cancellation source is wired into the CLI yet).
 /// </summary>
+/// <remarks>
+/// Format, truncation, Bayer-phase and calibration exceptions are controlled failures, never an
+/// unhandled exception: <c>-check</c> reports them as validation errors (exit 2), and a processing
+/// run reports them as an incomplete run (exit 1) naming the inputs and the output directory.
+/// </remarks>
 internal static class ExitCodes
 {
     internal const int Success = 0;
@@ -71,6 +76,43 @@ internal static class ExitCodes
 
 /// <summary>One input the pipeline could not read, with the diagnostic the CLI reports for it.</summary>
 internal sealed record FailedInput(string Path, string Reason, bool CouldNotOpen = true);
+
+/// <summary>
+/// Classifies exceptions for the CLI's failure contract.
+/// </summary>
+/// <remarks>
+/// Format, truncation, Bayer-phase and calibration problems are raised by the readers and the
+/// pipeline to stop a run that cannot produce faithful output; they are always reported with the
+/// input named and a documented exit code. The last-resort handler covers anything new that escapes
+/// the pipeline, including a bug, without ever turning it into an unhandled-exception exit code.
+/// Cancellation is never a failure: it has its own code (130) and must never be swallowed by the
+/// catch-all.
+/// </remarks>
+internal static class FailureClassifier
+{
+    /// <summary>
+    /// True when <paramref name="ex"/> is a failure the CLI can explain in terms of the input files:
+    /// malformed/truncated formats, a Bayer-phase conflict, an unusable calibration master, or an
+    /// I/O fault raised while reading a container.
+    /// </summary>
+    internal static bool IsControlled(Exception ex) => ex is
+        FitsFormatException or
+        FitsTruncationException or
+        BayerPhaseException or
+        CalibrationConfigurationException or
+        InvalidDataException or
+        IOException or
+        UnauthorizedAccessException or
+        NotSupportedException or
+        ArgumentException or
+        OverflowException;
+
+    /// <summary>
+    /// Guard for the last-resort catch: cancellation is a distinct, documented outcome and must not
+    /// be reported as an incomplete or failed run.
+    /// </summary>
+    internal static bool IsLastResort(Exception ex) => ex is not OperationCanceledException;
+}
 
 internal static class Program
 {
@@ -139,17 +181,39 @@ internal static class Program
 
             settings = Map(options);
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException or InvalidDataException)
+        catch (Exception ex) when (ex is InvalidOperationException || FailureClassifier.IsControlled(ex))
         {
             if (checkOnly) return ReportCheckFailure([ex.Message]);
 
             Console.Error.WriteLine($"Error: {ex.Message}");
             return ExitCodes.ConfigurationError;
         }
+        catch (Exception ex) when (FailureClassifier.IsLastResort(ex))
+        {
+            // Settings mapping is still pre-processing, so an unexpected fault is a configuration
+            // error (2) with a controlled message rather than an unhandled-exception exit.
+            string message = DescribeException(ex);
+            if (checkOnly) return ReportCheckFailure([message]);
+
+            Console.Error.WriteLine($"Error: {message}");
+            return ExitCodes.ConfigurationError;
+        }
 
         // -check validates the same settings Map just built, plus the inputs they name, and stops
         // before Processor.Run. Nothing is created: no output directory, no log, no science file.
-        if (checkOnly) return RunCheck(options, inputs, settings);
+        if (checkOnly)
+        {
+            try
+            {
+                return RunCheck(options, inputs, settings);
+            }
+            catch (Exception ex) when (FailureClassifier.IsLastResort(ex))
+            {
+                // Validation itself must never crash: an unexpected fault is still a failed check
+                // with a usable diagnostic (exit 2), not an unhandled-exception exit code.
+                return ReportCheckFailure([DescribeException(ex)]);
+            }
+        }
 
         // The log echoes the switch list only; input paths appear under "Source image files".
         settings.LogArguments = effectiveArgs.Where(a => !inputs.Contains(a, StringComparer.Ordinal)).ToArray();
@@ -167,13 +231,21 @@ internal static class Program
                 Console.Error.WriteLine("Error: Processing was cancelled");
                 return ExitCodes.For(RunOutcome.Cancelled);
             }
-            catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException or CalibrationConfigurationException)
+            catch (Exception ex) when (FailureClassifier.IsControlled(ex))
             {
                 // A calibration master that cannot be applied is a run-level configuration failure,
                 // not a per-frame rejection; the pipeline deliberately lets it escape the frame loop.
-                // Exit 1 is this path's defined runtime-failure code, matching the errors above.
-                Console.Error.WriteLine($"Error: {ex.Message}");
-                return ExitCodes.PartialFailure;
+                // Format/truncation/Bayer-phase faults escape the same way. Exit 1 is this path's
+                // defined runtime-failure code: the transcript already emitted is incomplete.
+                ReportRunFailure(ex, inputs, settings, unexpected: false);
+                return ExitCodes.For(RunOutcome.PartialFailure);
+            }
+            catch (Exception ex) when (FailureClassifier.IsLastResort(ex))
+            {
+                // Nothing new may escape as an unhandled exception: report the type and message
+                // (never a stack trace) and keep the documented runtime-failure code.
+                ReportRunFailure(ex, inputs, settings, unexpected: true);
+                return ExitCodes.For(RunOutcome.PartialFailure);
             }
         }
 
@@ -210,12 +282,20 @@ internal static class Program
             Console.Error.WriteLine("Error: Processing was cancelled");
             return ExitCodes.For(RunOutcome.Cancelled);
         }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException or CalibrationConfigurationException)
+        catch (Exception ex) when (FailureClassifier.IsControlled(ex))
         {
-            // See the -gui catch above: a calibration configuration error exits 1 like the other
-            // runtime failures, and its message is the controlled diagnostic, never a stack trace.
-            Console.Error.WriteLine($"Error: {ex.Message}");
-            return ExitCodes.PartialFailure;
+            // Format, truncation, Bayer-phase and calibration faults all stop the run with output
+            // possibly already on disk. Report the inputs and the incomplete output (exit 1) instead
+            // of falling through to an unhandled exception.
+            ReportRunFailure(ex, inputs, settings, unexpected: false);
+            return ExitCodes.For(RunOutcome.PartialFailure);
+        }
+        catch (Exception ex) when (FailureClassifier.IsLastResort(ex))
+        {
+            // Last resort: a fault the classifier has never seen still gets a usable diagnostic and
+            // the documented runtime code. Cancellation is handled above and is excluded here.
+            ReportRunFailure(ex, inputs, settings, unexpected: true);
+            return ExitCodes.For(RunOutcome.PartialFailure);
         }
 
         // A joined run reports its one unit under the first input's name even when a later file is
@@ -416,9 +496,15 @@ internal static class Program
                 {
                     source = FrameSourceFactory.Open(input, settings.SerBitDepth);
                 }
-                catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException)
+                catch (Exception ex) when (FailureClassifier.IsControlled(ex))
                 {
                     return [new FailedInput(input, ex.Message, CouldNotOpen: true)];
+                }
+                catch (Exception ex) when (FailureClassifier.IsLastResort(ex))
+                {
+                    // The resolver must still name the culprit; an unexpected reader fault is
+                    // reported with its type rather than escaping the reporting path.
+                    return [new FailedInput(input, DescribeException(ex), CouldNotOpen: true)];
                 }
 
                 try
@@ -430,9 +516,13 @@ internal static class Program
                         }
                     }
                 }
-                catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException)
+                catch (Exception ex) when (FailureClassifier.IsControlled(ex))
                 {
                     return [new FailedInput(input, ex.Message, CouldNotOpen: false)];
+                }
+                catch (Exception ex) when (FailureClassifier.IsLastResort(ex))
+                {
+                    return [new FailedInput(input, DescribeException(ex), CouldNotOpen: false)];
                 }
             }
         }
@@ -474,6 +564,47 @@ internal static class Program
         }
     }
 
+    /// <summary>
+    /// Reports a run that stopped on an exception: one line for the fault itself, then the inputs
+    /// and output directory, so output already on disk is never mistaken for a complete result.
+    /// The message is always the exception text (plus its type for an unexpected fault), never a
+    /// stack trace.
+    /// </summary>
+    private static void ReportRunFailure(
+        Exception ex,
+        IReadOnlyList<string> inputs,
+        PipelineSettings settings,
+        bool unexpected)
+    {
+        Console.Error.WriteLine($"Error: {(unexpected ? DescribeException(ex) : ex.Message)}");
+        Console.Error.WriteLine(
+            $"Error: Incomplete run: processing {DescribeInputs(inputs)} stopped before completion; " +
+            $"any output already written to '{EffectiveOutputPath(settings)}' is incomplete.");
+    }
+
+    /// <summary>
+    /// Text for an exception the classifier has no specific wording for. The type keeps an
+    /// otherwise-empty message useful without dumping a stack trace into the engine's stderr.
+    /// </summary>
+    private static string DescribeException(Exception ex) =>
+        string.IsNullOrWhiteSpace(ex.Message) ? ex.GetType().Name : $"{ex.GetType().Name}: {ex.Message}";
+
+    private static bool IsFits(string path) =>
+        Path.GetExtension(path).ToLowerInvariant() is ".fits" or ".fit" or ".fts";
+
+    /// <summary>Names at most eight inputs, then a count, so a huge batch cannot flood stderr.</summary>
+    private static string DescribeInputs(IReadOnlyList<string> inputs)
+    {
+        const int shown = 8;
+        string list = string.Join(", ", inputs.Take(shown).Select(path => $"'{path}'"));
+        if (inputs.Count > shown)
+        {
+            list += $", and {inputs.Count - shown} more";
+        }
+
+        return inputs.Count == 1 ? $"input {list}" : $"inputs {list}";
+    }
+
     // ---------------------------------------------------------------------------------------------
     // -check: validate only, write nothing
     // ---------------------------------------------------------------------------------------------
@@ -483,11 +614,19 @@ internal static class Program
     /// processing geometry and output settings, print one clear result and exit. The pipeline never
     /// runs, so no output directory, log or science file is created.
     /// </summary>
+    /// <remarks>
+    /// Validation is quick and structural: every FITS HDU is walked (header, data offset and exact
+    /// payload length) without decoding pixels, and the first frame of the other formats is decoded
+    /// for the geometry checks. A full processing run decodes every frame; <c>-check</c> is the
+    /// cheap pre-flight that catches malformed containers, truncation and bad settings.
+    /// </remarks>
     /// <returns>0 when every check passes, 2 (configuration) when any check fails.</returns>
     private static int RunCheck(OpippOptions options, IReadOnlyList<string> inputs, PipelineSettings settings)
     {
         var errors = new List<string>();
         var decoded = new List<(string Path, Frame Frame)>(inputs.Count);
+        int fitsHdus = 0;
+        int fitsImages = 0;
 
         foreach (string input in inputs)
         {
@@ -495,6 +634,37 @@ internal static class Program
             {
                 errors.Add($"input file does not exist: '{input}'");
                 continue;
+            }
+
+            // FITS gets a whole-file structural pass before any pixel is decoded. -check must see
+            // every HDU: the frame reader stops silently at the first malformed extension, so a
+            // valid first frame would otherwise report OK for a truncated later one.
+            if (IsFits(input))
+            {
+                try
+                {
+                    FitsHduAudit.Result audit = FitsHduAudit.Inspect(input);
+                    fitsHdus += audit.HduCount;
+                    fitsImages += audit.ImageHduCount;
+                    if (audit.Errors.Count > 0)
+                    {
+                        errors.AddRange(audit.Errors.Select(error =>
+                            $"input file is structurally invalid: '{input}': {error}"));
+                        continue; // decoding would repeat the same failure with less detail
+                    }
+                }
+                catch (Exception ex) when (FailureClassifier.IsControlled(ex))
+                {
+                    errors.Add($"input file cannot be read: '{input}': {ex.Message}");
+                    continue;
+                }
+                catch (Exception ex) when (FailureClassifier.IsLastResort(ex))
+                {
+                    // Last resort for one input: the other inputs still get validated, and the
+                    // report names this file instead of aborting the whole check.
+                    errors.Add($"input file cannot be validated: '{input}': {DescribeException(ex)}");
+                    continue;
+                }
             }
 
             try
@@ -509,9 +679,13 @@ internal static class Program
 
                 decoded.Add((input, first));
             }
-            catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException or UnauthorizedAccessException)
+            catch (Exception ex) when (FailureClassifier.IsControlled(ex))
             {
                 errors.Add($"input file cannot be read: '{input}': {ex.Message}");
+            }
+            catch (Exception ex) when (FailureClassifier.IsLastResort(ex))
+            {
+                errors.Add($"input file cannot be validated: '{input}': {DescribeException(ex)}");
             }
         }
 
@@ -528,6 +702,11 @@ internal static class Program
         Console.WriteLine("Command line check: OK");
         Console.WriteLine($"  Input files: {inputs.Count}");
         Console.WriteLine($"  Input geometry: {DescribeGeometry(decoded[0].Frame)}");
+        if (fitsHdus > 0)
+        {
+            // Quick structural validation: every HDU was walked, but no pixel was decoded.
+            Console.WriteLine($"  FITS structure: {fitsImages} image HDU(s) in {fitsHdus} HDU(s) checked");
+        }
         Console.WriteLine($"  Output format: {settings.OutputExtension}");
         Console.WriteLine($"  Output directory: {EffectiveOutputPath(settings)} (not created)");
         Console.WriteLine($"  Calibration masters: {DescribeMasters(settings)}");
@@ -729,10 +908,12 @@ internal static class Program
                 : settings.MinPixelValue ?? DetectionThreshold.ComputeOrDefault(first);
             return new InputProbe(frames, colour, threshold);
         }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException)
+        catch (Exception ex) when (FailureClassifier.IsControlled(ex))
         {
             // The engine still prints the estimate block and then fails the open; the caller emits
-            // the error, so a zero estimate keeps the transcript shape.
+            // the error, so a zero estimate keeps the transcript shape. This includes malformed and
+            // truncated containers (FitsFormatException/FitsTruncationException), which used to
+            // escape the probe and abort the transcript.
             return new InputProbe(0, false, null);
         }
     }

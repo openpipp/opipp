@@ -256,17 +256,19 @@ public sealed class SerHeader
     }
 
     /// <summary>
-    /// Builds the header the engine writes for a processed run: the capture metadata of
-    /// <paramref name="source"/> carried onto the output geometry.
+    /// Builds the header for a processed run: the colour id of the frames actually being written plus
+    /// the capture text metadata of <paramref name="source"/>.
     /// </summary>
     /// <remarks>
     /// Measured against <c>bin/pipp_core.exe</c> (saturn30.ser, colour, Bayer and 16-bit fixtures),
     /// the engine writes output headers as follows:
     /// <list type="bullet">
     /// <item><c>LuID</c> is always 0, whatever the input carried.</item>
-    /// <item><c>ColorID</c> is 101 for three-plane output; for single-plane output it copies the
-    /// input's mono/Bayer id (0, 8, 9, 10, 11) and uses 0 when the input was colour or not SER.
-    /// 100 is never written: the engine stores BGR.</item>
+    /// <item><c>ColorID</c> is 101 for three-plane output. For single-plane output it describes the
+    /// <em>written</em> frame's CFA pattern (<paramref name="bayer"/>), not the input file's: a
+    /// horizontal flip of an even-width RGGB mosaic is GRBG, and a frame whose mosaic was destroyed
+    /// (binning, resize, debayer-to-mono) is 0. Copying the source id labelled flipped and binned
+    /// output with a phase or mosaic it did not have. 100 is never written: the engine stores BGR.</item>
     /// <item><c>LittleEndian</c> is always 0, i.e. 16-bit sample data is written big-endian.</item>
     /// <item><c>PixelDepthPerPlane</c> is 8 for one byte per sample and 16 otherwise (a 12-bit input
     /// is re-labelled 16).</item>
@@ -280,8 +282,10 @@ public sealed class SerHeader
     /// <param name="channels">Output channels: 1 for mono/Bayer, 3 for colour.</param>
     /// <param name="bitDepth">Output bits per sample (8 or 16).</param>
     /// <param name="frameCount">Number of frames, or 0 when the writer should patch it.</param>
-    /// <param name="source">Header of the input SER file, or null when the input was not SER.</param>
-    /// <param name="bayer">Mosaic pattern for single-plane output when <paramref name="source"/> is null.</param>
+    /// <param name="source">Header of the input SER file, or null when the input was not SER. Only its
+    /// capture text fields are carried; the colour id is not copied.</param>
+    /// <param name="bayer">CFA pattern of the frames being written (the delivered frame after geometry),
+    /// or <see cref="BayerPattern.None"/> when they are plain mono or colour.</param>
     public static SerHeader CreateOutput(
         int width,
         int height,
@@ -301,16 +305,12 @@ public sealed class SerHeader
         {
             colorId = (int)SerColorId.Bgr;
         }
-        else if (source is not null && ChannelsForColorId(source.ColorId) == 1)
-        {
-            // Mono/Bayer ids survive: the engine copies 0/8/9/10/11 from the input header.
-            colorId = source.ColorId;
-        }
         else
         {
-            // Non-SER input, or a colour input split into channels: plain mono. The engine leaves
-            // 100 on split files, which contradicts the 1-plane payload - a reader-breaking quirk
-            // that is deliberately not reproduced.
+            // The header must describe the frames this run delivers, not the input file. Geometry
+            // moves the CFA phase (flip, rotation, odd-origin crop, odd alignment shift) and binning
+            // or resizing removes the mosaic altogether, so the source header's id can name a phase
+            // or a mosaic the written samples do not have. None is a genuinely mono payload -> 0.
             colorId = ColorIdForBayer(bayer);
         }
 

@@ -142,8 +142,11 @@ Output options:
   -incqv                   Include the frame quality value in the filename.
   -rgb                     Split colour output into separate R, G and B files.
   -keepimgname             Keep the original image filenames.
-  -avi_codec=<index>       AVI codec: 0 DIB, 1 ULRG (Ut Video), 2 FMP4 (MPEG-4).
-  -avi_quality=<1..100>    AVI codec quality.
+  -avi_codec=<index>       AVI codec: 0 DIB (uncompressed Y800). This engine has no
+                           Ut Video or MPEG-4 encoder, so 1 (ULRG) and 2 (FMP4) are
+                           rejected for AVI output; the original engine accepted them.
+  -avi_quality=<1..10>     AVI codec quality, 1-10 (the original engine rejects higher
+                           values). Unused by the uncompressed DIB path.
   -avi_old                 Write the legacy AVI layout.
   -avi_old4                Write the legacy AVI layout sized for 4 GB files.
   -avi_safe_width          Pad AVI frames to a safe width multiple.
@@ -172,7 +175,12 @@ Misc options:
   -debugavi                Output debug details of AVI files.
   -check                   Validate the command line, calibration masters, input files,
                            processing geometry and output settings, then exit without
-                           writing anything. Exits 0 when valid, 2 when not.
+                           writing anything. Quick structural validation: every HDU of a
+                           FITS input is walked (header, data offset and data-block length)
+                           without decoding pixels, and the first frame of every other
+                           input is decoded for the geometry checks. A full processing run
+                           decodes every frame and is the authoritative validation.
+                           Exits 0 when valid, 2 when not.
                            Compatibility note: the original engine treats -check as an
                            alias of -chk (planet detection). OPIPP keeps the documented
                            validate-and-exit meaning; use -chk for planet detection.

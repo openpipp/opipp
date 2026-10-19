@@ -36,16 +36,17 @@ public class GuiTranscriptTests
         { "09-gif", ["-gif", "-anim_fwd", "-anim_rev"], ["parity/capture.ser"] },
     };
 
-    [Theory]
+    [SkippableTheory]
     [MemberData(nameof(Scenarios))]
     public void GuiStdoutMatchesOracle(string scenario, string[] switches, string[] inputs)
     {
         string goldenPath = Path.Combine(GoldenRoot, scenario + ".txt");
         string[] inputPaths = inputs.Select(relative => Path.Combine(RepoRoot, relative.Replace('/', '\\'))).ToArray();
 
-        // saturn30.ser is third-party evaluation data kept out of version control; the smaller
-        // parity fixtures still exercise the other scenarios when it is absent.
-        if (inputPaths.Any(path => !File.Exists(path))) return;
+        // saturn30.ser is third-party evaluation data kept out of version control. A case that
+        // cannot run must skip loudly: returning here used to report a pass without executing.
+        string? missing = inputPaths.FirstOrDefault(path => !File.Exists(path));
+        Skip.If(missing is not null, $"requires fixture not stored in the repository: {missing}");
 
         string outputDirectory = Path.Combine(
             Path.GetTempPath(), "pipp-gui-tests", scenario, Guid.NewGuid().ToString("N"));

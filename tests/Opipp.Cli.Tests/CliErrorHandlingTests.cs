@@ -48,14 +48,16 @@ public class CliErrorHandlingTests
 
             Assert.Equal(1, exitCode);
 
-            // Same presentation as the other handled engine errors: one "Error: ..." line on stderr.
-            Assert.StartsWith("Error: ", stderr, StringComparison.Ordinal);
-            Assert.Contains("-dark_tmp master is 8x8x1@8 but the capture is 16x16x1@8", stderr, StringComparison.Ordinal);
-            Assert.Contains("must match the capture geometry", stderr, StringComparison.Ordinal);
-
-            // The controlled path prints the message only; a stack trace or type name means the
-            // exception escaped the catch filter.
-            Assert.Single(stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+            // Same presentation as the other handled engine errors: the fault, then the input and
+            // the fact that nothing on disk can be treated as a complete result. A stack trace or
+            // type name means the exception escaped the catch filter.
+            string[] lines = stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            Assert.Equal(2, lines.Length);
+            Assert.StartsWith("Error: ", lines[0], StringComparison.Ordinal);
+            Assert.Contains("-dark_tmp master is 8x8x1@8 but the capture is 16x16x1@8", lines[0], StringComparison.Ordinal);
+            Assert.Contains("must match the capture geometry", lines[0], StringComparison.Ordinal);
+            Assert.Contains("Incomplete run", lines[1], StringComparison.Ordinal);
+            Assert.Contains(input, lines[1], StringComparison.Ordinal);
             Assert.DoesNotContain("   at ", stderr, StringComparison.Ordinal);
             Assert.DoesNotContain("Unhandled exception", stderr, StringComparison.Ordinal);
             Assert.DoesNotContain(nameof(Opipp.Core.Processing.CalibrationConfigurationException), stderr, StringComparison.Ordinal);

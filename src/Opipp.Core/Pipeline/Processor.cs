@@ -373,6 +373,14 @@ public sealed class PipelineSettings
     /// the second quarter, appending <c>a</c>/<c>b</c> to the frame number. The engine's help text and
     /// a 4/7/8/10-frame oracle sweep agree on the <c>n/4</c> and <c>n/2</c> boundaries.
     /// </summary>
+    /// <remarks>
+    /// This is a deliberate legacy sequence-duplication policy: the extra copies weight the master,
+    /// and they are part of the output sequence by design. The copy count belongs to the frame's
+    /// quality rank (the order <c>Select</c> produced), never to the position the
+    /// frame happens to occupy when <see cref="RenumberFrames"/> or <see cref="NoRamBuffers"/> makes
+    /// delivery follow source order; those switches reorder the sequence but may not move weight
+    /// from one frame to another.
+    /// </remarks>
     public bool QualityWeighting { get; set; }
 
     /// <summary>
@@ -614,7 +622,7 @@ public sealed class Processor
             {
                 source = unit.Open();
             }
-            catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or FileNotFoundException)
+            catch (Exception ex) when (IsInputDecodeFailure(ex))
             {
                 failed.Add(unit.Name);
                 _protocol?.WriteLine($"Error: could not open file '{unit.Name}': {ex.Message}");
@@ -661,7 +669,7 @@ public sealed class Processor
                     {
                         raw = source.ReadFrame();
                     }
-                    catch (InvalidDataException ex)
+                    catch (Exception ex) when (IsInputDecodeFailure(ex))
                     {
                         failed.Add(unit.Name);
                         _protocol?.WriteLine($"Error: {ex.Message}");
@@ -947,42 +955,50 @@ public sealed class Processor
                 // -no_ram_buff has the same observable effect: the engine cannot sort buffers it did
                 // not keep, so selected frames are delivered in source order (verified with -q=3).
                 bool qualitySelection = _settings.KeepFrames is not null || _settings.KeepPercent is not null;
-                if (qualitySelection && (!_settings.RenumberFrames || _settings.NoRamBuffers))
+                bool sourceOrder = qualitySelection && (!_settings.RenumberFrames || _settings.NoRamBuffers);
+
+                // -qw is a deliberate legacy sequence-duplication policy: the selector's ranking
+                // decides which frames are copied, and a copy count is a property of that frame, not
+                // of the slot it is later written to. `written` is in quality order (Select ranks,
+                // and -drop preserves that order), so the copy counts are fixed here, before any
+                // output reordering. Attaching them after the -nr/-no_ram_buff sort would let a
+                // delivery-order switch move the extra weight onto different frames and change the
+                // master's samples (the defect this order of operations exists to prevent).
+                int topQuarter = written.Count / 4;
+                int secondQuarter = written.Count / 2;
+                bool weight = _settings.QualityWeighting && qualitySelection && written.Count > 0;
+                var weighted = new List<(RetainedFrame Frame, double Score, AlignmentOffset Offset, int Copies)>(written.Count);
+                int duplicated = 0;
+                for (int i = 0; i < written.Count; i++)
                 {
-                    written = written.OrderBy(entry => entry.Frame.Frame.Index).ToList();
+                    var entry = written[i];
+                    int copies = 1;
+                    if (weight)
+                    {
+                        if (i < topQuarter) copies = 3;
+                        else if (i < secondQuarter) copies = 2;
+                        duplicated += copies - 1;
+                    }
+
+                    weighted.Add((entry.Frame, entry.Score, entry.Offset, copies));
                 }
 
-                // -qw duplicates the top quarter twice and the next quarter once, naming the copies
-                // with a/b suffixes (oracle: -q=10 -> 00,00a,00b for the top two, 02a,03a,04a for the
-                // next three, 05..09 single; "Created 7 duplicate images").
-                var queue = new List<(RetainedFrame Frame, double Score, AlignmentOffset Offset, string Suffix)>(written.Count);
-                int duplicated = 0;
-                if (_settings.QualityWeighting && qualitySelection && written.Count > 0)
+                if (sourceOrder)
                 {
-                    int top = written.Count / 4;
-                    int second = written.Count / 2;
-                    for (int i = 0; i < written.Count; i++)
-                    {
-                        var entry = written[i];
-                        queue.Add((entry.Frame, entry.Score, entry.Offset, string.Empty));
-                        if (i < top)
-                        {
-                            queue.Add((entry.Frame, entry.Score, entry.Offset, "a"));
-                            queue.Add((entry.Frame, entry.Score, entry.Offset, "b"));
-                            duplicated += 2;
-                        }
-                        else if (i < second)
-                        {
-                            queue.Add((entry.Frame, entry.Score, entry.Offset, "a"));
-                            duplicated++;
-                        }
-                    }
+                    // Stable source-order delivery. Copies stay attached to their own frame, so the
+                    // weighted multiset - and therefore the stack - is identical in either order.
+                    weighted = weighted.OrderBy(entry => entry.Frame.Frame.Index).ToList();
                 }
-                else
+
+                var queue = new List<(RetainedFrame Frame, double Score, AlignmentOffset Offset, string Suffix)>(written.Count + duplicated);
+                foreach (var entry in weighted)
                 {
-                    foreach (var entry in written)
+                    queue.Add((entry.Frame, entry.Score, entry.Offset, string.Empty));
+                    for (int copy = 1; copy < entry.Copies; copy++)
                     {
-                        queue.Add((entry.Frame, entry.Score, entry.Offset, string.Empty));
+                        // -qw names the extra copies a/b after the frame's number (oracle:
+                        // -q=10 -> 00,00a,00b for the top two, 02a,03a,04a for the next three).
+                        queue.Add((entry.Frame, entry.Score, entry.Offset, copy == 1 ? "a" : "b"));
                     }
                 }
 
@@ -2431,7 +2447,11 @@ public sealed class Processor
     {
         if (!_settings.ShowDetectedPixels) return frame;
         int threshold = detectionThreshold ?? _settings.MinPixelValue ?? DetectionThreshold.ComputeOrDefault(frame);
-        return DetectionOverlay.Render(frame, threshold, _settings.MinSize);
+        Frame rendered = DetectionOverlay.Render(frame, threshold, _settings.MinSize);
+        // The overlay is a rendering of this frame, not a new capture: keep the provenance so a
+        // stacked/rendered SER output still carries the source's identity metadata.
+        rendered.SourceName = frame.SourceName;
+        return rendered;
     }
 
     /// <summary>The channel order <c>-rgb</c> uses for its file prefixes: <c>r_</c>, <c>g_</c>, <c>b_</c>.</summary>
@@ -2469,6 +2489,21 @@ public sealed class Processor
             Bayer = frame.Bayer,
         };
     }
+
+    /// <summary>
+    /// True when an exception from opening or reading an input means "this file cannot be decoded",
+    /// so the input is recorded in <see cref="ProcessingReport.FailedFiles"/> and the run continues
+    /// with the remaining files. FITS reports structural defects and short pixel payloads with its
+    /// own exception types, and a reader may reject a source's CFA phase while opening it; neither
+    /// is a bug in the run loop, and neither may tear down a multi-file run.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="OperationCanceledException"/> is deliberately not included: cancellation is a
+    /// request to stop, not a bad input, and swallowing it would make a cancelled run look partial.
+    /// </remarks>
+    internal static bool IsInputDecodeFailure(Exception exception) =>
+        exception is IOException or InvalidDataException or NotSupportedException
+            or FitsFormatException or FitsTruncationException or BayerPhaseException;
 
     private void Report(int percent, string? file, int frameIndex, int frameCount, string message)
     {

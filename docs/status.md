@@ -5,11 +5,11 @@ produce every figure on this page.
 
 | | |
 |---|---|
-| Version | `0.1.10-alpha` at the tagged commit |
+| Version | `0.1.11-alpha` at the tagged commit |
 | SDK | .NET 10.0.402 (local `~/.dotnet-sdk`) |
-| Tests | **824 passing, 0 failing, 0 skipped** across nine projects |
+| Tests | **926 passing, 0 failing, 0 skipped** across nine projects |
 | Parity | **27 compared, 27 matched, 2 deliberate differences, 0 gaps, 0 failed** |
-| Release | `v0.1.10-alpha`, Windows x64 zip, self-contained |
+| Release | `v0.1.11-alpha`, Windows x64 zip, self-contained |
 | History | [`journal.md`](journal.md) — dated findings, superseded details |
 
 ```bash
@@ -20,13 +20,24 @@ dotnet run --project tools/Opipp.Parity -- --real
 
 ## What is verified
 
-- SER, FITS, AVI (uncompressed), TIFF, PNG, BMP, PGM, DNG read/write, and GIF write.
+- SER, FITS, AVI (uncompressed), TIFF, PNG and BMP read/write; GIF write; PGM as calibration input
+  only; DNG read-only (restricted uncompressed subset).
 - Debayer, binning, median and mono modes, histogram stretch, gain/gamma, flip/rotate/crop/resize.
 - Dark/flat calibration, applied to raw frames before debayering and binning; a master that does not
   match the capture geometry is a controlled error, not a crash or a silently empty result.
 - Master creation (dark, flat-dark, flat) reads and writes the engine's `.tmp` masters, subtracts a
   flat-dark exactly once, keeps RGB masters three-channel, is cancellable, and publishes nothing when
   a build fails.
+- Raw SER output describes the frame it actually contains: the ColorID follows the transformed CFA
+  phase (all four patterns, flips, rotations, odd crops and odd translations) and binning/resize write
+  mono. A mixed-phase sequence fails with a controlled error instead of a lying header.
+- Corrupt and truncated FITS, and mixed-CFA joins, produce controlled failures naming the input; no
+  unhandled-exception exits. `-check` audits every image HDU structurally without decoding pixels.
+- Quality weighting is attached to frame identity, so `-nr` and `-no_ram_buff` no longer change which
+  ranks receive extra copies (the review's 95-vs-44 case is now 95 in every mode).
+- A final stack keeps the first accepted frame's observer/telescope/instrument metadata.
+- The file picker offers only formats the engine can open; JPEG, video containers and non-DNG RAW are
+  rejected at add time.
 - A run that wrote some frames and then failed reports **PARTIAL FAILURE** and exits non-zero; the
   written output is labelled incomplete and the failing input is named.
 - `-check` validates the command line, inputs, masters and geometry, then exits without writing output.
@@ -60,6 +71,22 @@ The summary separates four outcomes, and only real mismatches fail the run:
 - **failed** — compared and different.
 
 `0 gaps` describes the registered cases, not every feature: see the gaps below.
+
+## How to read the test count
+
+The suite count is what the runner executed, not a count of independent behavioural checks. Keep the
+evidence types apart:
+
+| Evidence | What it establishes |
+|---|---|
+| Unit and pipeline tests | the managed implementation follows the contracts written down here |
+| Golden comparisons | output matches committed native fixtures for registered cases |
+| Independently decoded output | a file is readable and numerically correct outside OPIPP's own readers |
+| CI | the build, suite, docs consistency and packaged smoke convert pass on a clean runner |
+| Live native parity (27/27) | maintainer-recorded result against the original engine, not run in CI |
+
+Tests that need a non-redistributable fixture must skip explicitly when it is absent; a test that
+cannot run must never report a pass.
 
 ## Switch coverage
 

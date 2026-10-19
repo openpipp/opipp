@@ -23,7 +23,7 @@ public class CommandLineTests
         "-keepimgname",
 
         // AVI.
-        "-avi_codec=1", "-avi_quality=85", "-avi_old", "-avi_old4", "-avi_safe_width",
+        "-avi_codec=1", "-avi_quality=5", "-avi_old", "-avi_old4", "-avi_safe_width",
         "-auto_fps", "-fps_rate=30", "-fps_scale=1",
 
         // GIF.
@@ -165,7 +165,7 @@ public class CommandLineTests
                   PippOutputFormats.Tiff | PippOutputFormats.Png | PippOutputFormats.Fits |
                   PippOutputFormats.Gif,
         AviCodec = PippAviCodec.Fmp4,
-        AviQuality = 85,
+        AviQuality = 5,
         AviOldFormat = PippAviOldFormat.Old4,
         AviSafeWidth = true,
         AutoFps = true,
@@ -404,7 +404,7 @@ public class CommandLineTests
         {
             Formats = PippOutputFormats.Png,
             AviCodec = PippAviCodec.Fmp4,
-            AviQuality = 85,
+            AviQuality = 5,
             AviOldFormat = PippAviOldFormat.Old,
             AviSafeWidth = true,
         };
@@ -605,6 +605,7 @@ public class CommandLineTests
     [InlineData("-ser_bpp=17")]
     [InlineData("-convmono=7")]
     [InlineData("-avi_quality=0")]
+    [InlineData("-avi_quality=11")]
     [InlineData("-avi_quality=101")]
     [InlineData("-qpcnt=101")]
     [InlineData("-gif_quant_type=2")]
@@ -667,7 +668,7 @@ public class CommandLineTests
     [InlineData("-f=0")]
     [InlineData("-hot_pixel=0")]
     [InlineData("-avi_quality=1")]
-    [InlineData("-avi_quality=100")]
+    [InlineData("-avi_quality=10")]
     [InlineData("-input_gain=0.5")]
     [InlineData("-gamma=2.2")]
     public void EdgeValues_AreAcceptedAndRoundTrip(string token)

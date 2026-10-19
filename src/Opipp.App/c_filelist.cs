@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
+using Opipp.Core.Pipeline;
 
 namespace PIPP_Application;
 
@@ -13,21 +15,33 @@ public class c_filelist : ListView
 
 	private OpenFileDialog openFD;
 
-	private List<string> fits_extensions = new List<string> { "fit", "fits", "fts" };
+	/// <summary>
+	/// FITS extensions. One FITS file can hold several image HDUs, but every one of them is a still
+	/// image, so these stay in the picker's still-image group exactly as the original UI showed them.
+	/// </summary>
+	private static readonly string[] FitsExtensions = { "fit", "fits", "fts" };
 
-	private List<string> image_extensions = new List<string> { "bmp", "tif", "tiff", "jpg", "jpeg", "png" };
+	/// <summary>
+	/// Still-image extensions <see cref="FrameSourceFactory"/> can actually open. JPEG is absent on
+	/// purpose: the factory has no <c>.jpg</c>/<c>.jpeg</c> mapping, so offering it only put a row in
+	/// this list that the engine refused once the run started.
+	/// </summary>
+	private static readonly string[] ImageExtensions = { "bmp", "tif", "tiff", "png" };
 
-	private List<string> video_extensions = new List<string>
-	{
-		"avi", "mov", "mp4", "mpg", "mpeg", "mkv", "mts", "m2ts", "m2t", "mvi",
-		"wmv", "mlv"
-	};
+	/// <summary>
+	/// Video containers the engine can open: the managed AVI reader (DIB/Y800 and MJPEG). MOV, MP4,
+	/// MKV and the rest needed the native helper's FFmpeg demuxers and are not offered.
+	/// </summary>
+	private static readonly string[] VideoExtensions = { "avi" };
 
-	private List<string> raw_extensions = new List<string>
-	{
-		"3fr", "arw", "cr2", "crw", "dcr", "dng", "erf", "orf", "raf", "raw",
-		"rw2", "nef", "nrw", "mef", "mos", "mrw", "pef", "x3f"
-	};
+	/// <summary>
+	/// RAW extensions the engine can open: only the uncompressed baseline DNG subset of
+	/// <c>RawDngReader</c>. Every other camera RAW format needed dcraw.
+	/// </summary>
+	private static readonly string[] RawExtensions = { "dng" };
+
+	/// <summary>The SER container, kept as its own picker entry as in the original UI.</summary>
+	private static readonly string[] SerExtensions = { "ser" };
 
 	private cListViewColumnSorter lvwColumnSorter;
 
@@ -53,7 +67,6 @@ public class c_filelist : ListView
 
 	public c_filelist()
 	{
-		image_extensions.AddRange(fits_extensions);
 		openFD = new OpenFileDialog();
 		openFD.Multiselect = true;
 		lvwColumnSorter = new cListViewColumnSorter();
@@ -108,6 +121,36 @@ public class c_filelist : ListView
 		DragEnter += listView_files_DragEnter;
 		MouseUp += listView_files__MouseUp;
 	}
+
+	/// <summary>
+	/// The <c>Filter</c> of the "Add Source Files" dialog: exactly the formats
+	/// <see cref="FrameSourceFactory"/> can open, grouped into the entries the original UI had.
+	/// </summary>
+	/// <remarks>
+	/// The original list was wider than the engine: it offered JPEG (never a frame source), MOV/MP4/
+	/// MKV and friends (the managed reader is AVI-only) and every camera RAW the native dcraw build
+	/// knew (Opipp.Core decodes only the uncompressed DNG subset). Those entries only moved the
+	/// failure from "add" to "run", so the five entries below are built from the same extension set
+	/// the factory dispatches on and a test asserts the union still equals
+	/// <see cref="FrameSourceFactory.Extensions"/>.
+	/// </remarks>
+	internal static string SourceFilter =>
+		"All Supported Types|" + Patterns(ImageExtensions.Concat(FitsExtensions).Concat(VideoExtensions).Concat(SerExtensions).Concat(RawExtensions))
+		+ "|Video File(s)|" + Patterns(VideoExtensions)
+		+ "|LuCam Recorder SER|" + Patterns(SerExtensions)
+		+ "|Image File(s)|" + Patterns(ImageExtensions.Concat(FitsExtensions))
+		+ "|Raw Image File(s)|" + Patterns(RawExtensions);
+
+	/// <summary>Every extension the picker offers, without the leading dot.</summary>
+	internal static IEnumerable<string> OfferedExtensions =>
+		ImageExtensions.Concat(FitsExtensions).Concat(VideoExtensions).Concat(SerExtensions).Concat(RawExtensions);
+
+	private static string Patterns(IEnumerable<string> extensions) =>
+		string.Join(";", extensions.Select(extension => "*." + extension));
+
+	/// <summary>True for the still formats that need join mode; false for the AVI and SER containers.</summary>
+	private static bool IsStillImage(string extension) =>
+		Array.IndexOf(VideoExtensions, extension) < 0 && Array.IndexOf(SerExtensions, extension) < 0;
 
 	public void set_initial_source_dir(int init_src_dir)
 	{
@@ -313,13 +356,7 @@ public class c_filelist : ListView
 			break;
 		}
 		openFD.FileName = "";
-		string text = string.Empty;
-		string[] array = cPersistentData.raw_file_extensions.Split(',');
-		for (int i = 0; i < array.Length; i++)
-		{
-			text = ((i == array.Length - 1) ? (text + "*." + array[i]) : (text + "*." + array[i] + ";"));
-		}
-		openFD.Filter = "All Supported Types|*." + string.Join(";*.", image_extensions) + ";*." + string.Join(";*.", video_extensions) + ";*.ser;*." + string.Join(";*.", array) + ";|Video File(s)|*." + string.Join(";*.", video_extensions) + "|LuCam Recorder SER|*.ser|Image File(s)|*." + string.Join(";*.", image_extensions) + "|Raw Image File(s)|*." + string.Join(";*.", array);
+		openFD.Filter = SourceFilter;
 		openFD.FilterIndex = cPersistentData.source_filter_index;
 		DialogResult dialogResult = openFD.ShowDialog();
 		if (openFD.FileNames.Length > 0 && dialogResult == DialogResult.OK)
@@ -400,6 +437,7 @@ public class c_filelist : ListView
 		int num3 = 0;
 		double num4 = 0.0;
 		int num5 = 0;
+		bool unsupported_format_reported = false;
 		string text = "";
 		foreach (string text2 in filelist)
 		{
@@ -425,28 +463,28 @@ public class c_filelist : ListView
 			FileInfo fileInfo = new FileInfo(text2);
 			DateTime lastWriteTime = fileInfo.LastWriteTime;
 			string extension = fileInfo.Extension;
-			string[] source = cPersistentData.raw_file_extensions.Split(',');
 			if (!(extension != ""))
 			{
 				continue;
 			}
-			extension = extension.ToLower();
+			extension = extension.ToLowerInvariant();
 			extension = extension.Remove(0, 1);
-			if (fits_extensions.Contains(extension))
+			if (Array.IndexOf(FitsExtensions, extension) >= 0)
 			{
 				extension = "fits";
 			}
-			if (!image_extensions.Contains(extension) && !video_extensions.Contains(extension) && !extension.StartsWith("ser") && !source.Contains(extension))
+			// Only formats FrameSourceFactory can open are admitted. The legacy guard also trusted
+			// cPersistentData.raw_file_extensions (a saved setting), so a stale or hand-edited list
+			// re-admitted JPEG and camera RAW files the engine cannot decode; those only failed once
+			// the run started. The factory is the single authority now, and the reason is reported.
+			if (!FrameSourceFactory.IsSupported(text2))
 			{
-				// The native UI called raw_decode_check here: dcraw either recognised the unknown
-				// extension as a camera RAW file (and it was added to raw_file_extensions) or the file
-				// was rejected. Opipp.Core has no RAW decoder, so every unknown extension is rejected.
-				// Known raw extensions still reach this list through raw_file_extensions, but the
-				// managed engine cannot decode them either.
 				num5++;
-				text = text + text2 + "\n";
+				text = text + text2 + " (unsupported file type)\n";
+				unsupported_format_reported = true;
 				continue;
 			}
+			bool still_image = IsStillImage(extension);
 			int num6 = 1;
 			if (extension == "fits")
 			{
@@ -466,7 +504,23 @@ public class c_filelist : ListView
 				num2 = fits.Width;
 				num3 = fits.Height;
 			}
-			else if (video_extensions.Contains(extension))
+			else if (extension == "dng")
+			{
+				// Only the uncompressed baseline DNG subset is decodable. Probe the header so a
+				// lossy/lossless-JPEG DNG, a tiled DNG or a file wearing the extension that is not a
+				// DNG is refused here, with the other files that could not be added, rather than
+				// aborting the run on its first frame.
+				if (!ManagedEngineApi.TryProbeDng(text2, out DngFileProbe dng))
+				{
+					num5++;
+					text = text + text2 + " (unsupported DNG variant)\n";
+					unsupported_format_reported = true;
+					continue;
+				}
+				num2 = dng.Width;
+				num3 = dng.Height;
+			}
+			else if (Array.IndexOf(VideoExtensions, extension) >= 0)
 			{
 				VideoProbe video;
 				num6 = ManagedEngineApi.TryProbeVideo(text2, out video) ? video.FrameCount : 0;
@@ -489,7 +543,7 @@ public class c_filelist : ListView
 				}
 				extension = string.Concat(extension, " (", video.Codec, ")");
 			}
-			else if (extension.StartsWith("ser"))
+			else if (extension == "ser")
 			{
 				SerFileProbe ser;
 				num6 = ManagedEngineApi.TryProbeSer(text2, out ser) ? ser.FrameCount : 0;
@@ -585,12 +639,7 @@ public class c_filelist : ListView
 				listViewItem.SubItems.Add(num7 + " B");
 			}
 			listViewItem.SubItems[7].Tag = fileInfo.Length;
-			source = cPersistentData.raw_file_extensions.Split(',');
-			bool flag2 = false;
-			if (image_extensions.Contains(extension) || source.Contains(extension))
-			{
-				flag2 = true;
-			}
+			bool flag2 = still_image;
 			bool flag3 = false;
 			for (int j = 0; j < count; j++)
 			{
@@ -611,13 +660,38 @@ public class c_filelist : ListView
 		}
 		if (num5 == 1)
 		{
-			MessageBoxEx.Show("The following 1 file could not be added:\n" + text, "Add Source Files", MessageBoxButtons.OK, MessageBoxIcon.Asterisk, 10000u);
+			ReportAddFailures("The following 1 file could not be added:\n" + text + DescribeSupportedFormats(unsupported_format_reported));
 		}
 		else if (num5 > 1)
 		{
-			MessageBoxEx.Show("The following " + num5 + " files could not be added:\n" + text, "Add Source Files", MessageBoxButtons.OK, MessageBoxIcon.Asterisk, 10000u);
+			ReportAddFailures("The following " + num5 + " files could not be added:\n" + text + DescribeSupportedFormats(unsupported_format_reported));
 		}
 		ListViewItemSorter = lvwColumnSorter;
 		OnFileListUpdated(new FileListEventArgs(total_frame_count, flag, num, avi_bayer_pattern, by8_avi_added));
 	}
+
+	/// <summary>
+	/// Receives the "could not be added" report instead of a modal message box when a test installs
+	/// it; null keeps the real message box. The hook lives here because the source, dark, flat and
+	/// flat-dark pickers all share this control.
+	/// </summary>
+	[Browsable(false)]
+	[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+	internal Action<string> AddFailureDialogOverride { get; set; }
+
+	private void ReportAddFailures(string message)
+	{
+		if (AddFailureDialogOverride != null)
+		{
+			AddFailureDialogOverride(message);
+			return;
+		}
+		MessageBoxEx.Show(message, "Add Source Files", MessageBoxButtons.OK, MessageBoxIcon.Asterisk, 10000u);
+	}
+
+	/// <summary>Appends the engine's format list when a file was refused because of its type.</summary>
+	private static string DescribeSupportedFormats(bool any_unsupported_format) =>
+		any_unsupported_format
+			? "\n\nOPIPP can only open: " + string.Join(", ", FrameSourceFactory.Extensions) + "."
+			: string.Empty;
 }

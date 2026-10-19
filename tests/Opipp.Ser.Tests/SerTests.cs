@@ -639,7 +639,7 @@ public class SerTests
     {
         SerHeader source = MakeSpacePaddedSource();
 
-        SerHeader output = SerHeader.CreateOutput(320, 240, 1, 8, 5, source);
+        SerHeader output = SerHeader.CreateOutput(320, 240, 1, 8, 5, source, BayerPattern.RGGB);
 
         Assert.Equal(0, output.LuId);                 // the engine always writes LuID 0
         Assert.Equal((int)SerColorId.BayerRggb, output.ColorId);
@@ -680,16 +680,18 @@ public class SerTests
     }
 
     [Theory]
-    [InlineData(100, 1, 0)]     // colour source split into channels -> plain mono (engine writes 100; not reproduced)
-    [InlineData(101, 1, 0)]
-    [InlineData(8, 1, 8)]       // Bayer id carries through a mono output
-    [InlineData(8, 3, 101)]     // debayered output is BGR
-    [InlineData(0, 3, 101)]
-    public void CreateOutput_ColorIdFollowsOutputChannelsAndSource(int sourceColorId, int channels, int expected)
+    [InlineData(8, BayerPattern.None, 1, 0)]        // source was Bayer, delivered frame has no mosaic (binning/resize) -> mono
+    [InlineData(0, BayerPattern.RGGB, 1, 8)]        // untagged or mono source, delivered frame is a mosaic -> its phase
+    [InlineData(9, BayerPattern.GRBG, 1, 9)]        // phase after a flip is the delivered frame's, not the source's
+    [InlineData(8, BayerPattern.None, 3, 101)]      // debayered output is BGR
+    [InlineData(0, BayerPattern.None, 3, 101)]
+    public void CreateOutput_ColorIdFollowsOutputChannelsAndDeliveredFrame(
+        int sourceColorId, BayerPattern delivered, int channels, int expected)
     {
         var source = new SerHeader { ColorId = sourceColorId, Width = 32, Height = 24, BitDepth = 8, FrameCount = 4 };
 
-        Assert.Equal(expected, SerHeader.CreateOutput(32, 24, channels, 8, 4, source).ColorId);
+        Assert.Equal(expected,
+            SerHeader.CreateOutput(32, 24, channels, 8, 4, source, delivered).ColorId);
     }
 
     [Theory]
@@ -765,7 +767,7 @@ public class SerTests
         WriteFrames(source.Path, sourceHeader, MakeFrame(4, 3, 1, 8, 1), MakeFrame(4, 3, 1, 8, 2));
 
         using var output = new TempSer();
-        var template = new Frame(4, 3, 1, 8) { SourceName = source.Path };
+        var template = new Frame(4, 3, 1, 8) { SourceName = source.Path, Bayer = BayerPattern.RGGB };
         using (IFrameSink sink = FrameSinkFactory.Create(output.Path, template, frameCountHint: 1))
             sink.Write(template);
 

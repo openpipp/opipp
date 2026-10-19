@@ -19,7 +19,7 @@ projects — is `Opipp.*`.
 
 ## Status: early development — feedback wanted
 
-OPIPP is at **0.1.10-alpha**. The engine is functionally complete and parity-tested against the
+OPIPP is at **0.1.11-alpha**. The engine is functionally complete and parity-tested against the
 original across 27 compared cases, with two declared differences, but one algorithm (surface-feature
 tracking) is still one pixel off on part of the real-data fixture, and the UI has not seen broad
 real-world use. Treat it as a working preview.
@@ -120,7 +120,7 @@ dotnet run --project src/Opipp.App
 ## Status
 
 Working end to end (verified by tests): SER → pipeline → FITS/TIFF/SER/AVI/GIF output, calibration
-subtract/divide, histogram stretch, quality selection, alignment, stacking and animation. **824 tests
+subtract/divide, histogram stretch, quality selection, alignment, stacking and animation. **926 tests
 pass** across nine projects; [`docs/status.md`](docs/status.md) is the authoritative summary.
 
 The CLI is a drop-in engine: it accepts the GUI's stdin protocol (switches and file paths, one per
@@ -133,7 +133,8 @@ line) as well as a normal command line, and emits the original `@PROGRESS/@PFILE
 | SER v3 read/write | complete |
 | FITS read/write | complete (8- and 16-bit, Bayer keywords, BZERO); every image unit is 2880-byte aligned |
 | AVI | read: uncompressed DIB/Y800 and baseline MJPEG; write: uncompressed DIB/Y800 only. Other compressed codecs (ULRG, FMP4, YUY2, ...) are rejected with a clear error |
-| BMP / TIFF / PNG / PGM | complete; BMP writes 8/24bpp only (PIPP's reader rejects 16bpp), so 16-bit frames are downshifted and documented |
+| BMP / TIFF / PNG | complete; BMP writes 8/24bpp only (PIPP's reader rejects 16bpp), so 16-bit frames are downshifted and documented |
+| PGM / DNG | PGM is a calibration-master input only, not a science format; DNG is read-only (restricted uncompressed subset), not a general camera-RAW reader |
 | Debayer (bilinear, smooth hue) | complete; pattern indices match the engine; debayered frames carry no CFA marker, an explicit pattern overrides headers, and raw geometry retags the phase |
 | Binning, median, mono modes, stretch, gain/gamma, flip/rotate/crop/resize | complete |
 | Dark/flat calibration | complete; masters via `.tmp` (preferred) or PGM, corrected flat applied exactly once |

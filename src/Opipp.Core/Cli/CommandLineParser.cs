@@ -575,7 +575,10 @@ public static class CommandLineParser
                     break;
 
                 case "-avi_quality":
-                    if (TryInt(token, value, 1, 100, out var aviQuality)) options.AviQuality = aviQuality;
+                    // The original engine's switch vocabulary offers 1..100, but its AVI encoder
+                    // rejects anything above 10; the implemented contract is 1..10 and both the
+                    // help text and Map enforce the same range.
+                    if (TryInt(token, value, 1, 10, out var aviQuality)) options.AviQuality = aviQuality;
                     break;
 
                 case "-avi_old":
