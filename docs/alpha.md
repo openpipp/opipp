@@ -37,7 +37,7 @@ Version identity lives in `Directory.Build.props` (`Version=0.1.2-alpha`).
 | `Opipp.App.exe` start | window opens, title `OPIPP 0.1.0-alpha - Open PIPP` |
 | Native DLL dependence | none — `pipp_dll.dll` is not used or shipped |
 | Test suite | 553 passing, 0 failing |
-| Parity harness | 29/29 cases, `ALL CASES MATCH` |
+| Parity harness | 26 compared, 26 matched, 2 known differences, 1 gap, 0 failed |
 
 ## What is known to be off
 
