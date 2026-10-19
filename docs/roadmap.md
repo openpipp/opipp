@@ -46,6 +46,7 @@ continue that way. Claims in this file are expected to be backed by a test or a 
 | Secrets | none: no credentials, tokens or connection strings anywhere in the tree |
 | Tests runnable from a clone | yes - the 80 KB synthetic parity fixtures are committed |
 | CI | running on every push: build + 555 tests; parity stays out of CI because it needs the original binaries |
+| Next release | [0.1.4 plan and action items](plan-0.1.4.md) — streaming AVI animation, measured memory, debayer delta |
 
 ## Where the numbers come from
 
