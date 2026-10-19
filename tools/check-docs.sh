@@ -60,8 +60,8 @@ if [ -n "${TEST_COUNT:-}" ]; then
 fi
 
 # The site must show the version it is advertising, and a release-notes file should exist for it.
-if ! grep -qF ">$version<" docs/index.html; then
-    echo "check-docs: docs/index.html has no '$version' pill"
+if ! grep -qF "<span class=\"pill\">$version</span>" docs/index.html; then
+    echo "check-docs: docs/index.html has no '<span class=\"pill\">$version</span>' badge"
     fail=1
 fi
 if [ ! -f "docs/release-notes/$version.md" ]; then
