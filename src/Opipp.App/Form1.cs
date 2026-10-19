@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.ComponentModel;
@@ -84,6 +84,22 @@ public partial class Form1 : Form
 
 	/// <summary>Exit code of the last engine run, for the status decision and for tests.</summary>
 	private int last_exit_code;
+
+	/// <summary>
+	/// Scratch files this run created under the output directory. Cancellation removes only these;
+	/// the output directory can be an existing folder the operator owns, so a blanket <c>*.tmp</c>
+	/// sweep there destroyed unrelated files.
+	/// </summary>
+	private RunTempArtifacts run_temp_artifacts;
+
+	/// <summary>True once the engine's stdout reached end of stream.</summary>
+	private bool run_output_closed;
+
+	/// <summary>Exit code of the finished engine, or null while it is running (or never ran).</summary>
+	private int? run_exit_code;
+
+	/// <summary>True once the run's final transcript line has been written.</summary>
+	private bool run_verdict_written;
 
 	/// <summary>Cancels the in-process master-frame builds (the engine process has its own kill path).</summary>
 	private CancellationTokenSource master_build_cancellation;
@@ -1020,14 +1036,12 @@ public partial class Form1 : Form
 		{
 			avi_settings1LAB.Text = "AVI";
 			avi_settings2LAB.Text = avi_codecCB.Text;
-			if (avi_codecCB.SelectedIndex == 2)
-			{
-				avi_settings3LAB.Text = codec_qualityNUD.Value.ToString();
-			}
-			else
-			{
-				avi_settings3LAB.Text = "N/A";
-			}
+			// The quality row used to show the FMP4 quality (the only codec that used the value).
+			// With uncompressed output there is no quality setting; show the storage cost instead,
+			// because "uncompressed" means very large files.
+			avi_settings3LAB.Text = avi_codecCB.SelectedIndex == 0
+				? "Uncompressed (large files)"
+				: "N/A";
 			repeat_reverse_lastPAN.Enabled = animation_reverseCB.Checked;
 			avi_settings4LAB.Text = avi_fpsNUD.Value.ToString();
 			forward_playGB.Enabled = true;
@@ -2567,7 +2581,7 @@ public partial class Form1 : Form
 				flag = flag2;
 				break;
 			case "AVI_CODEC":
-				avi_codecCB.SelectedIndex = result2;
+				select_avi_codec(result2);
 				flag = flag3;
 				break;
 			case "AVI_CODEC_QUALITY":
@@ -3088,6 +3102,20 @@ public partial class Form1 : Form
 		set_animation_options_details();
 	}
 
+	/// <summary>
+	/// Selects an AVI codec by the index the persisted options and the presets use, clamped to the
+	/// codecs this engine can actually write.
+	/// </summary>
+	/// <remarks>
+	/// The saved configuration of an older session can name ULRG (1) or FMP4 (2); setting an index
+	/// that is no longer in the list would throw and abort the load, and keeping it would make every
+	/// AVI run fail. Both are mapped to DIB (0), which is the only layout the managed writer produces.
+	/// </remarks>
+	private void select_avi_codec(int index)
+	{
+		avi_codecCB.SelectedIndex = index >= 0 && index < avi_codecCB.Items.Count ? index : 0;
+	}
+
 	private void codec_qualityNUD_ValueChanged(object sender, EventArgs e)
 	{
 		set_animation_options_details();
@@ -3124,7 +3152,7 @@ public partial class Form1 : Form
 		outputprefixTB.Text = "";
 		outputsuffixTB.Text = "_pipp";
 		outputaviRB.Checked = true;
-		avi_codecCB.SelectedIndex = 0;
+		select_avi_codec(0);
 		codec_qualityNUD.Value = 10m;
 		old_format_aviCB.Checked = false;
 		old_format_max_sizeCB.SelectedIndex = 0;
@@ -4174,7 +4202,7 @@ public partial class Form1 : Form
 		inputdatetimeformatCB.SelectedIndex = 0;
 		quality_limiting_typeCB.SelectedIndex = 0;
 		winjupostimeCB.SelectedIndex = 0;
-		avi_codecCB.SelectedIndex = 0;
+		select_avi_codec(0);
 		old_format_max_sizeCB.SelectedIndex = 0;
 		conv_mono_comboBox.SelectedIndex = 0;
 		rotationCB.SelectedIndex = 0;
@@ -4394,13 +4422,19 @@ public partial class Form1 : Form
 			pipp_process.CancelOutputRead();
 			stopwatch.Stop();
 			outputTB.AppendText("Runtime: " + Math.Round(stopwatch.Elapsed.TotalSeconds, 1) + " seconds");
+			run_output_closed = true;
 			if (processed_killed)
 			{
+				// Cancel has its own end state and never reaches the exit verdict below.
 				outputTB.AppendText("\r\nPROCESSING CANCELLED\r\n");
+				run_verdict_written = true;
 			}
 			else
 			{
-				outputTB.AppendText("\r\nPROCESSING COMPLETE\r\n");
+				// The verdict waits for the exit code. Printing "PROCESSING COMPLETE" here was how
+				// a run that wrote some frames and then failed on a later input still claimed a
+				// complete output: stdout ends normally either way.
+				append_run_verdict();
 			}
 			pipp_output_received = true;
 			set_testrun_details();
@@ -4597,6 +4631,10 @@ public partial class Form1 : Form
 		if (!string.IsNullOrEmpty(e.Data))
 		{
 			error_data = error_data + e.Data + "\r\n";
+			// Keep the engine's diagnostics in the transcript, not only in the modal dialog that is
+			// dismissed before the operator can compare it with the files on disk. A partial run
+			// names the inputs it could not read here.
+			outputTB.AppendText(e.Data + Environment.NewLine);
 		}
 	}
 
@@ -4612,17 +4650,33 @@ public partial class Form1 : Form
 			show_cancelled_state_and_reset_controls();
 			return;
 		}
-		last_exit_code = pipp_process.ExitCode;
+		apply_engine_exit(pipp_process.ExitCode);
+	}
+
+	/// <summary>
+	/// Applies the engine's exit verdict: status text, transcript verdict, saved options and the
+	/// output-folder button.
+	/// </summary>
+	/// <param name="exit_code">Process exit code; 0 means the run completed.</param>
+	/// <remarks>
+	/// Separated from <see cref="pipp_process_Exited"/> so the end state can be exercised with a code
+	/// the real engine cannot yet produce on demand: a partial failure (some frames written, then a
+	/// later input failed) exits non-zero while its stdout still ended normally.
+	/// </remarks>
+	private void apply_engine_exit(int exit_code)
+	{
+		last_exit_code = exit_code;
+		run_exit_code = exit_code;
 		reset_processing_controls();
 
-		// The CLI reports runtime/calibration failures as 1 and configuration failures as 2.
-		// Any non-zero code means the run did not complete; treating positive codes as success
-		// marked a failed run COMPLETE and offered to open an output folder that may not exist.
+		// The CLI reports runtime/calibration failures as 1 and configuration failures as 2, and it
+		// exits non-zero for a run that wrote some frames and then failed on a later input. Any
+		// non-zero code means the run did not complete; treating positive codes as success marked a
+		// failed run COMPLETE and offered to open an output folder that may not exist.
 		if (last_exit_code != 0)
 		{
 			statusstateLAB.Text = "FAILED WITH ERRORS";
 			processing_failed = true;
-			outputTB.AppendText("Processing stopped with exit code " + last_exit_code.ToString() + "\r\n");
 		}
 		else
 		{
@@ -4630,6 +4684,7 @@ public partial class Form1 : Form
 			processing_failed = false;
 		}
 		statusstateLAB.Left = (statusGB.Width - statusstateLAB.Width) / 2;
+		append_run_verdict();
 		if (test_run)
 		{
 			if (last_exit_code == 0)
@@ -4645,12 +4700,48 @@ public partial class Form1 : Form
 		{
 			output_directory_to_open = output_directory;
 			output_folderBTN.Enabled = true;
-			SystemSounds.Asterisk.Play();
+			if (!SuppressSounds)
+			{
+				// Completion feedback, not a result: a test suite that finishes runs must not play it.
+				SystemSounds.Asterisk.Play();
+			}
 			if (open_folderCB.Checked)
 			{
 				Process.Start("explorer.exe", output_directory_to_open);
 			}
 		}
+	}
+
+	/// <summary>
+	/// Writes the run's final transcript line once both facts are known: the engine's exit code and
+	/// the end of its stdout.
+	/// </summary>
+	/// <remarks>
+	/// The verdict used to be written at end of stdout, which is reached normally even when the run
+	/// stopped on a later input: a partial run therefore said "PROCESSING COMPLETE" while the status
+	/// said FAILED WITH ERRORS. Waiting for the exit code makes the transcript agree with the truth,
+	/// and the failure form names the files and repeats the engine's diagnostics so the evidence
+	/// survives the modal error dialog.
+	/// </remarks>
+	private void append_run_verdict()
+	{
+		if (run_verdict_written || !run_output_closed || run_exit_code is not int exit_code)
+		{
+			return;
+		}
+
+		run_verdict_written = true;
+		if (exit_code == 0)
+		{
+			outputTB.AppendText(Environment.NewLine + "PROCESSING COMPLETE" + Environment.NewLine);
+			return;
+		}
+
+		outputTB.AppendText(Environment.NewLine + "PROCESSING INCOMPLETE" + Environment.NewLine);
+		outputTB.AppendText("The engine exited with code " + exit_code.ToString(CultureInfo.InvariantCulture)
+			+ "; output from this run is incomplete. Any file written before it stopped may be"
+			+ Environment.NewLine + "partial, and any input named by an 'Error:' line above was not processed."
+			+ Environment.NewLine);
 	}
 
 	private void set_testrun_details()
@@ -4834,6 +4925,13 @@ public partial class Form1 : Form
 			// during this run would otherwise leave processing_failed describing the earlier run.
 			processing_failed = false;
 			last_exit_code = 0;
+			// The transcript verdict and the cleanup registry belong to this run too: the verdict
+			// waits for both end-of-output and the exit code, and cleanup may only remove files
+			// this run registered. output_directory is resolved by generate_cmdline_options above.
+			run_output_closed = false;
+			run_exit_code = null;
+			run_verdict_written = false;
+			run_temp_artifacts = new RunTempArtifacts(output_directory);
 			// A fresh token per run: Cancel must abort the in-process master builds too, not only
 			// the engine process (which does not exist during that phase).
 			master_build_cancellation?.Dispose();
@@ -4895,7 +4993,7 @@ public partial class Form1 : Form
 		if (plan.Dark.Enabled)
 		{
 			append_output("Processing Dark Frames \r\n");
-			set_stacking_label(dark_frame_stackingLAB, plan.Dark.FrameLimit, "dark");
+			set_stacking_label(dark_frame_stackingLAB, plan.Dark.ExpectedFrames, "dark");
 			if (plan.Dark.Rebuild)
 			{
 				MasterBuildResult dark_result = run_master_build(plan.Dark, set_dark_frame_progress, cancellationToken);
@@ -4917,7 +5015,7 @@ public partial class Form1 : Form
 		if (plan.FlatDark.Enabled)
 		{
 			append_output("Processing Flat Dark Frames \r\n");
-			set_stacking_label(flat_dark_stackingLAB, plan.FlatDark.FrameLimit, "flat dark");
+			set_stacking_label(flat_dark_stackingLAB, plan.FlatDark.ExpectedFrames, "flat dark");
 			if (plan.FlatDark.Rebuild)
 			{
 				MasterBuildResult flat_dark_result = run_master_build(plan.FlatDark, set_flat_dark_frame_progress, cancellationToken);
@@ -4938,7 +5036,7 @@ public partial class Form1 : Form
 		if (plan.Flat.Enabled)
 		{
 			append_output("Processing Flat Frames \r\n");
-			set_stacking_label(flat_frame_stackingLAB, plan.Flat.FrameLimit, "flat");
+			set_stacking_label(flat_frame_stackingLAB, plan.Flat.ExpectedFrames, "flat");
 			if (plan.Flat.Rebuild)
 			{
 				MasterBuildResult flat_result = run_master_build(plan.Flat, set_flat_frame_progress, cancellationToken);
@@ -5227,15 +5325,12 @@ public partial class Form1 : Form
 		qsframeLAB.Text = quality_sort_label1 + "0" + quality_sort_label2;
 		qualityPB.Value = 0;
 		qualityLAB.Text = "0%";
-		string path = output_directory.Trim('"', ' ');
-		if (Directory.Exists(path))
-		{
-			string[] files = Directory.GetFiles(path, "*.tmp");
-			foreach (string path2 in files)
-			{
-				File.Delete(path2);
-			}
-		}
+
+		// Only artifacts this run created are removed. The output directory is often an existing
+		// folder the operator owns — with the default settings it is the source folder itself — so
+		// enumerating its *.tmp files destroyed unrelated files (a keeper.tmp put there by another
+		// tool). The masters a cancelled run leaves behind are session temp files, not output files.
+		run_temp_artifacts?.DeleteAll();
 	}
 
 	/// <summary>
@@ -6938,7 +7033,7 @@ public partial class Form1 : Form
 		this.codec_qualityNUD.Name = "codec_qualityNUD";
 		this.codec_qualityNUD.Size = new System.Drawing.Size(44, 20);
 		this.codec_qualityNUD.TabIndex = 16;
-		this.toolTip1.SetToolTip(this.codec_qualityNUD, "Selects the quality of the generated AVI file when\r\nthe FMP4 codec is used.  Increasing the quality\r\nincreases the fle size.");
+		this.toolTip1.SetToolTip(this.codec_qualityNUD, "Not used: AVI output is uncompressed DIB/Y800.\r\nThe managed engine has no MPEG-4 encoder, so\r\nthere is no quality setting to apply.");
 		this.codec_qualityNUD.Value = new decimal(new int[4] { 10, 0, 0, 0 });
 		this.codec_qualityNUD.ValueChanged += new System.EventHandler(this.codec_qualityNUD_ValueChanged);
 		this.median_filterCB.AutoSize = true;
@@ -7975,7 +8070,7 @@ public partial class Form1 : Form
 		this.avi_codecCB.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
 		this.avi_codecCB.FormattingEnabled = true;
 		this.avi_codecCB.ItemHeight = 13;
-		this.avi_codecCB.Items.AddRange(new object[3] { "DIB (RAW Uncompressed)", "ULRG (Ut Video Lossless Compression)", "FMP4 (MPEG-4 Lossy Compression)" });
+		this.avi_codecCB.Items.AddRange(new object[1] { "DIB (RAW Uncompressed)" });
 		this.avi_codecCB.Location = new System.Drawing.Point(7, 17);
 		this.avi_codecCB.MaxDropDownItems = 10;
 		this.avi_codecCB.Name = "avi_codecCB";
@@ -7983,6 +8078,10 @@ public partial class Form1 : Form
 		this.avi_codecCB.TabIndex = 22;
 		this.avi_codecCB.ValueMember = "0";
 		this.avi_codecCB.SelectedIndexChanged += new System.EventHandler(this.avi_codecCB_SelectedIndexChanged);
+		// Only uncompressed DIB/Y800 can be written: the managed engine has no Ut Video or MPEG-4
+		// encoder, and the two presets that asked for them failed at run time. Say what the one
+		// supported choice costs, because AVI frames are stored without compression.
+		this.toolTip1.SetToolTip(this.avi_codecCB, "AVI output is uncompressed: 8-bit mono frames (Y800) or 24-bit colour frames (DIB).\r\nFile size is roughly width x height x 3 bytes per colour frame, so captures are large.\r\nThe original ULRG (Ut Video) and FMP4 (MPEG-4) codecs are not implemented by this engine.");
 		this.input_gainNUD.DecimalPlaces = 1;
 		this.input_gainNUD.Increment = new decimal(new int[4] { 1, 0, 0, 65536 });
 		this.input_gainNUD.Location = new System.Drawing.Point(6, 18);
@@ -10879,7 +10978,8 @@ public partial class Form1 : Form
 			avi_fpsNUD.ForeColor = green;
 			old_format_aviCB.Checked = true;
 			old_format_aviCB.ForeColor = green;
-			avi_codecCB.SelectedIndex = 2;
+			// Uncompressed DIB: the only AVI codec this engine writes (see select_avi_codec).
+			select_avi_codec(0);
 			avi_codecCB.ForeColor = green;
 			repeat_forward_lastCB.Checked = true;
 			repeat_forward_lastCB.ForeColor = green;
@@ -10929,9 +11029,10 @@ public partial class Form1 : Form
 			stabilise_noneRB.ForeColor = green;
 			outputaviRB.Checked = true;
 			outputaviRB.ForeColor = green;
-			outputsuffixTB.Text = "_ulrg";
+			// DIB is uncompressed, so the archive is lossless at the cost of size; the suffix says so.
+			outputsuffixTB.Text = "_dib";
 			outputsuffixTB.ForeColor = green;
-			avi_codecCB.SelectedIndex = 1;
+			select_avi_codec(0);
 			avi_codecCB.ForeColor = green;
 			create_output_subdirCB.Checked = false;
 			create_output_subdirCB.ForeColor = green;

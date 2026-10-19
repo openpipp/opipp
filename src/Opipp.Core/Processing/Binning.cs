@@ -18,6 +18,13 @@ public enum BinningMode
 /// If a dimension is not divisible by the factor, the trailing partial block is ignored:
 /// the output size is <c>floor(width/factor)</c> x <c>floor(height/factor)</c>.
 /// </summary>
+/// <remarks>
+/// Binning a mosaic does not produce a mosaic: every output sample is the mean (or sum) of a block
+/// that contains two green sites, one red and one blue, so the result is a single-plane colour
+/// average with no CFA lattice left. The returned frame therefore carries
+/// <see cref="BayerPattern.None"/>; keeping the input marker would give a debayer stage or an
+/// output header a pattern the samples no longer have. A factor of 1 is an exact copy and keeps it.
+/// </remarks>
 public static class Binning
 {
     /// <summary>Bins the frame by an integer factor from 1 to 8.</summary>
@@ -77,6 +84,6 @@ public static class Binning
             }
         }
 
-        return ProcessingUtil.NewLike(frame, outW, outH, c, dst);
+        return ProcessingUtil.NewLike(frame, outW, outH, c, dst, BayerPattern.None);
     }
 }

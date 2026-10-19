@@ -1,7 +1,7 @@
 # HANDOFF - start here
 
 Cold-start guide for continuing this project in a fresh session. Read this first, then the two
-documents it points at. Everything here is verified as of commit **093eea2**.
+documents it points at. Everything here is verified as of the **v0.1.10-alpha** release.
 
 ## What the project is
 
@@ -15,11 +15,11 @@ git-ignored, never published or committed. The repository is GPLv3 for its own c
 
 | Item | Value |
 | --- | --- |
-| Repo | `<repo>` (git, local only; see `git log -1`) |
+| Repo | <https://github.com/openpipp/opipp> (public, GitHub organization `openpipp`) |
 | Build | `dotnet build OPIPP.slnx` - clean |
-| Tests | **481 passing, 0 failing** (7 projects) |
-| Parity | **18 synthetic + 4 real-data cases** (`--real`), all matching; GIF is a deliberate divergence |
-| Switches | **113 of 131 wired** (76 verified / 37 executed), 6 documented skips, 12 inert |
+| Tests | **824 passing, 0 failing** (9 projects) |
+| Parity | **27 compared, 27 matched**, 2 deliberate differences, 0 gaps (`--real`) |
+| Switches | **131 parse; 76 verified / 43 wired / 12 inert** (see `docs/status.md`) |
 | Managed code | Core 11.8k lines, Cli 0.3k, App 14.5k, tests 5.5k |
 | Reference | `decompiled/` 14,277 lines C#; `ghidra/out/pipp_core.c` 4,229 functions |
 | Real data | `samples/` 4.8 GB (git-ignored, evaluation-use third-party capture) |

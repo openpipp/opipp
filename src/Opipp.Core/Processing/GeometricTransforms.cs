@@ -5,13 +5,42 @@ using Opipp.Core.Frames;
 /// <summary>
 /// Lossless orientation and crop operations from PIPP's flip/rotate and crop pipeline stages.
 /// Every operation returns a new <see cref="Frame"/>; the input is never mutated.
-/// Channel order is preserved (R,G,B stay interleaved) and Bayer/provenance metadata is copied.
+/// Channel order is preserved (R,G,B stay interleaved).
 /// </summary>
+/// <remarks>
+/// <para>
+/// Bayer phase rule: a mosaic is a 2x2 lattice, so the CFA pattern is part of the geometry, not
+/// provenance. Each operation derives the output pattern from where the output's first 2x2 tile
+/// lands in the source (see <see cref="ProcessingUtil.Retag"/>). A reflection over an even axis,
+/// a quarter turn of an even side, or a crop with an odd origin all move the phase; the marker is
+/// updated to the pattern that actually describes the output samples rather than copied. No
+/// combination of these operations can produce a lattice the four <see cref="BayerPattern"/>
+/// values cannot name, so nothing here has to be rejected.
+/// </para>
+/// <para>
+/// Stages that resample rather than relocate samples (binning, bilinear resize) do not preserve a
+/// mosaic at all and clear the pattern; see <see cref="Binning.Apply"/> and <see cref="Resize.Bilinear"/>.
+/// </para>
+/// </remarks>
 public static class GeometricTransforms
 {
+    /// <summary>
+    /// Recomputes the mosaic pattern after a whole-pixel translation: output pixel (x, y) is the
+    /// source pixel (x - dx, y - dy), i.e. the content moves by (<paramref name="dx"/>,
+    /// <paramref name="dy"/>). An even translation keeps the phase; an odd one swaps the sites of
+    /// the 2x2 tile. Used by the alignment shift, which relocates whole pixels and so keeps the
+    /// frame a valid mosaic - at the phase the shift selects.
+    /// </summary>
+    /// <param name="pattern">Source mosaic pattern.</param>
+    /// <param name="dx">Horizontal translation in whole pixels, positive to the right.</param>
+    /// <param name="dy">Vertical translation in whole pixels, positive downwards.</param>
+    /// <returns>The pattern of the translated mosaic, or <see cref="BayerPattern.None"/> for none.</returns>
+    public static BayerPattern TranslatePattern(BayerPattern pattern, int dx, int dy) =>
+        ProcessingUtil.RetagTranslated(pattern, dx, dy);
+
     /// <summary>Mirrors the frame left-to-right: output (x, y) = source (Width-1-x, y).</summary>
     /// <param name="frame">Source frame.</param>
-    /// <returns>A new frame with the same dimensions.</returns>
+    /// <returns>A new frame with the same dimensions and the phase-corrected Bayer pattern.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="frame"/> is null.</exception>
     public static Frame FlipHorizontal(Frame frame)
     {
@@ -33,12 +62,12 @@ public static class GeometricTransforms
             }
         }
 
-        return ProcessingUtil.NewLike(frame, w, h, c, dst);
+        return ProcessingUtil.NewLike(frame, w, h, c, dst, Phase(frame.Bayer, (x, y) => (w - 1 - x, y)));
     }
 
     /// <summary>Mirrors the frame top-to-bottom: output (x, y) = source (x, Height-1-y).</summary>
     /// <param name="frame">Source frame.</param>
-    /// <returns>A new frame with the same dimensions.</returns>
+    /// <returns>A new frame with the same dimensions and the phase-corrected Bayer pattern.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="frame"/> is null.</exception>
     public static Frame FlipVertical(Frame frame)
     {
@@ -53,7 +82,7 @@ public static class GeometricTransforms
             Array.Copy(src, s, dst, d, w * c);
         }
 
-        return ProcessingUtil.NewLike(frame, w, h, c, dst);
+        return ProcessingUtil.NewLike(frame, w, h, c, dst, Phase(frame.Bayer, (x, y) => (x, h - 1 - y)));
     }
 
     /// <summary>
@@ -83,12 +112,12 @@ public static class GeometricTransforms
             }
         }
 
-        return ProcessingUtil.NewLike(frame, outW, outH, c, dst);
+        return ProcessingUtil.NewLike(frame, outW, outH, c, dst, Phase(frame.Bayer, (x, y) => (y, h - 1 - x)));
     }
 
     /// <summary>Rotates 180 degrees: output (x, y) = source (Width-1-x, Height-1-y).</summary>
     /// <param name="frame">Source frame.</param>
-    /// <returns>A new frame with the same dimensions.</returns>
+    /// <returns>A new frame with the same dimensions and the phase-corrected Bayer pattern.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="frame"/> is null.</exception>
     public static Frame Rotate180(Frame frame)
     {
@@ -109,7 +138,8 @@ public static class GeometricTransforms
             }
         }
 
-        return ProcessingUtil.NewLike(frame, w, h, c, dst);
+        return ProcessingUtil.NewLike(frame, w, h, c, dst,
+            Phase(frame.Bayer, (x, y) => (w - 1 - x, h - 1 - y)));
     }
 
     /// <summary>
@@ -139,12 +169,13 @@ public static class GeometricTransforms
             }
         }
 
-        return ProcessingUtil.NewLike(frame, outW, outH, c, dst);
+        return ProcessingUtil.NewLike(frame, outW, outH, c, dst, Phase(frame.Bayer, (x, y) => (w - 1 - y, x)));
     }
 
     /// <summary>
     /// Extracts an axis-aligned rectangle. The rectangle must lie entirely inside the frame;
-    /// the origin may be zero and the rectangle may cover the whole frame.
+    /// the origin may be zero and the rectangle may cover the whole frame. An odd origin moves the
+    /// mosaic phase by one site, which the returned pattern records.
     /// </summary>
     /// <param name="frame">Source frame.</param>
     /// <param name="x">Left edge, 0-based, in pixels.</param>
@@ -181,6 +212,11 @@ public static class GeometricTransforms
             Array.Copy(src, s, dst, d, width * c);
         }
 
-        return ProcessingUtil.NewLike(frame, width, height, c, dst);
+        return ProcessingUtil.NewLike(frame, width, height, c, dst,
+            Phase(frame.Bayer, (dx, dy) => (x + dx, y + dy)));
     }
+
+    /// <summary>Phase of the output mosaic; a frame without a pattern stays without one.</summary>
+    private static BayerPattern Phase(BayerPattern pattern, Func<int, int, (int X, int Y)> map) =>
+        ProcessingUtil.Retag(pattern, map);
 }

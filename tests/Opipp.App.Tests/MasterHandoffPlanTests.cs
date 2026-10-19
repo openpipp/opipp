@@ -273,6 +273,33 @@ public sealed class MasterHandoffPlanTests
     }
 
     [Fact]
+    public void TestRun_ReusesAFullBuildMaster_InsteadOfRebuildingIt()
+    {
+        using var rig = new CacheRig();
+        File.WriteAllBytes(rig.FlatTmp, [0]);
+
+        // A full build records "no limit" as its identity. A later test run must not shrink that
+        // master to ten frames (which would change the result), so it keeps the unlimited identity
+        // and simply reuses the file.
+        rig.Flat = new CachedMaster(
+            rig.FlatTmp,
+            null,
+            40,
+            MasterHandoffPlanner.Signature([rig.FlatFile], 0),
+            corrected: false,
+            correctionSignature: null);
+
+        MasterHandoffRequest request = rig.Request(flatCalibration: true, flatDarkSubtraction: false);
+        request.TestRun = true;
+        request.Flat.FrameCount = 40;
+        request.FlatCache = rig.Flat;
+
+        MasterHandoffPlan plan = MasterHandoffPlanner.Create(request);
+        Assert.Equal(0, plan.Flat.FrameLimit);
+        Assert.False(plan.Flat.Rebuild);
+    }
+
+    [Fact]
     public void TestRun_CapsTheMasterAtTenFrames_AndReusesTheCappedMaster()
     {
         using var rig = new CacheRig();

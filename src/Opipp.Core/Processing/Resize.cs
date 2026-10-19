@@ -13,6 +13,10 @@ using Opipp.Core.Frames;
 /// interpolation is <c>a*(1-frac) + b*frac + 0.5</c> truncated to an integer sample, and the
 /// neighbour index is clamped to the last row/column at the edges. Both axes use the same mapping,
 /// which is also what makes upscales and downscales consistent with the original output.
+/// <para>
+/// Resampling interpolates across mosaic sites, so the output is not a CFA mosaic and carries
+/// <see cref="BayerPattern.None"/>. A no-op resize (same dimensions) is a copy and keeps the pattern.
+/// </para>
 /// </remarks>
 public static class Resize
 {
@@ -91,7 +95,7 @@ public static class Resize
             }
         }
 
-        return ProcessingUtil.NewLike(frame, width, height, c, dst);
+        return ProcessingUtil.NewLike(frame, width, height, c, dst, BayerPattern.None);
     }
 
     /// <summary>

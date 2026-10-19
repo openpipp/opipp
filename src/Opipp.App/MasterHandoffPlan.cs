@@ -89,7 +89,11 @@ internal sealed class MasterStageRequest
     /// <summary>The selected frame paths, in list order.</summary>
     public IReadOnlyList<string> Files { get; set; } = Array.Empty<string>();
 
-    /// <summary>Frames selected in the list (before any test-run limit).</summary>
+    /// <summary>
+    /// Frames the list reports for this stage, used for the progress label. This is a display
+    /// estimate only: it is never an enforced cap on a full build (see
+    /// <see cref="MasterStagePlan.FrameLimit"/>).
+    /// </summary>
     public int FrameCount { get; set; }
 
     /// <summary>Destination <c>.tmp</c> master, whether or not it is rebuilt.</summary>
@@ -136,6 +140,7 @@ internal sealed class MasterStagePlan
         bool enabled,
         bool rebuild,
         int frameLimit,
+        int expectedFrames,
         IReadOnlyList<string> files,
         string masterPath,
         string? pgmPath,
@@ -148,6 +153,7 @@ internal sealed class MasterStagePlan
         Enabled = enabled;
         Rebuild = rebuild;
         FrameLimit = frameLimit;
+        ExpectedFrames = expectedFrames;
         Files = files;
         MasterPath = masterPath;
         PgmPath = pgmPath;
@@ -166,8 +172,15 @@ internal sealed class MasterStagePlan
     /// <summary>True when the master must be built; false when the cached artifact is reused.</summary>
     public bool Rebuild { get; }
 
-    /// <summary>Frames to accumulate (the test-run cap already applied).</summary>
+    /// <summary>
+    /// Frames to accumulate, or 0 for every frame the inputs contain. Only a preview has a finite
+    /// limit: a full build must never be capped by the file list's frame estimate, because one
+    /// input can hold more frames than the list's one-per-file display suggests.
+    /// </summary>
     public int FrameLimit { get; }
+
+    /// <summary>Frames the file list reports for this stage, for the progress label.</summary>
+    public int ExpectedFrames { get; }
 
     /// <summary>The frame paths to accumulate when <see cref="Rebuild"/> is true.</summary>
     public IReadOnlyList<string> Files { get; }
@@ -337,6 +350,7 @@ internal static class MasterHandoffPlanner
             enabled,
             enabled && !reusable,
             frameLimit,
+            ExpectedFrames(frameLimit, request.FrameCount),
             request.Files,
             request.MasterPath,
             request.PgmPath,
@@ -377,6 +391,7 @@ internal static class MasterHandoffPlanner
             enabled,
             rebuild,
             frameLimit,
+            ExpectedFrames(frameLimit, request.FrameCount),
             request.Files,
             request.MasterPath,
             pgmPath: null,
@@ -409,14 +424,41 @@ internal static class MasterHandoffPlanner
     }
 
     /// <summary>
-    /// The frame limit for one stage. A test run inspects ten frames, but only while the cached
-    /// master does not already contain more: shrinking an existing master would change the result.
+    /// The frame limit for one stage.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A full run has no limit: 0 tells <see cref="MasterFrameBuilder"/> to accumulate every frame
+    /// the selected inputs contain. The list's frame count is a display figure — one FITS file can
+    /// hold several images — so using it as a cap silently truncated the master (two two-image files
+    /// produced a master from the first file only).
+    /// </para>
+    /// <para>
+    /// A test run is a genuine preview and keeps its ten-frame cap, but only while the cached master
+    /// does not already contain more: shrinking an existing master would change the result. Once the
+    /// cache holds more than ten frames the preview is unlimited, which is exactly the identity a
+    /// full build recorded, so that master is reused instead of being rebuilt frame for frame.
+    /// </para>
+    /// </remarks>
     private static int FrameLimit(bool testRun, int cachedFrameCount, int requestedFrameCount)
     {
+        if (!testRun)
+        {
+            return 0;
+        }
+
+        if (cachedFrameCount > 10)
+        {
+            return 0;
+        }
+
         int requested = Math.Max(0, requestedFrameCount);
-        return testRun && cachedFrameCount <= 10 && requested > 10 ? 10 : requested;
+        return requested > 10 ? 10 : requested;
     }
+
+    /// <summary>Frames the progress label names: the enforced limit when there is one, else the list's estimate.</summary>
+    private static int ExpectedFrames(int frameLimit, int requestedFrameCount) =>
+        frameLimit > 0 ? frameLimit : Math.Max(0, requestedFrameCount);
 
     private static string Normalize(string path)
     {

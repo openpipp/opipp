@@ -12,9 +12,10 @@ using Xunit;
 /// <c>-convmono</c> and the <c>-qold</c>/<c>-qhisto</c> selector. The engine's file names and
 /// locations were taken from <c>pipp_core.exe</c> on a 32x24 capture:
 /// <c>&lt;od&gt;/logs/pipp_master_dark.tif</c> for <c>-save_dark</c>,
-/// <c>&lt;od&gt;/logs/pipp_master_flat.tif</c> for a three-channel flat (and
-/// <c>pipp_master_flat_dark.tif</c> for a one-channel flat), and <c>r_/g_/b_</c> prefixed files for
-/// <c>-rgb</c>, with containers named <c>r_&lt;name&gt;..ser</c>.
+/// <c>&lt;od&gt;/logs/pipp_master_flat.tif</c> for a flat (any channel count), and
+/// <c>pipp_master_flat_dark.tif</c> for the flat-dark - the engine's one-channel-flat quirk is not
+/// reproduced because that name belongs to the flat-dark and the two artifacts collided.
+/// <c>-rgb</c> writes <c>r_/g_/b_</c> prefixed files, with containers named <c>r_&lt;name&gt;..ser</c>.
 /// </summary>
 public class OutputOptionTests
 {
@@ -114,7 +115,7 @@ public class OutputOptionTests
     }
 
     [Fact]
-    public void SaveMasterFlat_UsesTheEnginesOneChannelNameForAMonoMaster()
+    public void SaveMasterFlat_UsesThePlainNameForAMonoMaster()
     {
         string dir = TempDir();
         try
@@ -134,9 +135,13 @@ public class OutputOptionTests
 
             new Processor(settings).Run([input]);
 
-            // Engine quirk: a one-channel flat is saved as pipp_master_flat_dark.tif.
-            Assert.True(File.Exists(Path.Combine(outDir, "logs", "pipp_master_flat_dark.tif")));
-            Assert.False(File.Exists(Path.Combine(outDir, "logs", "pipp_master_flat.tif")));
+            // The engine's one-channel quirk (pipp_master_flat_dark.tif) is deliberately not
+            // reproduced: that is the flat-dark artifact's name, so saving both overwrote one
+            // master with the other. A flat is a flat whatever its channel count.
+            string path = Path.Combine(outDir, "logs", "pipp_master_flat.tif");
+            Assert.True(File.Exists(path), $"missing {path}");
+            Assert.Equal(200, ReadTiff(path).Samples[0]);
+            Assert.False(File.Exists(Path.Combine(outDir, "logs", "pipp_master_flat_dark.tif")));
         }
         finally
         {

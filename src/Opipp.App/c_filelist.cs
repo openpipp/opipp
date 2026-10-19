@@ -448,7 +448,25 @@ public class c_filelist : ListView
 				continue;
 			}
 			int num6 = 1;
-			if (video_extensions.Contains(extension))
+			if (extension == "fits")
+			{
+				// One FITS file can hold several images (the primary HDU plus every image
+				// extension), and both the reader and the analysis count each of them. Adding one
+				// frame per file made every master built from multi-image files too small: the
+				// stage's frame limit was the file count, so with two two-image files both frames
+				// came from the first file and the second was never opened. Probe the real reader
+				// (headers only) and use the count it reports; it is disposed before the next file.
+				if (!ManagedEngineApi.TryProbeFits(text2, out FitsFileProbe fits))
+				{
+					num5++;
+					text = text + text2 + "\n";
+					continue;
+				}
+				num6 = fits.FrameCount;
+				num2 = fits.Width;
+				num3 = fits.Height;
+			}
+			else if (video_extensions.Contains(extension))
 			{
 				VideoProbe video;
 				num6 = ManagedEngineApi.TryProbeVideo(text2, out video) ? video.FrameCount : 0;

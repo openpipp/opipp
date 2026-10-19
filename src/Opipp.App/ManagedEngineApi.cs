@@ -32,6 +32,17 @@ internal sealed class SerFileProbe
 	public int FrameCount;
 }
 
+/// <summary>Metadata the source file list needs from one FITS file.</summary>
+internal sealed class FitsFileProbe
+{
+	public int Width;
+	public int Height;
+	public int Channels;
+	public int FrameCount;
+	/// <summary>True when the header promises more image data than the file holds.</summary>
+	public bool IsTruncated;
+}
+
 /// <summary>
 /// Managed replacement for the helper entry points the ported WinForms UI used to reach through
 /// the former native engine DLL (<c>video_check</c>, <c>ser_check</c>, <c>ser_info</c>/<c>avi_info</c>/<c>fits_info</c>,
@@ -81,6 +92,38 @@ internal static class ManagedEngineApi
 			return true;
 		}
 		catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException)
+		{
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// Probes a FITS file for the number of images it actually contains.
+	/// </summary>
+	/// <remarks>
+	/// One FITS file is not one frame: the primary HDU and every image extension are separate
+	/// images, and the engine's reader exposes each of them. The file list used to add one per file,
+	/// so a master built from two two-image files was capped at two frames and both of them came
+	/// from the first file. The probe opens the real reader (which scans headers only, never the
+	/// pixel data), reads its frame count and disposes it before the next file is touched.
+	/// </remarks>
+	public static bool TryProbeFits(string path, out FitsFileProbe probe)
+	{
+		probe = null;
+		try
+		{
+			FitsProbeResult info = FitsProbe.Probe(path);
+			probe = new FitsFileProbe
+			{
+				Width = info.Width,
+				Height = info.Height,
+				Channels = info.Channels,
+				FrameCount = info.FrameCount,
+				IsTruncated = info.IsTruncated,
+			};
+			return probe.FrameCount > 0 && probe.Width > 0 && probe.Height > 0;
+		}
+		catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or FitsFormatException)
 		{
 			return false;
 		}

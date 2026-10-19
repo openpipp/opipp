@@ -20,7 +20,7 @@ OPIPP/
 │   ├── Opipp.Core/        formats, processing, pipeline, CLI model (the engine)
 │   ├── Opipp.Cli/         drop-in replacement for pipp_core.exe
 │   └── Opipp.App/         WinForms front-end (ported from the decompiled PIPP.exe)
-├── tests/                7 projects, 289 tests - formats, processing, CLI, end-to-end
+├── tests/                9 projects, 824 tests - formats, processing, CLI, GUI, end-to-end
 ├── tools/
 │   ├── Opipp.Parity/      oracle comparison harness
 │   └── *.py              synthetic SER fixture generators

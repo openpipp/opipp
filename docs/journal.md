@@ -466,7 +466,9 @@ Batch of option switches, each checked against the oracle first:
   DIB data. Quality is accepted 1-10 only; DIB ignores it and writes `dwQuality = 0xFFFFFFFF`.
 - **`-save_dark` / `-save_flat`** - masters go to `<od>/[sub/]logs/pipp_master_dark.tif` and
   `pipp_master_flat.tif`, with a genuine engine quirk: a **mono** flat master is written as
-  `pipp_master_flat_dark.tif`. Pixels identical.
+  `pipp_master_flat_dark.tif`. Pixels identical. **OPIPP does not reproduce the mono-flat quirk**: a one-channel flat is saved as
+  `pipp_master_flat.tif`, so a run that saves both masters keeps both instead of overwriting the
+  flat-dark with the flat.
 - **`-rgb` / `-rgbsplit`** - stills produce `<r|g|b>_<stem>`, SER/AVI produce `r_<name>..ser` (the engine
   really does double the dot). Two engine bugs found and not reproduced: `-rgb -keepimgname` writes
   **no files at all**, and a one-plane split SER is stamped ColorID 100 (RGB) where we write 0.

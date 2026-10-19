@@ -947,9 +947,16 @@ public class ProcessingTests
         foreach (var result in new[] { rotated, binned, stretched })
         {
             Assert.Equal(8, result.BitDepth);
-            Assert.Equal(BayerPattern.RGGB, result.Bayer);
             Assert.Equal(42, result.Index);
             Assert.Equal("capture.ser", result.SourceName);
         }
+
+        // A quarter turn of a 2x2 RGGB tile starts on a green site, so the marker follows the
+        // samples (the previous expectation asserted a copied marker, which was the stale-phase bug).
+        Assert.Equal(BayerPattern.GRBG, rotated.Bayer);
+        // Binning averages whole 2x2 blocks, so the result is no longer a mosaic at all.
+        Assert.Equal(BayerPattern.None, binned.Bayer);
+        // A per-sample tone curve keeps the lattice.
+        Assert.Equal(BayerPattern.RGGB, stretched.Bayer);
     }
 }

@@ -190,9 +190,16 @@ public sealed class PipelineSettings
     public bool SaveMasterDark { get; set; }
 
     /// <summary>
-    /// Re-emit the loaded master flat as <c>logs/pipp_master_flat.tif</c> (<c>-save_flat</c>), or
-    /// <c>logs/pipp_master_flat_dark.tif</c> for a one-channel master, matching the engine's quirk.
+    /// Re-emit the loaded master flat as <c>logs/pipp_master_flat.tif</c> (<c>-save_flat</c>),
+    /// whatever its channel count.
     /// </summary>
+    /// <remarks>
+    /// The original engine names a one-channel flat <c>pipp_master_flat_dark.tif</c>, which is the
+    /// same file a saved flat-dark uses: selecting both options made one overwrite the other (the
+    /// science frame was calibrated correctly, the artifact on disk was not). The canonical names
+    /// here are distinct - a flat is always <c>pipp_master_flat.tif</c>, a flat-dark is always
+    /// <c>pipp_master_flat_dark.tif</c> - so a run that saves both keeps both.
+    /// </remarks>
     public bool SaveMasterFlat { get; set; }
 
     /// <summary>Filename prefix applied to generated files.</summary>
@@ -210,8 +217,16 @@ public sealed class PipelineSettings
     /// <summary>Debayer single-plane Bayer input.</summary>
     public bool Debayer { get; set; }
 
-    /// <summary>Bayer pattern used when the container does not declare one.</summary>
-    public BayerPattern DebayerPattern { get; set; } = BayerPattern.RGGB;
+    /// <summary>
+    /// Explicit Bayer pattern selection (<c>-db=N</c>); <see cref="BayerPattern.None"/>, the default,
+    /// means the run made no explicit selection and the frame's own CFA marker decides.
+    /// </summary>
+    /// <remarks>
+    /// Precedence: an explicit selection overrides the pattern the container declares. It is written
+    /// onto the frame before demosaicing, so it enables debayering of an untagged mosaic (a mono
+    /// TIFF with no CFA tag) and corrects a header that names the wrong pattern.
+    /// </remarks>
+    public BayerPattern DebayerPattern { get; set; } = BayerPattern.None;
 
     /// <summary>Use the smooth-hue debayer refinement (PIPP <c>-sh</c>).</summary>
     public bool SmoothHue { get; set; }
@@ -237,7 +252,10 @@ public sealed class PipelineSettings
     /// </summary>
     public Frame? MasterFlatDark { get; set; }
 
-    /// <summary>Write <c>logs/pipp_master_flat_dark.tif</c> from the loaded flat-dark (<c>-save_flat_dark</c>).</summary>
+    /// <summary>
+    /// Write <c>logs/pipp_master_flat_dark.tif</c> from the loaded flat-dark (<c>-save_flat_dark</c>).
+    /// Distinct from the saved flat (<c>pipp_master_flat.tif</c>) so selecting both keeps both.
+    /// </summary>
     public bool SaveMasterFlatDark { get; set; }
 
     /// <summary>Apply a 3x3 median filter.</summary>
@@ -703,11 +721,11 @@ public sealed class Processor
                         }
                     }
 
-                    if (raw.Bayer != BayerPattern.None)
-                    {
-                        frame.Bayer = raw.Bayer;
-                    }
-
+                    // The delivered frame's CFA state comes from the transform chain, which retags a
+                    // mosaic for every geometric stage and clears it when a stage stops producing one
+                    // (demosaic, binning, resize). Copying the raw marker back on here put a Bayer
+                    // pattern on a 3-channel frame (FITS output rejects that combination) and
+                    // resurrected a phase that binning had already destroyed.
                     sample = frame;
 
                     // The engine derives the detection threshold once, from the first frame it
@@ -1101,6 +1119,22 @@ public sealed class Processor
                         {
                             throw new InvalidDataException(
                                 "Frames of different sizes cannot written to an AVI or SER file");
+                        }
+
+                        // One container header carries one CFA pattern. Frames whose mosaic phase
+                        // differs cannot share it: an odd-pixel alignment shift moves the phase, and
+                        // joined inputs can declare different patterns outright.
+                        if (check.Bayer != template.Bayer)
+                        {
+                            throw new BayerPhaseException(
+                                $"frame {q + 1} of {queue.Count} has Bayer pattern {check.Bayer} but the " +
+                                $"first frame of the same container has {template.Bayer}. A " +
+                                $"{_settings.OutputExtension.TrimStart('.').ToUpperInvariant()} header can " +
+                                "describe only one mosaic, so this sequence cannot be written faithfully. " +
+                                "Frames of one run end up with different phases when the alignment shift " +
+                                "moves some by an odd number of pixels and others by an even number (or " +
+                                "by none), and joined inputs with different CFA headers always do; " +
+                                "debayer to colour, write separate outputs, or disable the shift.");
                         }
 
                         ContainerFramePrepared?.Invoke(q);
@@ -1505,6 +1539,18 @@ public sealed class Processor
     {
         var frame = raw;
 
+        // 0. explicit CFA selection. -db=N is authoritative and is applied before every other stage,
+        //    including calibration: -flat_bayer groups mosaic phases by the frame's pattern and the
+        //    demosaic in step 2 reads it too, so both must see the selection rather than a container
+        //    header that may name the wrong pattern. Only a demosaic request consumes it; a bare
+        //    pattern selection on its own (the CLI keeps -db=N separate from -db) does not relabel
+        //    the output of a run that never demosaics.
+        if (_settings.DebayerPattern != BayerPattern.None && frame.Channels == 1 &&
+            (_settings.Debayer || _settings.ForceColour))
+        {
+            frame.Bayer = _settings.DebayerPattern;
+        }
+
         // 1. calibration — sensor domain, before debayering and binning.
         //    Masters are built from raw captures, and -dark_pgm / -flat_bayer masters are
         //    single-channel, so the science frame must still carry the capture geometry here.
@@ -1534,17 +1580,16 @@ public sealed class Processor
             }
         }
 
-        // 2. colour/mono interpretation
+        // 2. colour/mono interpretation. The frame's pattern is already the explicit selection when
+        //    the run made one (step 0); without one it is the container's marker, and a mosaic with
+        //    neither stays monochrome.
         if (_settings.ForceMono && frame.Channels == 3)
         {
             int mode = _settings.MonoMode ?? 3;
             frame = MonoConvert.Apply(frame, (MonoMode)mode);
         }
-        else if (_settings.Debayer && frame.Channels == 1 && frame.Bayer != BayerPattern.None)
-        {
-            frame = Debayer.ToColour(frame, _settings.SmoothHue);
-        }
-        else if (_settings.ForceColour && frame.Channels == 1 && frame.Bayer != BayerPattern.None)
+        else if ((_settings.Debayer || _settings.ForceColour) && frame.Channels == 1 &&
+                 frame.Bayer != BayerPattern.None)
         {
             frame = Debayer.ToColour(frame, _settings.SmoothHue);
         }
@@ -1802,16 +1847,26 @@ public sealed class Processor
 
     /// <summary>
     /// Writes the engine's saved master frames: <c>logs/pipp_master_dark.tif</c> for
-    /// <c>-save_dark</c> and <c>logs/pipp_master_flat.tif</c> (or, for a one-channel flat,
-    /// <c>logs/pipp_master_flat_dark.tif</c>) for <c>-save_flat</c>.
+    /// <c>-save_dark</c>, <c>logs/pipp_master_flat.tif</c> for <c>-save_flat</c> and
+    /// <c>logs/pipp_master_flat_dark.tif</c> for <c>-save_flat_dark</c>.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Verified with the oracle on a 32x24 capture: with <c>-dark -dark_tmp=&lt;master&gt; -save_dark</c>
     /// the engine writes a real TIFF under <c>&lt;od&gt;/logs/</c> before processing, and writes
     /// nothing when <c>-dark</c> is absent or no master path was supplied. The saved dark is always
-    /// one channel; the flat's channel count is preserved, and the engine names a one-channel flat
-    /// <c>pipp_master_flat_dark.tif</c> (an engine quirk this reproduces). <c>-osubdir</c> nests the
-    /// same way the log does.
+    /// one channel; the flat's channel count is preserved. <c>-osubdir</c> nests the same way the
+    /// log does.
+    /// </para>
+    /// <para>
+    /// Naming: the engine writes a <em>one-channel</em> flat as <c>pipp_master_flat_dark.tif</c>,
+    /// which is exactly the flat-dark artifact's name. With both <c>-save_flat</c> and
+    /// <c>-save_flat_dark</c> selected, the two writes collided and one master silently replaced the
+    /// other on disk (the science frame stayed correctly calibrated, so the only visible symptom was
+    /// a saved file whose pixels were the wrong master). The quirk is therefore not reproduced: a
+    /// flat is always <c>pipp_master_flat.tif</c>, one channel or three, and a flat-dark is always
+    /// <c>pipp_master_flat_dark.tif</c>, so both masters survive a run that saves both.
+    /// </para>
     /// </remarks>
     private void SaveMasterFrames(string outputRoot)
     {
@@ -1831,16 +1886,23 @@ public sealed class Processor
 
         if (_settings.SaveMasterFlat && _settings.MasterFlat is { } flat)
         {
-            string name = flat.Channels == 3 ? "pipp_master_flat.tif" : "pipp_master_flat_dark.tif";
-            MasterFrameBuilder.WriteMaster(flat, Path.Combine(logDirectory, name));
+            // A flat is a flat whatever its channel count. The engine's one-channel quirk named it
+            // pipp_master_flat_dark.tif, colliding with the flat-dark artifact below.
+            MasterFrameBuilder.WriteMaster(flat, Path.Combine(logDirectory, MasterFlatFileName));
         }
 
         if (_settings.SaveMasterFlatDark && _settings.MasterFlatDark is { } flatDark)
         {
-            // -save_flat_dark: the engine's name for the flat-dark master (FUN_140090870).
-            MasterFrameBuilder.WriteMaster(flatDark, Path.Combine(logDirectory, "pipp_master_flat_dark.tif"));
+            // -save_flat_dark: the flat-dark keeps its own canonical name (FUN_140090870).
+            MasterFrameBuilder.WriteMaster(flatDark, Path.Combine(logDirectory, MasterFlatDarkFileName));
         }
     }
+
+    /// <summary>Canonical name of the saved master flat, one channel or three.</summary>
+    internal const string MasterFlatFileName = "pipp_master_flat.tif";
+
+    /// <summary>Canonical name of the saved master flat-dark, which must never collide with the flat.</summary>
+    internal const string MasterFlatDarkFileName = "pipp_master_flat_dark.tif";
 
     /// <summary>Writes the two BMPs <c>-test_run</c> produces at the output root.</summary>
     /// <remarks>
@@ -2311,11 +2373,25 @@ public sealed class Processor
     /// four boxes); this implementation crops at the requested origin, because our alignment already
     /// differs from the engine's and reproducing the offset would not make the pixels match.
     /// </summary>
+    /// <remarks>
+    /// The shift moves whole pixels, so the frame is still a mosaic, but an odd shift moves the CFA
+    /// phase: the pattern is recomputed for the phase the delivered samples actually have. Frames of
+    /// one run can therefore disagree, which the container writer rejects (see
+    /// <see cref="BayerPhaseException"/>) rather than labelling them with one header's pattern.
+    /// </remarks>
     private Frame ApplyGeometry(Frame frame, AlignmentOffset offset, ushort? shiftFill)
     {
         Frame output = offset.Dx == 0 && offset.Dy == 0
             ? frame
             : FrameAligner.ShiftWithBackground(frame, offset, shiftFill);
+
+        if (offset.Dx != 0 || offset.Dy != 0)
+        {
+            // Same rounding the shift itself uses: only whole pixels move.
+            int dx = (int)Math.Round(offset.Dx, MidpointRounding.AwayFromZero);
+            int dy = (int)Math.Round(offset.Dy, MidpointRounding.AwayFromZero);
+            output.Bayer = GeometricTransforms.TranslatePattern(frame.Bayer, dx, dy);
+        }
 
         if (_settings.AreaOfInterestCrop && _settings.AreaOfInterest is PixelRect aoi &&
             aoi.Width > 0 && aoi.Height > 0)

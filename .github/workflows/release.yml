@@ -73,7 +73,9 @@ jobs:
               }
           }
 
-          $isPrerelease = $tag -match '-alpha'
+          # Any hyphenated suffix is a prerelease. Matching only '-alpha' would have published
+          # v0.2.0-beta and v0.2.0-rc.1 as stable releases.
+          $isPrerelease = $version.Contains('-')
           $zipName = "OPIPP-$version-win-x64.zip"
 
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8

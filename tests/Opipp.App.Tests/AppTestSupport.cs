@@ -4,11 +4,25 @@ using Opipp.Core.Formats;
 using Opipp.Core.Frames;
 using PIPP_Application;
 
+// These tests drive the real WinForms form and the real engine process. Constructing two forms at
+// the same time on two STA threads breaks inside the designer code (ToolStripMenuItem layout is not
+// thread-safe), so the assembly runs its tests one at a time.
+[assembly: Xunit.CollectionBehavior(DisableTestParallelization = true)]
+
 namespace Opipp.App.Tests;
 
 /// <summary>Shared fixtures for the GUI handoff and form-state tests.</summary>
 internal static class AppTestSupport
 {
+    /// <summary>
+    /// Runs before the first helper call: the form plays the Windows notification sound when a run
+    /// completes, and this suite completes many runs on the developer's machine.
+    /// </summary>
+    static AppTestSupport()
+    {
+        Form1.SuppressSounds = true;
+    }
+
     /// <summary>Creates a unique temporary directory.</summary>
     public static string TempDirectory()
     {
@@ -58,6 +72,66 @@ internal static class AppTestSupport
         var frame = new Frame(size, size, 1, 8);
         Array.Fill(frame.Samples, value);
         writer.Write(frame);
+        return path;
+    }
+
+    /// <summary>
+    /// Writes a mono 8-bit FITS file with one image HDU per entry in <paramref name="frames"/>.
+    /// Each entry is the (left, right) value pair of one 8x8 image, so a multi-image file can be
+    /// told apart from a single-image one by the master it produces.
+    /// </summary>
+    public static string WriteSplitFits(string directory, string name, params (ushort Left, ushort Right)[] frames)
+    {
+        string path = Path.Combine(directory, name);
+        using var writer = new FitsWriter(path);
+        foreach ((ushort left, ushort right) in frames)
+        {
+            var frame = new Frame(8, 8, 1, 8);
+            for (int y = 0; y < 8; y++)
+            {
+                for (int x = 0; x < 8; x++)
+                {
+                    frame[x, y] = x < 4 ? left : right;
+                }
+            }
+
+            writer.Write(frame);
+        }
+
+        return path;
+    }
+
+    /// <summary>Writes a FITS file holding <paramref name="frameCount"/> identical uniform 8x8 images.</summary>
+    public static string WriteUniformFits(string directory, string name, ushort value, int frameCount)
+    {
+        var frames = new (ushort, ushort)[frameCount];
+        Array.Fill(frames, (value, value));
+        return WriteSplitFits(directory, name, frames);
+    }
+
+    /// <summary>
+    /// Writes a 32x32 mono SER whose frames hold a bright square on a dark field, so object
+    /// detection (used by the planetary-animation preset) keeps every frame.
+    /// </summary>
+    public static string WritePlanetSer(string directory, string name, int frames = 3)
+    {
+        string path = Path.Combine(directory, name);
+        using var writer = new SerWriter(path, 32, 32, 1, 8);
+        var frame = new Frame(32, 32, 1, 8);
+        for (int i = 0; i < frames; i++)
+        {
+            Array.Fill(frame.Samples, (ushort)0);
+            for (int y = 11; y < 21; y++)
+            {
+                for (int x = 11; x < 21; x++)
+                {
+                    frame[x, y] = 200;
+                }
+            }
+
+            writer.Write(frame);
+        }
+
         return path;
     }
 
@@ -111,6 +185,7 @@ internal static class AppTestSupport
     /// <summary>Runs <paramref name="action"/> on a dedicated STA thread and rethrows its failure.</summary>
     public static void RunSta(Action action, int timeoutSeconds = 120)
     {
+        Form1.SuppressSounds = true;
         Exception? failure = null;
         var thread = new Thread(() =>
         {
@@ -147,6 +222,17 @@ internal static class AppTestSupport
             Thread.Sleep(10);
         }
     }
+
+    /// <summary>
+    /// Waits until the form has written the run's final transcript verdict.
+    /// </summary>
+    /// <remarks>
+    /// The exit handler sets the status as soon as the process exits, but the verdict also waits for
+    /// the engine's stdout to reach end of stream, which arrives through a marshalled callback. A
+    /// test that reads the transcript right after the status can therefore see it one pump early.
+    /// </remarks>
+    public static void PumpUntilRunVerdict(Form1 form) =>
+        PumpUntil(() => form.RunVerdictWrittenForTest, "the run's transcript verdict");
 
     /// <summary>
     /// Pumps the WinForms message loop until <paramref name="condition"/> holds. The form's engine

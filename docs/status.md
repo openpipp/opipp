@@ -5,11 +5,11 @@ produce every figure on this page.
 
 | | |
 |---|---|
-| Version | `0.1.9-alpha` at the tagged commit |
+| Version | `0.1.10-alpha` at the tagged commit |
 | SDK | .NET 10.0.402 (local `~/.dotnet-sdk`) |
-| Tests | **744 passing, 0 failing, 0 skipped** across nine projects |
+| Tests | **824 passing, 0 failing, 0 skipped** across nine projects |
 | Parity | **27 compared, 27 matched, 2 deliberate differences, 0 gaps, 0 failed** |
-| Release | `v0.1.9-alpha`, Windows x64 zip, self-contained |
+| Release | `v0.1.10-alpha`, Windows x64 zip, self-contained |
 | History | [`journal.md`](journal.md) — dated findings, superseded details |
 
 ```bash
@@ -27,6 +27,12 @@ dotnet run --project tools/Opipp.Parity -- --real
 - Master creation (dark, flat-dark, flat) reads and writes the engine's `.tmp` masters, subtracts a
   flat-dark exactly once, keeps RGB masters three-channel, is cancellable, and publishes nothing when
   a build fails.
+- A run that wrote some frames and then failed reports **PARTIAL FAILURE** and exits non-zero; the
+  written output is labelled incomplete and the failing input is named.
+- `-check` validates the command line, inputs, masters and geometry, then exits without writing output.
+- 8-bit FITS image units are padded to the 2880-byte boundary, including multi-image files.
+- Raw Bayer geometry maintains its CFA phase; debayered frames carry none, and an explicit pattern
+  selection overrides container metadata.
 - Joining reads every image in a multi-HDU FITS file, not one per file, and opens one reader at a time.
 - A cached flat master remembers whether its flat-dark was already applied, so toggling flat correction
   off and on cannot subtract it twice; a declined Quit no longer deletes cached masters.
@@ -76,6 +82,22 @@ Documented skips: `-raw_db`, `-raw_hl`, `-raw_ocs`, `-raw_hpf` (need the statica
 | Final-image stacking interface | The stacker is a Core API capability; the CLI and GUI do not yet expose mean/sum/median as a user-facing control |
 | Unequal master goldens | Native master files are pinned from identical inputs; unequal-frame native fixtures that would distinguish averaging rules are still missing |
 | Bayer-marked stacking | A Bayer frame is stacked as ordinary samples and the result carries `Bayer=None`; pre-debayer the selection or accept a plain mono master |
+
+## Format boundaries
+
+The engine is deliberately narrower than its file pickers suggest. These limits are enforced or
+documented before a run rather than discovered in the output:
+
+| Input or output | Supported | Not supported |
+|---|---|---|
+| AVI output | uncompressed 8-bit DIB/Y800; AVI 1.0 size limit around 4 GiB | any compressed encoder (MJPEG encode, ULRG, FMP4, YUY2) |
+| TIFF input | classic uncompressed strips | compressed, tiled, planar, palette TIFF, BigTIFF |
+| PNG input | non-interlaced grayscale/RGB at 8 or 16 bits | indexed palettes, Adam7 interlacing |
+| Camera RAW | a restricted uncompressed DNG subset | general CR2/NEF/ARW support |
+| Floating-point FITS | read as stored values converted to the unsigned integer model | automatic min/max scaling; normalized 0..1 data collapses (0.1, 0.4, 0.6, 0.9 becomes 0, 0, 1, 1) |
+
+Floating-point FITS is therefore unsuitable for preserving precision; convert it to 16-bit integers
+before processing if the values matter.
 
 ## Deliberate divergences
 

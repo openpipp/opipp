@@ -23,6 +23,55 @@ internal sealed class DelegateProgress(Action<PipelineProgress> handler) : IProg
     public void Report(PipelineProgress value) => handler(value);
 }
 
+/// <summary>
+/// How a processing run ended. A run is only <see cref="Success"/> when every input was read and
+/// at least one output frame was produced; any input the pipeline recorded as failed makes the
+/// result at least <see cref="PartialFailure"/>, even when frames were written before the failure.
+/// </summary>
+internal enum RunOutcome
+{
+    /// <summary>Every input was read and output was produced.</summary>
+    Success,
+
+    /// <summary>Some frames were written, but one or more inputs could not be read; the output is incomplete.</summary>
+    PartialFailure,
+
+    /// <summary>No output was produced.</summary>
+    Failure,
+
+    /// <summary>The run was cancelled before it completed.</summary>
+    Cancelled,
+}
+
+/// <summary>
+/// Process exit codes. These are part of the engine contract the WinForms front-end reads:
+/// 0 means success, 2 a command-line/configuration error detected before processing, and -1 the
+/// original engine's "all frames discarded" result. 1 is the partial-result code: output exists but
+/// one or more inputs failed, so the frames on disk are explicitly incomplete. 130 is the
+/// conventional cancelled-process code (no cancellation source is wired into the CLI yet).
+/// </summary>
+internal static class ExitCodes
+{
+    internal const int Success = 0;
+    internal const int PartialFailure = 1;
+    internal const int ConfigurationError = 2;
+    internal const int NoOutput = -1;
+    internal const int Cancelled = 130;
+    internal const int UnknownSwitch = 127;
+
+    internal static int For(RunOutcome outcome) => outcome switch
+    {
+        RunOutcome.Success => Success,
+        RunOutcome.PartialFailure => PartialFailure,
+        RunOutcome.Failure => NoOutput,
+        RunOutcome.Cancelled => Cancelled,
+        _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "unknown run outcome"),
+    };
+}
+
+/// <summary>One input the pipeline could not read, with the diagnostic the CLI reports for it.</summary>
+internal sealed record FailedInput(string Path, string Reason, bool CouldNotOpen = true);
+
 internal static class Program
 {
     internal static int Main(string[] args)
@@ -33,36 +82,47 @@ internal static class Program
         var effectiveArgs = args.Length > 0 ? args : ReadStandardInputArguments();
         var parsed = CommandLineParser.Parse(effectiveArgs);
 
+        // -check is a validation-only mode: the parser records it even when another token is bad,
+        // so a check request with a malformed command line still produces a check report instead of
+        // falling through to the generic parse-error path.
+        bool checkOnly = parsed.Options.CheckOnly;
+
         if (parsed.WantsHelp)
         {
             Console.WriteLine(OpippHelpText.Text);
-            return 0;
+            return ExitCodes.Success;
         }
 
         if (!parsed.Success)
         {
+            if (checkOnly) return ReportCheckFailure(parsed.Errors);
+
             foreach (var error in parsed.Errors)
             {
                 Console.Error.WriteLine($"Error: {error}");
             }
             Console.Error.WriteLine("Use '-help' to display help");
             // the original exits 127 on an unrecognised switch; keep that contract detectable
-            return parsed.Errors.Any(e => e.StartsWith("Unknown switch", StringComparison.Ordinal)) ? 127 : 2;
+            return parsed.Errors.Any(e => e.StartsWith("Unknown switch", StringComparison.Ordinal))
+                ? ExitCodes.UnknownSwitch
+                : ExitCodes.ConfigurationError;
         }
 
         var options = parsed.Options;
         var inputs = parsed.Inputs;
         if (inputs.Count == 0)
         {
+            if (checkOnly) return ReportCheckFailure(["No input files specified"]);
+
             Console.Error.WriteLine("Error: No input files specified");
             Console.Error.WriteLine("Use '-help' to display help");
-            return 2;
+            return ExitCodes.ConfigurationError;
         }
 
         PipelineSettings settings;
         try
         {
-            if (options.DebugAvi)
+            if (options.DebugAvi && !checkOnly)
             {
                 // -debugavi is a standalone diagnostic dump: the engine prints the banner and stops
                 // without writing any output (verified on SER and AVI inputs).
@@ -74,16 +134,22 @@ internal static class Program
                     Console.WriteLine();
                 }
 
-                return 0;
+                return ExitCodes.Success;
             }
 
             settings = Map(options);
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException or InvalidDataException)
         {
+            if (checkOnly) return ReportCheckFailure([ex.Message]);
+
             Console.Error.WriteLine($"Error: {ex.Message}");
-            return 2;
+            return ExitCodes.ConfigurationError;
         }
+
+        // -check validates the same settings Map just built, plus the inputs they name, and stops
+        // before Processor.Run. Nothing is created: no output directory, no log, no science file.
+        if (checkOnly) return RunCheck(options, inputs, settings);
 
         // The log echoes the switch list only; input paths appear under "Source image files".
         settings.LogArguments = effectiveArgs.Where(a => !inputs.Contains(a, StringComparer.Ordinal)).ToArray();
@@ -96,13 +162,18 @@ internal static class Program
             {
                 return RunGui(inputs, settings);
             }
+            catch (OperationCanceledException)
+            {
+                Console.Error.WriteLine("Error: Processing was cancelled");
+                return ExitCodes.For(RunOutcome.Cancelled);
+            }
             catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException or CalibrationConfigurationException)
             {
                 // A calibration master that cannot be applied is a run-level configuration failure,
                 // not a per-frame rejection; the pipeline deliberately lets it escape the frame loop.
                 // Exit 1 is this path's defined runtime-failure code, matching the errors above.
                 Console.Error.WriteLine($"Error: {ex.Message}");
-                return 1;
+                return ExitCodes.PartialFailure;
             }
         }
 
@@ -134,25 +205,46 @@ internal static class Program
         {
             report = processor.Run(inputs);
         }
+        catch (OperationCanceledException)
+        {
+            Console.Error.WriteLine("Error: Processing was cancelled");
+            return ExitCodes.For(RunOutcome.Cancelled);
+        }
         catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException or CalibrationConfigurationException)
         {
             // See the -gui catch above: a calibration configuration error exits 1 like the other
             // runtime failures, and its message is the controlled diagnostic, never a stack trace.
             Console.Error.WriteLine($"Error: {ex.Message}");
-            return 1;
+            return ExitCodes.PartialFailure;
         }
 
-        PrintSummary(report, inputs, options, settings);
+        // A joined run reports its one unit under the first input's name even when a later file is
+        // the one that could not be read; resolve the real culprit before reporting anything.
+        IReadOnlyList<FailedInput> failures = ResolveFailedInputs(report, inputs, settings);
+        PrintSummary(report, inputs, options, settings, failures);
+
+        if (failures.Count > 0)
+        {
+            WriteFailureDiagnostics(failures, inputs.Count, report.OutputFrames, settings);
+        }
 
         // The engine exits -1 (0xFFFFFFFF) and says so on stderr when every frame was discarded;
-        // keep that contract so the GUI can distinguish "nothing produced" from a crash.
+        // keep that contract so the GUI can distinguish "nothing produced" from a crash. A partial
+        // result is different: output exists, but it is explicitly labelled as incomplete. When a
+        // failure is the reason nothing was written, the per-input diagnostic above already says so.
         if (report.OutputFrames == 0)
         {
-            Console.Error.WriteLine($"Error: All frames have been discarded from {report.InputFrames} input frames");
-            return -1;
+            if (failures.Count == 0)
+            {
+                Console.Error.WriteLine($"Error: All frames have been discarded from {report.InputFrames} input frames");
+            }
+
+            return ExitCodes.For(RunOutcome.Failure);
         }
 
-        return 0;
+        return failures.Count > 0
+            ? ExitCodes.For(RunOutcome.PartialFailure)
+            : ExitCodes.For(RunOutcome.Success);
     }
 
     /// <summary>
@@ -178,6 +270,8 @@ internal static class Program
                          settings.Animation.IsActive;
         bool aviAnimation = settings.OutputExtension.Equals(".avi", StringComparison.OrdinalIgnoreCase);
         int zeroOutputs = 0;
+        int totalOutput = 0;
+        var failures = new List<FailedInput>();
 
         // -join presents every container as one stream: one estimate, one "Processing N frames",
         // one summary, but the name/progress tokens advance when the stream crosses an input.
@@ -204,13 +298,18 @@ internal static class Program
                 probes[0].DetectionThreshold,
                 settings.Centre || settings.CheckForPlanet || report.DiscardedNoObject > 0);
 
-            if (report.OutputFrames == 0)
+            IReadOnlyList<FailedInput> unitFailures = ResolveFailedInputs(report, inputs, settings);
+            failures.AddRange(unitFailures);
+            totalOutput += report.OutputFrames;
+
+            if (unitFailures.Count == 0 && report.OutputFrames == 0)
             {
                 Console.Error.WriteLine($"Error: All frames have been discarded from {report.InputFrames} input frames");
                 zeroOutputs++;
             }
 
-            return zeroOutputs > 0 ? -1 : 0;
+            WriteGuiFailureDiagnostics(failures, fileCount, totalOutput, settings);
+            return ExitCodes.For(GuiOutcome(totalOutput, zeroOutputs, failures.Count));
         }
 
         // Batch mode is one independent run per input: the original prints an estimate block and a
@@ -240,14 +339,378 @@ internal static class Program
                 probe.DetectionThreshold,
                 settings.Centre || settings.CheckForPlanet || report.DiscardedNoObject > 0);
 
-            if (report.OutputFrames == 0)
+            IReadOnlyList<FailedInput> unitFailures = ResolveFailedInputs(report, [inputs[index]], settings);
+            failures.AddRange(unitFailures);
+            totalOutput += report.OutputFrames;
+
+            if (unitFailures.Count == 0 && report.OutputFrames == 0)
             {
                 Console.Error.WriteLine($"Error: All frames have been discarded from {report.InputFrames} input frames");
                 zeroOutputs++;
             }
         }
 
-        return zeroOutputs > 0 ? -1 : 0;
+        // The transcript is unchanged for a successful run; a failed or partial result is reported on
+        // stderr and through the non-zero exit code, which is what the form treats as failure.
+        WriteGuiFailureDiagnostics(failures, fileCount, totalOutput, settings);
+        return ExitCodes.For(GuiOutcome(totalOutput, zeroOutputs, failures.Count));
+    }
+
+    /// <summary>
+    /// Maps the accumulated GUI counters to an outcome. A run that wrote nothing is a failure (the
+    /// engine's -1); a unit whose every frame was discarded keeps the same contract; output written
+    /// beside one or more unreadable inputs is a partial failure.
+    /// </summary>
+    private static RunOutcome GuiOutcome(int totalOutput, int zeroOutputUnits, int failureCount)
+    {
+        if (totalOutput == 0) return RunOutcome.Failure;
+        if (zeroOutputUnits > 0) return RunOutcome.Failure;
+        return failureCount > 0 ? RunOutcome.PartialFailure : RunOutcome.Success;
+    }
+
+    /// <summary>
+    /// Emits the partial/failed result on stderr for <c>-gui</c>. Stdout stays byte-identical to
+    /// the engine transcript, so the form keeps parsing progress tokens; it already treats a
+    /// non-zero exit code as failure.
+    /// </summary>
+    private static void WriteGuiFailureDiagnostics(
+        IReadOnlyList<FailedInput> failures,
+        int inputCount,
+        int outputFrames,
+        PipelineSettings settings)
+    {
+        if (failures.Count == 0) return;
+
+        // The original engine prints the per-input failure on stdout, where the form appends it to
+        // the transcript; keep that line so a failed run is visible in the GUI text itself. The form
+        // also treats a non-zero exit code as failure.
+        foreach (FailedInput failure in failures)
+        {
+            string action = failure.CouldNotOpen ? "open" : "read";
+            Console.Out.WriteLine($"Error: could not {action} file '{failure.Path}': {failure.Reason}");
+        }
+
+        WriteFailureDiagnostics(failures, inputCount, outputFrames, settings);
+    }
+
+    /// <summary>
+    /// Names every input the pipeline could not read. A joined run records its one unit under the
+    /// first input's name, so the inputs are re-walked here (only on the failure path) to name the
+    /// file that actually failed and keep the diagnostic useful.
+    /// </summary>
+    private static IReadOnlyList<FailedInput> ResolveFailedInputs(
+        ProcessingReport report,
+        IReadOnlyList<string> inputs,
+        PipelineSettings settings)
+    {
+        if (report.FailedFiles.Count == 0) return Array.Empty<FailedInput>();
+
+        if (settings.JoinMode && inputs.Count > 1)
+        {
+            // JoinedFrameSource opens the inputs in order and the pipeline stops at the first failure,
+            // so the first input that cannot be read to its end is the one that broke the stream.
+            foreach (string input in inputs)
+            {
+                IFrameSource source;
+                try
+                {
+                    source = FrameSourceFactory.Open(input, settings.SerBitDepth);
+                }
+                catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException)
+                {
+                    return [new FailedInput(input, ex.Message, CouldNotOpen: true)];
+                }
+
+                try
+                {
+                    using (source)
+                    {
+                        while (source.ReadFrame() is not null)
+                        {
+                        }
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException)
+                {
+                    return [new FailedInput(input, ex.Message, CouldNotOpen: false)];
+                }
+            }
+        }
+
+        return report.FailedFiles
+            .Select(file => new FailedInput(file, "could not be opened or decoded"))
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Reports a partial or failed result on stderr. The wording never calls a partial run a success:
+    /// it says how many inputs failed, names each one, and points at the retained (incomplete) output.
+    /// </summary>
+    private static void WriteFailureDiagnostics(
+        IReadOnlyList<FailedInput> failures,
+        int inputCount,
+        int outputFrames,
+        PipelineSettings settings)
+    {
+        string subject = failures.Count == 1
+            ? $"1 of {inputCount} input files could not be read"
+            : $"{failures.Count} of {inputCount} input files could not be read";
+
+        if (outputFrames > 0)
+        {
+            string frames = outputFrames == 1 ? "frame is" : "frames are";
+            Console.Error.WriteLine(
+                $"Error: Partial result: {subject}; the {outputFrames} written {frames} incomplete.");
+            Console.Error.WriteLine($"  Partial output retained in '{EffectiveOutputPath(settings)}'.");
+        }
+        else
+        {
+            Console.Error.WriteLine($"Error: Failure: {subject}; no output was produced.");
+        }
+
+        foreach (FailedInput failure in failures)
+        {
+            Console.Error.WriteLine($"  Failed input: '{failure.Path}' ({failure.Reason})");
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // -check: validate only, write nothing
+    // ---------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Implements <c>-check</c>: validate the parsed command line, calibration masters, input files,
+    /// processing geometry and output settings, print one clear result and exit. The pipeline never
+    /// runs, so no output directory, log or science file is created.
+    /// </summary>
+    /// <returns>0 when every check passes, 2 (configuration) when any check fails.</returns>
+    private static int RunCheck(OpippOptions options, IReadOnlyList<string> inputs, PipelineSettings settings)
+    {
+        var errors = new List<string>();
+        var decoded = new List<(string Path, Frame Frame)>(inputs.Count);
+
+        foreach (string input in inputs)
+        {
+            if (!File.Exists(input))
+            {
+                errors.Add($"input file does not exist: '{input}'");
+                continue;
+            }
+
+            try
+            {
+                using IFrameSource source = FrameSourceFactory.Open(input, settings.SerBitDepth);
+                Frame? first = source.ReadFrame();
+                if (first is null)
+                {
+                    errors.Add($"input file contains no frames: '{input}'");
+                    continue;
+                }
+
+                decoded.Add((input, first));
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException or UnauthorizedAccessException)
+            {
+                errors.Add($"input file cannot be read: '{input}': {ex.Message}");
+            }
+        }
+
+        foreach ((string path, Frame frame) in decoded)
+        {
+            errors.AddRange(ValidateGeometry(options, settings, frame, path));
+            errors.AddRange(ValidateMasters(settings, frame, path));
+        }
+
+        errors.AddRange(ValidateOutputSettings(settings));
+
+        if (errors.Count > 0) return ReportCheckFailure(errors);
+
+        Console.WriteLine("Command line check: OK");
+        Console.WriteLine($"  Input files: {inputs.Count}");
+        Console.WriteLine($"  Input geometry: {DescribeGeometry(decoded[0].Frame)}");
+        Console.WriteLine($"  Output format: {settings.OutputExtension}");
+        Console.WriteLine($"  Output directory: {EffectiveOutputPath(settings)} (not created)");
+        Console.WriteLine($"  Calibration masters: {DescribeMasters(settings)}");
+        return ExitCodes.Success;
+    }
+
+    /// <summary>Prints one failed check report and returns the configuration exit code.</summary>
+    private static int ReportCheckFailure(IEnumerable<string> errors)
+    {
+        Console.WriteLine("Command line check: FAILED");
+        foreach (string error in errors)
+        {
+            Console.WriteLine($"  Error: {error}");
+        }
+
+        return ExitCodes.ConfigurationError;
+    }
+
+    /// <summary>
+    /// Validates the geometry switches against the frame the pipeline would actually process: the
+    /// raw capture is binned first, then rotated, and only then cropped and resized. A crop that
+    /// does not fit would otherwise be swallowed as a per-frame rejection and end in "all frames
+    /// discarded" instead of naming the bad switch.
+    /// </summary>
+    private static IEnumerable<string> ValidateGeometry(
+        OpippOptions options,
+        PipelineSettings settings,
+        Frame frame,
+        string path)
+    {
+        int width = frame.Width / settings.Binning;
+        int height = frame.Height / settings.Binning;
+        if (settings.Binning > 1 && (width == 0 || height == 0))
+        {
+            yield return $"-bin={settings.Binning} is larger than the {frame.Width}x{frame.Height} frame of '{path}'";
+            yield break;
+        }
+
+        if (settings.Rotation is 90 or 270) (width, height) = (height, width);
+
+        bool cropRequested = options.CropWidth is not null || options.CropHeight is not null;
+        if (cropRequested)
+        {
+            int cropWidth = options.CropWidth ?? 0;
+            int cropHeight = options.CropHeight ?? 0;
+            int x = options.OffsetX ?? 0;
+            int y = options.OffsetY ?? 0;
+
+            if (cropWidth <= 0 || cropHeight <= 0)
+            {
+                yield return $"crop geometry for '{path}' needs both -cx and -cy greater than zero (got {cropWidth}x{cropHeight})";
+            }
+            else if (x < 0 || y < 0)
+            {
+                yield return $"crop origin for '{path}' must not be negative (got {x},{y})";
+            }
+            else if ((long)x + cropWidth > width || (long)y + cropHeight > height)
+            {
+                yield return $"crop rectangle ({x},{y}) {cropWidth}x{cropHeight} for '{path}' exceeds the {width}x{height} processed frame";
+            }
+        }
+
+        if (options.ResizeFrames)
+        {
+            if (options.ResizeWidth is null)
+            {
+                yield return "-resize_en requires -resize_width";
+            }
+            else if (options.ResizeHeight is 0)
+            {
+                yield return "-resize_height must be -1 (keep the aspect ratio) or greater than zero";
+            }
+        }
+
+        if (options.AreaOfInterestCrop &&
+            options.AreaOfInterestWidth is int aoiWidth && aoiWidth > 0 &&
+            options.AreaOfInterestHeight is int aoiHeight && aoiHeight > 0)
+        {
+            int x = options.AreaOfInterestX ?? 0;
+            int y = options.AreaOfInterestY ?? 0;
+            if (x < 0 || y < 0)
+            {
+                yield return $"area of interest for '{path}' must not have a negative origin (got {x},{y})";
+            }
+            else if ((long)x + aoiWidth > width || (long)y + aoiHeight > height)
+            {
+                yield return $"area of interest ({x},{y}) {aoiWidth}x{aoiHeight} for '{path}' exceeds the {width}x{height} processed frame";
+            }
+        }
+    }
+
+    /// <summary>
+    /// Checks every loaded master against the frame it will be applied to. Science masters must
+    /// match the raw capture (calibration runs before debayering and binning); a flat dark is
+    /// subtracted from the flat, so it must match the flat's geometry instead.
+    /// </summary>
+    private static IEnumerable<string> ValidateMasters(PipelineSettings settings, Frame frame, string path)
+    {
+        if (settings.MasterDark is Frame dark && !SameGeometry(dark, frame))
+        {
+            yield return MasterMismatch("-dark", dark, DescribeGeometry(frame), path);
+        }
+
+        if (settings.MasterFlat is Frame flat)
+        {
+            if (!SameGeometry(flat, frame))
+            {
+                yield return MasterMismatch("-flat", flat, DescribeGeometry(frame), path);
+            }
+
+            if (settings.MasterFlatDark is Frame flatDark && !SameGeometry(flatDark, flat))
+            {
+                yield return MasterMismatch("-flat_dark", flatDark, DescribeGeometry(flat), $"the flat master used for '{path}'");
+            }
+        }
+    }
+
+    private static bool SameGeometry(Frame a, Frame b) =>
+        a.Width == b.Width && a.Height == b.Height && a.Channels == b.Channels && a.BitDepth == b.BitDepth;
+
+    private static string MasterMismatch(string name, Frame master, string expected, string subject) =>
+        $"{name} master is {DescribeGeometry(master)} but {subject} is {expected}; " +
+        "calibration runs before debayering and binning, so a master must match the capture geometry";
+
+    /// <summary>
+    /// Validates the output settings without creating anything: the directory must be a legal path
+    /// that is not already a file, and the prefix/suffix must be usable in a file name.
+    /// </summary>
+    private static IReadOnlyList<string> ValidateOutputSettings(PipelineSettings settings)
+    {
+        var errors = new List<string>();
+        string outputPath = EffectiveOutputPath(settings);
+
+        try
+        {
+            string full = Path.GetFullPath(outputPath);
+            if (File.Exists(full))
+            {
+                errors.Add($"output directory '{outputPath}' is an existing file");
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            errors.Add($"output directory '{outputPath}' is not a valid path: {ex.Message}");
+        }
+
+        char[] invalid = Path.GetInvalidFileNameChars();
+        if (settings.Prefix.IndexOfAny(invalid) >= 0)
+        {
+            errors.Add($"output prefix '{settings.Prefix}' contains characters that are not valid in a file name");
+        }
+
+        if (settings.Suffix.IndexOfAny(invalid) >= 0)
+        {
+            errors.Add($"output suffix '{settings.Suffix}' contains characters that are not valid in a file name");
+        }
+
+        return errors;
+    }
+
+    /// <summary>The directory the run would write to: the output root plus <c>-osubdir</c> when set.</summary>
+    private static string EffectiveOutputPath(PipelineSettings settings)
+    {
+        string root = settings.OutputDirectory;
+        if (!string.IsNullOrWhiteSpace(settings.OutputSubdirectory))
+        {
+            string sub = settings.OutputSubdirectory;
+            root = Path.IsPathRooted(sub) ? sub : Path.Combine(root, sub);
+        }
+
+        return root;
+    }
+
+    private static string DescribeGeometry(Frame frame) =>
+        string.Create(CultureInfo.InvariantCulture, $"{frame.Width}x{frame.Height}x{frame.Channels}@{frame.BitDepth}");
+
+    private static string DescribeMasters(PipelineSettings settings)
+    {
+        var names = new List<string>(3);
+        if (settings.MasterDark is not null) names.Add("dark");
+        if (settings.MasterFlat is not null) names.Add("flat");
+        if (settings.MasterFlatDark is not null) names.Add("flat dark");
+        return names.Count == 0 ? "none" : string.Join(", ", names);
     }
 
     /// <summary>The frame count, channel count and detection threshold a GUI run reports up front.</summary>
@@ -760,30 +1223,49 @@ internal static class Program
     private static string DefaultOutputDirectory() =>
         Path.Combine(Environment.CurrentDirectory, DateTime.Now.ToString("yyyy-MM-dd-HHmm", CultureInfo.InvariantCulture) + "_pipp");
 
-    private static void PrintSummary(ProcessingReport report, IReadOnlyList<string> inputs, OpippOptions options, PipelineSettings settings)
+    private static string InputCount(int count) => count == 1 ? "1 input file" : $"{count} input files";
+
+    private static void PrintSummary(
+        ProcessingReport report,
+        IReadOnlyList<string> inputs,
+        OpippOptions options,
+        PipelineSettings settings,
+        IReadOnlyList<FailedInput> failures)
     {
         if (options.Gui) return;
+
+        string result = failures.Count > 0
+            ? (report.OutputFrames > 0
+                ? $"PARTIAL FAILURE - {InputCount(failures.Count)} could not be read; output is incomplete"
+                : $"FAILURE - {InputCount(failures.Count)} could not be read")
+            : report.OutputFrames > 0 ? "SUCCESS" : "FAILURE - no frames written";
 
         Console.WriteLine();
         Console.WriteLine("  Processing Details:");
         Console.WriteLine($"    Input files:                     {inputs.Count}");
-        Console.WriteLine($"    Files not found:                 {report.FailedFiles.Count}");
+        Console.WriteLine($"    Files not found:                 {failures.Count}");
         Console.WriteLine($"    Total input frames:              {report.InputFrames}");
         Console.WriteLine($"    Frames discarded for quality:    {report.DiscardedByQuality}");
         Console.WriteLine($"    Frames discarded with no object: {report.DiscardedNoObject}");
         Console.WriteLine($"    Total output frames:             {report.OutputFrames}");
         Console.WriteLine();
         Console.WriteLine("  Summary:");
+        Console.WriteLine($"    Result:                          {result}");
         Console.WriteLine($"    Output frame format:             {settings.OutputExtension}");
         Console.WriteLine($@"    Output Directory:                {(string.IsNullOrWhiteSpace(settings.OutputSubdirectory) ? settings.OutputDirectory : Path.Combine(settings.OutputDirectory, settings.OutputSubdirectory!))}");
 
-        foreach (var file in report.FailedFiles)
+        foreach (FailedInput failure in failures)
         {
-            Console.WriteLine($"    Failed: {file}");
+            Console.WriteLine($"    Failed: {failure.Path} ({failure.Reason})");
         }
         foreach (var file in report.OutputFiles)
         {
             Console.WriteLine($"    Written: {file}");
+        }
+
+        if (failures.Count > 0 && report.OutputFrames > 0)
+        {
+            Console.WriteLine($"    Partial output:                  {report.OutputFrames} frame(s) retained; incomplete");
         }
     }
 }

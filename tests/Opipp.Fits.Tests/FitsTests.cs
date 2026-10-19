@@ -161,6 +161,9 @@ public class FitsTests
         }
 
         byte[] bytes = File.ReadAllBytes(file.Path);
+        // 2880 header + 4 data bytes (one per sample) + 2872 pad: the writer must not charge 8-bit
+        // samples twice when sizing the pad.
+        Assert.Equal(5760, bytes.Length);
         string header = System.Text.Encoding.ASCII.GetString(bytes, 0, 2880);
         Assert.Contains("BITPIX  =                    8", header);
         Assert.Contains("BZERO   =                  0.0", header);

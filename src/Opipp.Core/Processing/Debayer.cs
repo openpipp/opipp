@@ -33,6 +33,11 @@ public static class Debayer
     /// <summary>Demosaics a single-plane Bayer frame into a 3-channel frame of the same bit depth.</summary>
     /// <param name="frame">Single-channel Bayer frame; <see cref="Frame.Bayer"/> must not be <see cref="BayerPattern.None"/>.</param>
     /// <param name="smoothHue">Use the constant-hue refinement instead of plain bi-linear.</param>
+    /// <returns>
+    /// A 3-channel frame whose <see cref="Frame.Bayer"/> is always <see cref="BayerPattern.None"/>:
+    /// the samples are now full colour per pixel and no CFA lattice remains for a header or a later
+    /// stage to describe.
+    /// </returns>
     public static Frame ToColour(Frame frame, bool smoothHue = false)
     {
         ArgumentNullException.ThrowIfNull(frame);

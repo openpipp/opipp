@@ -4,10 +4,13 @@ using Opipp.Core.Frames;
 namespace Opipp.Core.Formats;
 
 /// <summary>
-/// Writes 16-bit FITS images. Samples are stored as signed 16-bit integers with
-/// <c>BZERO = 32768</c> and <c>BSCALE = 1</c>, so the full unsigned 0..65535 range round-trips.
+/// Writes 8-bit and 16-bit FITS images. Samples are stored as signed 16-bit integers with
+/// <c>BZERO = 32768</c> and <c>BSCALE = 1</c>, so the full unsigned 0..65535 range round-trips;
+/// 8-bit frames keep <c>BITPIX = 8</c> and one byte per sample.
 /// Mono frames produce NAXIS = 2; colour frames produce NAXIS = 3 with NAXIS3 = 3 and the R, G and B
-/// planes written sequentially (plane-major). Headers and data are padded to 2880-byte boundaries.
+/// planes written sequentially (plane-major). Headers and data are padded to 2880-byte boundaries,
+/// with the data pad computed from the bytes actually written so every image unit is a multiple of
+/// 2880 for both sample depths.
 /// </summary>
 /// <remarks>
 /// Every call to <see cref="Write"/> appends one image HDU; the primary header declares
@@ -93,8 +96,12 @@ public sealed class FitsWriter : IFrameSink
 
         FitsHeader header = BuildHeader(frame, primary: _framesWritten == 0);
         _stream.Write(header.ToBytes());
-        WritePixels(frame);
-        WritePadding(frame.SampleCount * 2);
+        int dataBytes = WritePixels(frame);
+
+        // Pad from the bytes actually written: BITPIX 8 stores one byte per sample, BITPIX 16 two.
+        // Deriving the pad from SampleCount * 2 adds 2 * (samples mod 1440) bytes too many for 8-bit
+        // images and pushes every later extension header off its 2880-byte boundary.
+        WritePadding(dataBytes);
         _stream.Flush();
         _framesWritten++;
     }
@@ -196,7 +203,9 @@ public sealed class FitsWriter : IFrameSink
         return header;
     }
 
-    private void WritePixels(Frame frame)
+    /// <summary>Writes the pixel payload and returns the number of bytes written.</summary>
+    /// <returns>Bytes actually appended to the stream: one per sample for BITPIX 8, two for BITPIX 16.</returns>
+    private int WritePixels(Frame frame)
     {
         int pixels = checked(frame.Width * frame.Height);
         int channels = frame.Channels;
@@ -216,24 +225,25 @@ public sealed class FitsWriter : IFrameSink
             {
                 int sampleIndex = (row * frame.Width * channels) + channel;
                 for (int col = 0; col < frame.Width; col++)
-            {
-                ushort value = frame.Samples[sampleIndex];
-                sampleIndex += channels;
-                if (eightBit)
                 {
-                    data[index++] = (byte)value;
+                    ushort value = frame.Samples[sampleIndex];
+                    sampleIndex += channels;
+                    if (eightBit)
+                    {
+                        data[index++] = (byte)value;
+                    }
+                    else
+                    {
+                        ushort stored = (ushort)(value - 32768);
+                        data[index++] = (byte)(stored >> 8);
+                        data[index++] = (byte)stored;
+                    }
                 }
-                else
-                {
-                    ushort stored = (ushort)(value - 32768);
-                    data[index++] = (byte)(stored >> 8);
-                    data[index++] = (byte)stored;
-                }
-            }
             }
         }
 
         _stream.Write(data);
+        return data.Length;
     }
 
     private void WritePadding(int dataLength)

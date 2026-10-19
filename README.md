@@ -19,7 +19,7 @@ projects — is `Opipp.*`.
 
 ## Status: early development — feedback wanted
 
-OPIPP is at **0.1.9-alpha**. The engine is functionally complete and parity-tested against the
+OPIPP is at **0.1.10-alpha**. The engine is functionally complete and parity-tested against the
 original across 27 compared cases, with two declared differences, but one algorithm (surface-feature
 tracking) is still one pixel off on part of the real-data fixture, and the UI has not seen broad
 real-world use. Treat it as a working preview.
@@ -120,8 +120,8 @@ dotnet run --project src/Opipp.App
 ## Status
 
 Working end to end (verified by tests): SER → pipeline → FITS/TIFF/SER/AVI/GIF output, calibration
-subtract/divide, histogram stretch, quality selection, alignment, stacking and animation. **744 tests
-pass** across eight projects; [`docs/status.md`](docs/status.md) is the authoritative summary.
+subtract/divide, histogram stretch, quality selection, alignment, stacking and animation. **824 tests
+pass** across nine projects; [`docs/status.md`](docs/status.md) is the authoritative summary.
 
 The CLI is a drop-in engine: it accepts the GUI's stdin protocol (switches and file paths, one per
 line) as well as a normal command line, and emits the original `@PROGRESS/@PFILE/...` tokens with
@@ -131,16 +131,16 @@ line) as well as a normal command line, and emits the original `@PROGRESS/@PFILE
 | Area | State |
 |---|---|
 | SER v3 read/write | complete |
-| FITS read/write | complete (16-bit, Bayer keywords, BZERO) |
+| FITS read/write | complete (8- and 16-bit, Bayer keywords, BZERO); every image unit is 2880-byte aligned |
 | AVI | read: uncompressed DIB/Y800 and baseline MJPEG; write: uncompressed DIB/Y800 only. Other compressed codecs (ULRG, FMP4, YUY2, ...) are rejected with a clear error |
 | BMP / TIFF / PNG / PGM | complete; BMP writes 8/24bpp only (PIPP's reader rejects 16bpp), so 16-bit frames are downshifted and documented |
-| Debayer (bilinear, smooth hue) | complete; pattern indices match the engine |
+| Debayer (bilinear, smooth hue) | complete; pattern indices match the engine; debayered frames carry no CFA marker, an explicit pattern overrides headers, and raw geometry retags the phase |
 | Binning, median, mono modes, stretch, gain/gamma, flip/rotate/crop/resize | complete |
-| Dark/flat calibration | complete (master frames via PGM handoff) |
+| Dark/flat calibration | complete; masters via `.tmp` (preferred) or PGM, corrected flat applied exactly once |
 | Quality sort/limit | complete contract; score formulas are reconstructions |
 | Alignment | centroid + NCC translation + AFB box |
 | Stacking | mean / sum / median |
-| CLI | all 131 switch labels parse; 76 verified against the engine, 37 wired, 6 documented skips, 12 inert (see `docs/status.md`) |
+| CLI | all 131 switch labels parse; 76 verified against the engine, 43 wired, 12 inert (see `docs/status.md`) |
 | Not equivalent yet | surface-feature tracking (23/30 frames exact), RAW/dcraw absolute values, 16-bit Bayer debayer — see `docs/status.md` |
 | WinForms UI | builds on .NET 10; drives the managed CLI through the original stdin/stdout protocol (legacy binary as fallback) and builds master darks/flats in-process when `pipp_dll.dll` is absent |
 

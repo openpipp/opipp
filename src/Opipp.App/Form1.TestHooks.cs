@@ -11,11 +11,22 @@ namespace PIPP_Application;
 /// </summary>
 /// <remarks>
 /// Kept in a partial file so the ported designer file stays untouched. Everything here is
-/// <c>internal</c>, and the only production effect is the three override properties, which are null
-/// (so the real behaviour runs) unless a test installs them.
+/// <c>internal</c>, and the only production effects are the three override properties (null, so the
+/// real behaviour runs, unless a test installs them) and <see cref="SuppressSounds"/> (false, so
+/// real runs still play the completion sound).
 /// </remarks>
 public partial class Form1
 {
+    /// <summary>
+    /// When true, the run-completion sound is skipped.
+    /// </summary>
+    /// <remarks>
+    /// Set once by the STA test process. The form plays the Windows notification sound when a run
+    /// completes, and a suite that completes dozens of runs would play it dozens of times on the
+    /// developer's machine. Real runs are unaffected: the flag is false unless a test sets it.
+    /// </remarks>
+    internal static bool SuppressSounds;
+
     /// <summary>
     /// Replaces <see cref="MasterFrameBuild"/> when a test needs a build it can cancel or inspect.
     /// Null means the production builder.
@@ -93,6 +104,8 @@ public partial class Form1
     /// <param name="flatDarkSubtraction">State of "Enable Flat Dark Frame Subtraction".</param>
     /// <param name="darkSubtraction">State of "Enable Dark Frame Subtraction".</param>
     /// <param name="saveFlatDark">State of "Save Master Flat Dark Frame".</param>
+    /// <param name="aviOutput">When true the run writes AVI instead of TIFF, so a preset's codec can
+    /// be exercised against the real engine.</param>
     internal void PrepareRunForTest(
         string[] imageFiles,
         string? outputDirectory = null,
@@ -102,7 +115,8 @@ public partial class Form1
         bool flatCalibration = true,
         bool flatDarkSubtraction = true,
         bool darkSubtraction = true,
-        bool saveFlatDark = false)
+        bool saveFlatDark = false,
+        bool aviOutput = false)
     {
         // Adding the first source file makes the form auto-start a test run (see
         // source_filelist_FileListUpdated). A test drives runs itself, so suppress that one-shot
@@ -133,7 +147,15 @@ public partial class Form1
 
         // The run needs a concrete output directory and a file name change, or Start Processing
         // refuses to produce files in the source directory.
-        outputtifRB.Checked = true;
+        if (aviOutput)
+        {
+            outputaviRB.Checked = true;
+        }
+        else
+        {
+            outputtifRB.Checked = true;
+        }
+
         create_output_subdirCB.Checked = false;
         outputprefixTB.Text = "";
         outputsuffixTB.Text = "_out";
@@ -151,4 +173,43 @@ public partial class Form1
 
     /// <summary>Raises <see cref="Form1_FormClosing"/> without entering the form's close lifecycle.</summary>
     internal void RaiseFormClosingForTest(FormClosingEventArgs e) => Form1_FormClosing(this, e);
+
+    /// <summary>Frames the dark file list reports (each FITS image counted, not each file).</summary>
+    internal int DarkListFramesForTest => dark_filelist.total_frame_count;
+
+    /// <summary>Frames the flat file list reports.</summary>
+    internal int FlatListFramesForTest => flat_filelist.total_frame_count;
+
+    /// <summary>Frames the flat-dark file list reports.</summary>
+    internal int FlatDarkListFramesForTest => flat_dark_filelist.total_frame_count;
+
+    /// <summary>Checks "Planetary Animation (AVI)", exactly as clicking the preset does.</summary>
+    internal void SelectPlanetaryAnimationAviPresetForTest() => planetary_animation_aviCB.Checked = true;
+
+    /// <summary>Checks "AVI Archive", exactly as clicking the preset does.</summary>
+    internal void SelectAviArchivePresetForTest() => avi_archiveCB.Checked = true;
+
+    /// <summary>The index the GUI sends as <c>-avi_codec</c> (0 DIB, 1 ULRG, 2 FMP4).</summary>
+    internal int AviCodecIndexForTest => avi_codecCB.SelectedIndex;
+
+    /// <summary>Number of codec choices the operator can pick.</summary>
+    internal int AviCodecChoiceCountForTest => avi_codecCB.Items.Count;
+
+    /// <summary>Text of one codec choice.</summary>
+    internal string AviCodecChoiceTextForTest(int index) => avi_codecCB.Items[index] as string ?? string.Empty;
+
+    /// <summary>The "Quality" row of the selected-output-settings box.</summary>
+    internal string AviStorageTextForTest => avi_settings3LAB.Text;
+
+    /// <summary>True when the run writes AVI.</summary>
+    internal bool AviOutputSelectedForTest => outputaviRB.Checked;
+
+    /// <summary>The output suffix the current options produce.</summary>
+    internal string OutputSuffixForTest => outputsuffixTB.Text;
+
+    /// <summary>Sets the minimum accepted object size the planet-detection presets use.</summary>
+    internal void SetMinimumPlanetSizeForTest(decimal size) => minsizeNUD.Value = size;
+
+    /// <summary>True once the transcript's final verdict line has been written.</summary>
+    internal bool RunVerdictWrittenForTest => run_verdict_written;
 }

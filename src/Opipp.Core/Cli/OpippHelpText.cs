@@ -170,7 +170,20 @@ Misc options:
   -flat_tmp=<path>         Pre-stacked master flat temp file.
   -flat_dark_tmp=<path>    Pre-stacked master flat-dark temp file.
   -debugavi                Output debug details of AVI files.
-  -check                   Validate the command line and input files, then exit.
+  -check                   Validate the command line, calibration masters, input files,
+                           processing geometry and output settings, then exit without
+                           writing anything. Exits 0 when valid, 2 when not.
+                           Compatibility note: the original engine treats -check as an
+                           alias of -chk (planet detection). OPIPP keeps the documented
+                           validate-and-exit meaning; use -chk for planet detection.
   -help                    Display this help.
+
+Result codes:
+  0                        Success: every input was read and output was produced.
+  1                        Partial result or runtime failure: any output written is incomplete.
+  2                        Command-line or configuration error; nothing was processed.
+  -1                       Failure: no output (every frame was discarded).
+  127                      Unknown switch.
+  130                      Cancelled.
 """;
 }
