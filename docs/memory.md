@@ -31,8 +31,11 @@ Selection does not help: it runs after the frames have accumulated.
 
 ## Still open
 
-- **GIF output** collects every selected frame into a list before writing (`GifWriter` takes a
-  list), so that path is still unbounded. Fixing it needs an incremental writer API.
+- **GIF animation** (`-anim_*`) still builds a list: the animation blocks need neighbouring frames
+  (ping-pong, holds, motion). The ordinary GIF path no longer does — `GifWriter.Write` takes a
+  re-enumerable source, writes one image block at a time, and builds a colour palette from a sampled
+  pass without retaining frames. Verified byte-identical to the buffered encoder for mono, colour and
+  single-frame output.
 - No CLI switch exposes the budget yet; it is a settings property only.
 - No peak-RSS measurement — the budget caps retained pixel data, not total process memory
   (transform buffers, stacker accumulator and the reader add to it).

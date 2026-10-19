@@ -124,6 +124,76 @@ public class GifTests
 
         return count;
     }
+
+    [Fact]
+    public void StreamingWrite_MatchesEncode_ForMonoAnimation()
+    {
+        Frame[] frames =
+        [
+            Mono(2, 2, 0, 64, 128, 255),
+            Mono(2, 2, 16, 80, 144, 240),
+            Mono(2, 2, 32, 96, 160, 224),
+        ];
+        string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+            "opipp-gif-" + Guid.NewGuid().ToString("n") + ".gif");
+        try
+        {
+            byte[] buffered = GifWriter.Encode(frames);
+            int written = GifWriter.Write(path, () => frames);
+
+            Assert.Equal(frames.Length, written);
+            Assert.Equal(buffered, File.ReadAllBytes(path));
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void StreamingWrite_SingleFrame_MatchesEncodeWithoutLoopExtension()
+    {
+        Frame[] frames = [Mono(2, 2, 0, 64, 128, 255)];
+        string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+            "opipp-gif-" + Guid.NewGuid().ToString("n") + ".gif");
+        try
+        {
+            byte[] buffered = GifWriter.Encode(frames);
+            int written = GifWriter.Write(path, () => frames);
+
+            Assert.Equal(1, written);
+            Assert.Equal(buffered, File.ReadAllBytes(path));
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void StreamingWrite_MatchesEncode_ForColour()
+    {
+        Frame[] frames =
+        [
+            Rgb(2, 2, 255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255),
+            Rgb(2, 2, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120),
+        ];
+        string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+            "opipp-gif-" + Guid.NewGuid().ToString("n") + ".gif");
+        try
+        {
+            byte[] buffered = GifWriter.Encode(frames);
+            int written = GifWriter.Write(path, () => frames);
+
+            Assert.Equal(frames.Length, written);
+            Assert.Equal(buffered, File.ReadAllBytes(path));
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
 }
 
 /// <summary>Exposes the internal LZW encoder to the tests without making it public API.</summary>
@@ -298,4 +368,5 @@ internal static class TestGifDecoder
 
         return value;
     }
+
 }

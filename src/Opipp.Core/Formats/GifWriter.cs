@@ -140,7 +140,7 @@ public static class GifWriter
         bool colour = frames[0].Channels == 3;
 
         (byte[] palette, Func<Frame, byte[]> indexer) = colour
-            ? BuildColourPalette(frames, entries, options.Quantisation)
+            ? BuildColourPalette(frames, width, height, entries, options.Quantisation)
             : (BuildGreyscalePalette(entries, reserveTransparentEntry: options.TransparentPixelTolerance >= 0),
                frame => IndexMono(frame, options.ColorTableDepth));
 
@@ -194,6 +194,110 @@ public static class GifWriter
     }
 
     /// <summary>
+    /// Writes an animated GIF from a re-enumerable frame source, one frame at a time. The source is
+    /// enumerated up to twice (colour palettes are built from a sample of every frame), but no frame
+    /// list and no encoded image is retained: a long capture can produce a GIF in bounded memory.
+    /// Returns the number of image blocks written.
+    /// </summary>
+    public static int Write(string path, Func<IEnumerable<Frame>> frameSource, GifOptions? options = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(frameSource);
+        options ??= GifOptions.Default;
+        options.Validate();
+
+        Frame first = frameSource().FirstOrDefault()
+            ?? throw new ArgumentException("At least one frame is required.", nameof(frameSource));
+
+        int width = first.Width;
+        int height = first.Height;
+        int entries = options.PaletteEntries;
+        bool colour = first.Channels == 3;
+
+        (byte[] palette, Func<Frame, byte[]> indexer) = colour
+            ? BuildColourPalette(frameSource(), width, height, entries, options.Quantisation)
+            : (BuildGreyscalePalette(entries, options.TransparentPixelTolerance >= 0),
+               frame => IndexMono(frame, options.ColorTableDepth));
+
+        using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        using var writer = new BinaryWriter(stream, Encoding.ASCII, leaveOpen: true);
+
+        writer.Write(Encoding.ASCII.GetBytes("GIF89a"));
+        writer.Write((ushort)width);
+        writer.Write((ushort)height);
+        writer.Write((byte)(0xF0 | (options.ColorTableDepth - 1)));
+        writer.Write((byte)0x00);
+        writer.Write((byte)0x00);
+        writer.Write(palette);
+
+        // The NETSCAPE block must precede the first image, but it is only present when the animation
+        // has more than one frame. Hold the first encoded block until we know whether a second exists.
+        byte[]? pendingFirst = null;
+        int count = 0;
+        foreach (Frame frame in frameSource())
+        {
+            if (frame.Width != width || frame.Height != height)
+                throw new ArgumentException("All frames must share the same dimensions.", nameof(frameSource));
+
+            byte[] block = EncodeBlock(frame, indexer, options);
+            if (count == 0)
+            {
+                pendingFirst = block;
+            }
+            else
+            {
+                if (count == 1)
+                {
+                    if (options.Loop)
+                    {
+                        writer.Write(new byte[] { 0x21, 0xFF, 0x0B });
+                        writer.Write(Encoding.ASCII.GetBytes("NETSCAPE2.0"));
+                        writer.Write(new byte[] { 0x03, 0x01 });
+                        writer.Write((ushort)Math.Clamp(options.LoopCount, 0, ushort.MaxValue));
+                        writer.Write((byte)0x00);
+                    }
+                    writer.Write(pendingFirst!);
+                    pendingFirst = null;
+                }
+                writer.Write(block);
+            }
+            count++;
+        }
+
+        if (count == 0) throw new ArgumentException("At least one frame is required.", nameof(frameSource));
+        if (pendingFirst is not null) writer.Write(pendingFirst);
+
+        writer.Write((byte)0x3B);
+        writer.Flush();
+        return count;
+    }
+
+    /// <summary>One graphic-control extension + image descriptor + LZW data block.</summary>
+    private static byte[] EncodeBlock(Frame frame, Func<Frame, byte[]> indexer, GifOptions options)
+    {
+        using var buffer = new MemoryStream();
+        using var writer = new BinaryWriter(buffer, Encoding.ASCII, leaveOpen: true);
+
+        writer.Write(new byte[] { 0x21, 0xF9, 0x04, 0x04 });
+        writer.Write((ushort)Math.Clamp(options.DelayCentiseconds, 0, 65535));
+        writer.Write((byte)0x00);
+        writer.Write((byte)0x00);
+
+        writer.Write((byte)0x2C);
+        writer.Write((ushort)0);
+        writer.Write((ushort)0);
+        writer.Write((ushort)frame.Width);
+        writer.Write((ushort)frame.Height);
+        writer.Write((byte)0x00);
+
+        writer.Write((byte)options.ColorTableDepth);
+        writer.Write(GifLzw.Encode(indexer(frame), options.ColorTableDepth));
+        writer.Flush();
+
+        return buffer.ToArray();
+    }
+
+    /// <summary>
     /// Builds a greyscale ramp of <paramref name="entries"/> entries, stepped by
     /// <c>256 / entries</c> — for a 256-entry table that is 0,1,2,... and for a 16-entry table
     /// 0,16,32,...240 (oracle: <c>-gif_col_tbl_depth=4</c> writes entry 2 as 32, not 34).
@@ -243,10 +347,10 @@ public static class GifWriter
     }
 
     private static (byte[] Palette, Func<Frame, byte[]> Indexer) BuildColourPalette(
-        IReadOnlyList<Frame> frames, int entries, GifQuantisation quantisation)
+        IEnumerable<Frame> frames, int width, int height, int entries, GifQuantisation quantisation)
     {
         var sample = new List<(byte R, byte G, byte B)>(1 << 16);
-        int step = Math.Max(1, (frames[0].Width * frames[0].Height) / 16384);
+        int step = Math.Max(1, (width * height) / 16384);
         foreach (Frame frame in frames)
         {
             int shift = frame.BitDepth == 16 ? 8 : 0;

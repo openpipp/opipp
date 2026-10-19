@@ -926,11 +926,11 @@ public sealed class Processor
                     // -rgb has no effect on GIF in the engine (one file), and neither do -gif_border_tol
                     // or -gif_lossy_comp, which only ever shaped image blocks that were never written.
                     string gifPath = Path.Combine(outputRoot, baseName + ".gif");
-                    var gifFrames = new List<Frame>(queue.Count);
-                    foreach (var (frame, _, offset, _) in queue)
-                    {
-                        gifFrames.Add(ApplyOverlay(ApplyGeometry(frame.Frame, offset, shiftFill), detectionThreshold));
-                    }
+                    // Re-enumerable frame source: the writer pulls one frame at a time, so neither the
+                    // selected frames nor the encoded GIF are held in memory.
+                    IEnumerable<Frame> GifFrames() => queue.Select(entry =>
+                        ApplyOverlay(ApplyGeometry(entry.Frame.Frame, entry.Offset, shiftFill), detectionThreshold));
+                    Func<IEnumerable<Frame>> gifSource = GifFrames;
 
                     // The engine's animation blocks apply to GIF too, but with two differences
                     // measured against pipp_core: last-frame holds are collapsed (identical
@@ -940,13 +940,13 @@ public sealed class Processor
                     GifOptions gifOptions = _settings.GifOptions;
                     if (_settings.Animation.IsActive)
                     {
-                        gifFrames = BuildGifAnimation(gifFrames);
+                        gifSource = () => BuildGifAnimation(GifFrames().ToList());
                         gifOptions = gifOptions with { LoopCount = _settings.Animation.GifLoopCount };
                     }
 
-                    outputFrames += gifFrames.Count;
                     int delay = Math.Max(1, (int)Math.Round(100.0 / Math.Max(1, _settings.Fps)));
-                    GifWriter.Write(gifPath, gifFrames, gifOptions with { DelayCentiseconds = delay });
+                    outputFrames += GifWriter.Write(gifPath, gifSource,
+                        gifOptions with { DelayCentiseconds = delay });
                     outputs.Add(gifPath);
                 }
                 else if (IsMultiFrameContainer(_settings.OutputExtension))
