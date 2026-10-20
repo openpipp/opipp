@@ -214,6 +214,13 @@ public static class FitsImageConstraints
                 return errors;
             }
 
+            // ReadFrame holds the encoded payload in one byte array. A sample count that fits
+            // int can still require more bytes than that buffer can represent.
+            if (expected > Array.MaxLength)
+            {
+                errors.Add($"image payload is too large for a single buffer ({expected} bytes).");
+            }
+
             if (declaredDataBytes != expected)
             {
                 errors.Add(
@@ -494,9 +501,21 @@ public sealed class FitsReader : IFrameSource
         long position = 0;
         int hdu = 0;
 
-        while (position + FitsCard.CardSize <= length)
+        while (position < length)
         {
             int number = hdu + 1;
+            if (length - position < FitsCard.BlockSize)
+            {
+                if (hdu > 0 && IsZeroPadding(_stream, position, length))
+                {
+                    break;
+                }
+
+                throw new FitsFormatException(
+                    $"HDU {number} at offset {position} is truncated: only {length - position} "
+                    + $"of the {FitsCard.BlockSize} bytes of a header block are present.");
+            }
+
             _stream.Position = position;
             FitsHeader header;
             int headerBytes;
@@ -543,14 +562,27 @@ public sealed class FitsReader : IFrameSource
                     $"HDU {number}: the header's data section overflows a 64-bit byte count.", ex);
             }
 
+            bool selected = false;
             if (image is not null)
             {
                 bool first = _images.Count == 0;
-                if (first || (image.Width == First.Width && image.Height == First.Height
-                    && image.Channels == First.Channels))
+                selected = first || (image.Width == First.Width && image.Height == First.Height
+                    && image.Channels == First.Channels);
+                if (selected)
                 {
                     _images.Add(image);
                 }
+            }
+
+            // Selected images retain the existing delayed truncation error in ReadFrame (and
+            // ZeroFill support). A skipped HDU is never read there, so reject its short payload
+            // now instead of letting a successful run hide a damaged file.
+            long available = Math.Max(0, length - dataStart);
+            if (!selected && dataBytes > available)
+            {
+                throw new FitsFormatException(
+                    $"HDU {number} data block is truncated: {dataBytes} bytes are declared at offset "
+                    + $"{dataStart} but only {available} are present.");
             }
 
             long padded;

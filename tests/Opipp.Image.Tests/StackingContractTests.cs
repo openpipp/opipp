@@ -6,7 +6,8 @@ using Opipp.Core.Stacking;
 /// <summary>
 /// Contract tests for <see cref="FrameStacker"/> that are not about a particular numerical path:
 /// sample ownership, the median frame limit, constructor validation, cancellation, and the current
-/// Bayer behaviour. These encode promises callers may rely on, so a future change that breaks one of
+/// mono behaviour. Bayer phase preservation and rejection are covered in StackingBayerTests.
+/// These encode promises callers may rely on, so a future change that breaks one of
 /// them is a deliberate edit to this file, not an accident.
 /// </summary>
 public class StackingContractTests
@@ -221,26 +222,7 @@ public class StackingContractTests
         Assert.Equal(2, stacker.Result().Samples.Length);
     }
 
-    // ---------------------------------------------------------------- Bayer policy (current behaviour)
-
-    [Fact]
-    public void BayerFrame_IsAcceptedAndTheResultIsMarkedNone()
-    {
-        // Current policy, documented not endorsed: the stacker ignores Frame.Bayer on input - it does
-        // not reject a mosaic and does not carry the pattern to the master. Result() always sets
-        // Bayer = None, so a stacked Bayer selection comes out as a plain mono master and a later
-        // debayer can no longer recognise it. Changing this is a policy change, not a bug fix in the
-        // stacker alone.
-        var bayer = Make(2, 1, 1, 8, 10, 20);
-        bayer.Bayer = BayerPattern.RGGB;
-        var stacker = new FrameStacker(2, 1, 1, 8, StackMethod.Mean);
-
-        stacker.Add(bayer);
-        var master = stacker.Result();
-
-        Assert.Equal(new ushort[] { 10, 20 }, master.Samples);
-        Assert.Equal(BayerPattern.None, master.Bayer);
-    }
+    // ---------------------------------------------------------------- mono metadata
 
     [Fact]
     public void NonBayerFrame_IsUnaffectedByTheBayerPolicy()

@@ -100,7 +100,7 @@
   Only the parity cases are compared with the original binaries; the rest are managed tests, golden
   files and independent decodes.</p>
   <div class="kpi">
-    <div class="card"><div class="v">971</div><div class="l">tests, 0 failing</div></div>
+    <div class="card"><div class="v">1029</div><div class="l">tests in the current checkout, 0 failing</div></div>
     <div class="card"><div class="v">27/27</div><div class="l">compared parity cases</div></div>
     <div class="card"><div class="v">131</div><div class="l">switches addressed</div></div>
     <div class="card"><div class="v">76</div><div class="l">verified byte-for-byte</div></div>
@@ -108,7 +108,7 @@
   </div>
   <table class="evid">
     <tr><th>Evidence</th><th>What it establishes</th></tr>
-    <tr><td>971 managed tests</td><td>the managed engine follows the contracts in <a href="https://github.com/openpipp/opipp/blob/main/docs/status.md">status.md</a>; 2 skip in CI without the evaluation capture</td></tr>
+    <tr><td>1029 managed tests</td><td>the managed engine follows the contracts in <a href="https://github.com/openpipp/opipp/blob/main/docs/status.md">status.md</a>; 2 skip in CI without the evaluation capture</td></tr>
     <tr><td>Golden files</td><td>output matches committed native fixtures for the registered synthetic cases</td></tr>
     <tr><td>Independent decodes</td><td>files are readable and numerically correct outside OPIPP's own readers</td></tr>
     <tr><td>27/27 parity</td><td>every registered comparison against the original engine matches; 2 differences are deliberate</td></tr>
@@ -139,9 +139,11 @@
     <div class="bar"><span class="name">Alignment &amp; tracking</span><span class="track"><span class="fill" style="width:85%"></span></span><span class="pct">85%</span></div>
     <div class="bar"><span class="name">Stacking</span><span class="track"><span class="fill" style="width:70%"></span></span><span class="pct">70%</span></div>
   </div>
-  <p class="sub" style="margin-top:18px">The largest accuracy gap is <strong>surface-feature tracking</strong>:
-  it is exact on 23 of 30 frames of a real Saturn capture, and one pixel off on the rest. Everything
-  else is at or near exactness.</p>
+  <p class="sub" style="margin-top:18px"><strong>Surface-feature tracking</strong> is exact on 23 of
+  30 frames of one real Saturn capture, and one pixel off on the rest. That result does not measure
+  general tracking accuracy. Final-image stacking controls, disk-backed median and the other
+  <a href="https://github.com/openpipp/opipp/blob/main/docs/status.md#known-gaps">known gaps</a>
+  remain open.</p>
 </section>
 
 <section id="roadmap">
@@ -153,7 +155,7 @@
       <tr><td>1 · Drop-in parity</td><td><span class="state done">done</span></td><td>Output layout, numbering, logs, exit codes, <code>-gui</code> token stream</td></tr>
       <tr><td>2 · Remaining formats</td><td><span class="state done">done</span></td><td>BMP, Y8, GIF, colour SER, AVI including MJPEG</td></tr>
       <tr><td>3 · Calibration</td><td><span class="state done">done</span></td><td>Dark/flat/flat-dark masters in the engine's <code>.tmp</code> format</td></tr>
-      <tr><td>4 · Selection, alignment, stacking</td><td><span class="state next">one gap</span></td><td>All exact except the tracking residual</td></tr>
+      <tr><td>4 · Selection, alignment, stacking</td><td><span class="state next">in progress</span></td><td>Selection and Core stacking tested; tracking, final-image controls and large median stacks remain open</td></tr>
       <tr><td>5 · Animation &amp; long tail</td><td><span class="state done">done</span></td><td><code>-anim_*</code>, WinJUPOS naming, legacy AVI, RAW switches</td></tr>
       <tr><td>6 · GUI parity</td><td><span class="state done">done</span></td><td>Fully managed — no native DLL required</td></tr>
       <tr><td>7 · Alpha build</td><td><span class="state done">done</span></td><td>Self-contained Windows build with GUI and CLI</td></tr>

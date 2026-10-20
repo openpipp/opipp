@@ -1,5 +1,6 @@
 using Opipp.Core.Alignment;
 using Opipp.Core.Frames;
+using Opipp.Core.Processing;
 
 namespace Opipp.Core.Stacking;
 
@@ -99,6 +100,7 @@ public sealed class FrameStacker
     private readonly long[]? _sum;
     private readonly List<ushort[]>? _retained;
     private string? _sourceName;
+    private BayerPattern _bayer;
     private int _count;
 
     /// <summary>Creates a stacker for frames of the given geometry.</summary>
@@ -167,8 +169,14 @@ public sealed class FrameStacker
     /// <see cref="Result"/> (see its provenance rule). The name is the frame's own origin, not the
     /// run's: a frame read from the second input of a joined stream names that input, so the master
     /// describes the capture whose frames were actually accepted.
+    /// All accepted frames must have the same Bayer pattern, including <see cref="BayerPattern.None"/>.
+    /// An odd alignment shift can change that pattern; mixing phases would combine different colour
+    /// sites. Subtraction references need only match geometry and depth because persisted calibration
+    /// masters do not carry a Bayer marker.
     /// </remarks>
-    /// <exception cref="ArgumentException">Geometry or depth does not match the stacker.</exception>
+    /// <exception cref="ArgumentException">Geometry or depth does not match the stacker, or a colour
+    /// frame incorrectly carries a Bayer marker.</exception>
+    /// <exception cref="BayerPhaseException">The frame's Bayer pattern differs from the accepted frames.</exception>
     /// <exception cref="MedianFrameLimitException">Median mode exceeded its frame cap.</exception>
     public void Add(Frame frame, Frame? subtract = null)
     {
@@ -178,6 +186,13 @@ public sealed class FrameStacker
                 $"frame is {frame.Width}x{frame.Height}x{frame.Channels}, stacker expects {_width}x{_height}x{_channels}", nameof(frame));
         if (frame.BitDepth != _bitDepth)
             throw new ArgumentException($"frame depth {frame.BitDepth} != stacker depth {_bitDepth}", nameof(frame));
+        if (frame.Channels != 1 && frame.Bayer != BayerPattern.None)
+            throw new ArgumentException("Bayer patterns apply only to single-channel frames", nameof(frame));
+        if (_count > 0 && frame.Bayer != _bayer)
+            throw new BayerPhaseException(
+                $"frame {_count + 1} has Bayer pattern {frame.Bayer} but the stack has {_bayer}. " +
+                "Combining different mosaic phases would mix colour sites. Debayer the inputs to " +
+                "colour before stacking, or use matching Bayer patterns and alignment shifts with matching parity.");
 
         var src = frame.Samples;
         if (subtract is not null)
@@ -216,6 +231,7 @@ public sealed class FrameStacker
             }
         }
 
+        if (_count == 0) _bayer = frame.Bayer;
         if (_sourceName is null && !string.IsNullOrWhiteSpace(frame.SourceName))
         {
             _sourceName = frame.SourceName;
@@ -240,6 +256,8 @@ public sealed class FrameStacker
     /// mixing fields from several captures would invent an observer/instrument pair that never
     /// existed. Identity metadata is not part of the pixel combination, so the rule is independent of
     /// stack method.
+    /// <para>The result retains the common Bayer pattern of its accepted frames. The samples remain
+    /// a mosaic; no demosaicing is performed by stacking.</para>
     /// </remarks>
     /// <exception cref="InvalidOperationException">No frames were added.</exception>
     public Frame Result(CancellationToken cancellationToken = default)
@@ -257,7 +275,7 @@ public sealed class FrameStacker
 
         return new Frame(_width, _height, _channels, _bitDepth, outSamples)
         {
-            Bayer = BayerPattern.None,
+            Bayer = _bayer,
             SourceName = _sourceName,
         };
     }

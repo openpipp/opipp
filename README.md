@@ -120,7 +120,7 @@ dotnet run --project src/Opipp.App
 ## Status
 
 Working end to end (verified by tests): SER → pipeline → FITS/TIFF/SER/AVI/GIF output, calibration
-subtract/divide, histogram stretch, quality selection, alignment, stacking and animation. **971 tests**
+subtract/divide, histogram stretch, quality selection, alignment, stacking and animation. **1029 tests**
 across nine projects (0 failing; two skip without the evaluation capture); [`docs/status.md`](docs/status.md) is the authoritative summary.
 
 The CLI is a drop-in engine: it accepts the GUI's stdin protocol (switches and file paths, one per
@@ -140,7 +140,7 @@ line) as well as a normal command line, and emits the original `@PROGRESS/@PFILE
 | Dark/flat calibration | complete; masters via `.tmp` (preferred) or PGM, corrected flat applied exactly once |
 | Quality sort/limit | complete contract; score formulas are reconstructions |
 | Alignment | centroid + NCC translation + AFB box |
-| Stacking | mean / sum / median |
+| Stacking | mean / sum / median through Core; consistent raw CFA patterns are preserved, mixed phases rejected; final-image CLI/GUI controls are not yet exposed |
 | CLI | all 131 switch labels parse; 76 verified against the engine, 43 wired, 12 inert (see `docs/status.md`) |
 | Not equivalent yet | surface-feature tracking (23/30 frames exact), RAW/dcraw absolute values, 16-bit Bayer debayer — see `docs/status.md` |
 | WinForms UI | builds on .NET 10; drives the managed CLI through the original stdin/stdout protocol (legacy binary as fallback) and builds master darks/flats in-process when `pipp_dll.dll` is absent |
