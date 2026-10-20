@@ -4,6 +4,7 @@ using Opipp.Core.Alignment;
 using Opipp.Core.Diagnostics;
 using Opipp.Core.Formats;
 using Opipp.Core.Frames;
+using Opipp.Core.Integration;
 using Opipp.Core.Processing;
 using Opipp.Core.Quality;
 using Opipp.Core.Stacking;
@@ -431,6 +432,20 @@ public sealed class PipelineSettings
 
     /// <summary>When set, accepted frames are combined into one master frame.</summary>
     public StackMethod? Stack { get; set; }
+
+    /// <summary>
+    /// Final-image integration (OPIPP extension: <c>-stack=mean|sum|median</c>). When set, the
+    /// selected frames are registered by their alignment offsets and combined into exactly one
+    /// output image at the output root, instead of being written frame by frame.
+    /// </summary>
+    /// <remarks>
+    /// <see langword="null"/> leaves the legacy single-master <see cref="Stack"/> path and every
+    /// per-frame output exactly as they were: this branch is additive, and an engine command line
+    /// that never spells <c>-stack=</c> behaves identically. <see cref="Stack"/> and
+    /// <see cref="Integration"/> are distinct stages - a legacy stack is a master built from frames
+    /// that were already shifted, while integration registers the unshifted frames itself.
+    /// </remarks>
+    public IntegrationOptions? Integration { get; set; }
 
     /// <summary>Frames per second metadata for video outputs.</summary>
     public double Fps { get; set; }
@@ -1012,7 +1027,104 @@ public sealed class Processor
                     }
                 }
 
-                if (_settings.Stack is StackMethod method)
+                if (_settings.Integration is IntegrationOptions integration)
+                {
+                    // Final-image integration (OPIPP extension). The integrator applies each frame's
+                    // alignment offset itself, so the frames handed to it carry every delivered
+                    // geometry stage except the shift, which travels beside them.
+                    string integratedPath = Path.Combine(outputRoot, baseName + _settings.OutputExtension);
+
+                    // -qw's extra copies are already queue entries (named a/b after their frame).
+                    // Weighting is a property of the frame, so fold the copies back into a count:
+                    // mean/sum pass the count as that frame's weight, while median - whose facade
+                    // rejects non-uniform weights - gets the copies as extra frames instead. Both
+                    // shapes combine the same multiset the legacy stacker would have seen.
+                    var delivered = new List<(Frame Frame, AlignmentOffset Offset, int Copies)>(weighted.Count);
+                    foreach (var (retained, _, offset, suffix) in queue)
+                    {
+                        if (suffix.Length == 0)
+                        {
+                            delivered.Add((retained.Frame, offset, 1));
+                        }
+                        else
+                        {
+                            // The queue emits a frame's primary entry first, then its a/b copies.
+                            var previous = delivered[^1];
+                            delivered[^1] = (previous.Frame, previous.Offset, previous.Copies + 1);
+                        }
+                    }
+
+                    var integrateFrames = new List<Frame>(queue.Count);
+                    var integrateShifts = new List<AlignmentOffset>(queue.Count);
+                    List<double>? integrateWeights = integration.Method == IntegrationMethod.Median
+                        ? null
+                        : new List<double>(delivered.Count);
+                    foreach (var (frame, offset, copies) in delivered)
+                    {
+                        Frame prepared = ApplyGeometryWithoutShift(frame);
+                        if (integrateWeights is null)
+                        {
+                            for (int copy = 0; copy < copies; copy++)
+                            {
+                                integrateFrames.Add(prepared);
+                                integrateShifts.Add(offset);
+                            }
+                        }
+                        else
+                        {
+                            integrateFrames.Add(prepared);
+                            integrateShifts.Add(offset);
+                            integrateWeights.Add(copies);
+                        }
+                    }
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    IntegrationResult result = FinalImageIntegrator.Integrate(
+                        integrateFrames, integrateShifts, integrateWeights, integration, cancellationToken);
+                    Frame final = ApplyOverlay(result.Frame, detectionThreshold);
+
+                    // One file. It is written under a staging name and moved into place only once the
+                    // whole integration has succeeded, so cancellation or a failure leaves nothing
+                    // behind that could be mistaken for a finished image.
+                    string stagingPath = Path.Combine(
+                        outputRoot, baseName + ".integrating" + _settings.OutputExtension);
+                    try
+                    {
+                        using (IFrameSink sink = FrameSinkFactory.Create(
+                            stagingPath, final, 1, _settings.Fps, _settings.AviCodec, _settings.AviQuality))
+                        {
+                            sink.Write(final);
+                        }
+
+                        cancellationToken.ThrowIfCancellationRequested();
+                        File.Move(stagingPath, integratedPath, overwrite: true);
+                    }
+                    finally
+                    {
+                        // Staging cleanup is best-effort: a cleanup fault must never replace the
+                        // cancellation or integration failure that caused it.
+                        try
+                        {
+                            if (File.Exists(stagingPath))
+                            {
+                                File.Delete(stagingPath);
+                            }
+                        }
+                        catch (IOException)
+                        {
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                        }
+                    }
+
+                    outputFrames++;
+                    outputs.Add(integratedPath);
+                    _protocol?.WriteLine(
+                        $"  {queue.Count} frames integrated ({IntegrationMethodLabel(integration.Method)}) -> " +
+                        Path.GetFileName(integratedPath));
+                }
+                else if (_settings.Stack is StackMethod method)
                 {
                     string masterPath = Path.Combine(outputRoot, baseName + _settings.OutputExtension);
                     var first = ApplyGeometry(queue[0].Frame.Frame, queue[0].Offset, shiftFill);
@@ -2419,20 +2531,40 @@ public sealed class Processor
             output.Bayer = GeometricTransforms.TranslatePattern(frame.Bayer, dx, dy);
         }
 
+        return ApplyAreaOfInterestCrop(output);
+    }
+
+    /// <summary>
+    /// Applies every geometry stage of <see cref="ApplyGeometry"/> except the alignment shift, which
+    /// the final-image integrator performs itself. Only the area-of-interest crop can apply here; the
+    /// flip, rotation, binning, resize and crop stages already ran during preparation.
+    /// </summary>
+    /// <remarks>
+    /// Kept separate rather than parameterising <see cref="ApplyGeometry"/>: the legacy path's order
+    /// (shift, then crop) and its CFA retag must not change, and a shift-free frame keeps the mosaic
+    /// phase it was delivered with, which is what the integrator validates across frames.
+    /// </remarks>
+    private Frame ApplyGeometryWithoutShift(Frame frame) => ApplyAreaOfInterestCrop(frame);
+
+    /// <summary>
+    /// Crops one delivered frame to the requested area of interest, clamped to its own bounds.
+    /// </summary>
+    private Frame ApplyAreaOfInterestCrop(Frame frame)
+    {
         if (_settings.AreaOfInterestCrop && _settings.AreaOfInterest is PixelRect aoi &&
             aoi.Width > 0 && aoi.Height > 0)
         {
-            int x = Math.Clamp(aoi.X, 0, Math.Max(0, output.Width - 1));
-            int y = Math.Clamp(aoi.Y, 0, Math.Max(0, output.Height - 1));
-            int width = Math.Min(aoi.Width, output.Width - x);
-            int height = Math.Min(aoi.Height, output.Height - y);
+            int x = Math.Clamp(aoi.X, 0, Math.Max(0, frame.Width - 1));
+            int y = Math.Clamp(aoi.Y, 0, Math.Max(0, frame.Height - 1));
+            int width = Math.Min(aoi.Width, frame.Width - x);
+            int height = Math.Min(aoi.Height, frame.Height - y);
             if (width > 0 && height > 0)
             {
-                output = GeometricTransforms.Crop(output, x, y, width, height);
+                return GeometricTransforms.Crop(frame, x, y, width, height);
             }
         }
 
-        return output;
+        return frame;
     }
 
     /// <summary>
@@ -2463,6 +2595,15 @@ public sealed class Processor
         rendered.SourceName = frame.SourceName;
         return rendered;
     }
+
+    /// <summary>Lower-case method label used in the integration protocol line.</summary>
+    private static string IntegrationMethodLabel(IntegrationMethod method) => method switch
+    {
+        IntegrationMethod.Mean => "mean",
+        IntegrationMethod.Sum => "sum",
+        IntegrationMethod.Median => "median",
+        _ => method.ToString().ToLowerInvariant(),
+    };
 
     /// <summary>The channel order <c>-rgb</c> uses for its file prefixes: <c>r_</c>, <c>g_</c>, <c>b_</c>.</summary>
     private static readonly (char Letter, int Channel)[] RgbChannels = [('r', 0), ('g', 1), ('b', 2)];

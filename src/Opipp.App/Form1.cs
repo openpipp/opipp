@@ -39,6 +39,9 @@ public partial class Form1 : Form
 
 	private bool test_run;
 
+	/// <summary>The operator's final-image integration choice; disabled until the dialog says otherwise.</summary>
+	private FinalImageSettings final_image_settings = new FinalImageSettings();
+
 	private bool show_detected_pixels;
 
 	private string output_path;
@@ -143,6 +146,8 @@ public partial class Form1 : Form
 	private ToolStripMenuItem addSourceFilesToolStripMenuItem;
 
 	private ToolStripMenuItem cancelProcessingToolStripMenuItem;
+
+	private ToolStripMenuItem finalImageIntegrationToolStripMenuItem;
 
 	private ToolStripMenuItem optionsToolStripMenuItem;
 
@@ -2878,6 +2883,21 @@ public partial class Form1 : Form
 		cancel_processing();
 	}
 
+	/// <summary>
+	/// Opens the final-image integration dialog. The stored settings only affect the next run: the
+	/// switches are appended by <see cref="start_processing"/>, never by this handler.
+	/// </summary>
+	private void finalImageIntegrationToolStripMenuItem_Click(object sender, EventArgs e)
+	{
+		using (FinalImageDialog dialog = new FinalImageDialog(final_image_settings))
+		{
+			if (dialog.ShowDialog(this) == DialogResult.OK)
+			{
+				final_image_settings = dialog.Settings;
+			}
+		}
+	}
+
 	private void addSourceFilesToolStripMenuItem_Click(object sender, EventArgs e)
 	{
 		image_filelist.add_source_dialog();
@@ -4871,6 +4891,13 @@ public partial class Form1 : Form
 		}
 		if (generate_cmdline_options(ref arg_list2) >= 0)
 		{
+			// Final-image integration is opt-in and appended last: with the dialog untouched the
+			// engine receives exactly the per-input switch set it always did. Nothing here edits
+			// the switch assembly the tabs and menus produce.
+			foreach (string argument in final_image_settings.ToSwitches())
+			{
+				arg_list2.Add(argument);
+			}
 			if (histoalgorithmCB.Checked)
 			{
 				quality_sort_label2 = " frames by peak histogram";
@@ -4917,6 +4944,7 @@ public partial class Form1 : Form
 			statusstateLAB.Text = "RUNNING";
 			statusstateLAB.Left = (statusGB.Width - statusstateLAB.Width) / 2;
 			doProcessToolStripMenuItem.Enabled = false;
+			finalImageIntegrationToolStripMenuItem.Enabled = false;
 			cancelProcessingToolStripMenuItem.Enabled = true;
 			killpippBTN.Enabled = true;
 			processed_killed = false;
@@ -4943,6 +4971,12 @@ public partial class Form1 : Form
 			((Control)tabPage5).Enabled = false;
 			((Control)tabPage4).Enabled = false;
 			outputTB.AppendText(ManagedEngineApi.OpippVersion + "\r\n\r\n");
+			// One line naming the method and coverage the run is asking for; silent when the
+			// operator never enabled integration, so the transcript of an ordinary run is unchanged.
+			if (final_image_settings.Enabled)
+			{
+				outputTB.AppendText("Final image integration: " + final_image_settings.Summary + "\r\n");
+			}
 			error_data = "";
 			Task.Factory.StartNew(() =>
 			{
@@ -5275,6 +5309,7 @@ public partial class Form1 : Form
 		pipp_process_started = false;
 		killpippBTN.Enabled = false;
 		doProcessToolStripMenuItem.Enabled = true;
+		finalImageIntegrationToolStripMenuItem.Enabled = true;
 		cancelProcessingToolStripMenuItem.Enabled = false;
 	}
 
@@ -5582,6 +5617,7 @@ public partial class Form1 : Form
 		this.testOptionsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
 		this.doProcessToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
 		this.cancelProcessingToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+		this.finalImageIntegrationToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
 		this.helpToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
 		this.aboutToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
 		this.openFD = new System.Windows.Forms.OpenFileDialog();
@@ -6292,7 +6328,7 @@ public partial class Form1 : Form
 		this.use_ram_buffersMenuItem.Name = "use_ram_buffersMenuItem";
 		this.use_ram_buffersMenuItem.Size = new System.Drawing.Size(264, 22);
 		this.use_ram_buffersMenuItem.Text = "Use RAM Buffers For Quality Sorting";
-		this.processToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[3] { this.testOptionsToolStripMenuItem, this.doProcessToolStripMenuItem, this.cancelProcessingToolStripMenuItem });
+		this.processToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[4] { this.testOptionsToolStripMenuItem, this.doProcessToolStripMenuItem, this.cancelProcessingToolStripMenuItem, this.finalImageIntegrationToolStripMenuItem });
 		this.processToolStripMenuItem.Name = "processToolStripMenuItem";
 		this.processToolStripMenuItem.Size = new System.Drawing.Size(76, 22);
 		this.processToolStripMenuItem.Text = "Processing";
@@ -6311,6 +6347,10 @@ public partial class Form1 : Form
 		this.cancelProcessingToolStripMenuItem.Size = new System.Drawing.Size(195, 22);
 		this.cancelProcessingToolStripMenuItem.Text = "Cancel Processing";
 		this.cancelProcessingToolStripMenuItem.Click += new System.EventHandler(this.cancelProcessingToolStripMenuItem_Click);
+		this.finalImageIntegrationToolStripMenuItem.Name = "finalImageIntegrationToolStripMenuItem";
+		this.finalImageIntegrationToolStripMenuItem.Size = new System.Drawing.Size(195, 22);
+		this.finalImageIntegrationToolStripMenuItem.Text = "Final image integration…";
+		this.finalImageIntegrationToolStripMenuItem.Click += new System.EventHandler(this.finalImageIntegrationToolStripMenuItem_Click);
 		this.helpToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[1] { this.aboutToolStripMenuItem });
 		this.helpToolStripMenuItem.Name = "helpToolStripMenuItem";
 		this.helpToolStripMenuItem.Size = new System.Drawing.Size(44, 22);

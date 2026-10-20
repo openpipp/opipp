@@ -160,6 +160,29 @@ Output options:
   -gif_lossy_comp=<n>      GIF lossy-compression strength (0 disables it).
   -wjpos_time=<index>      WinJUPOS filename timestamp: 0 mid-point, 1 earliest, 2 first.
 
+Final image (OPIPP extension):
+  These switches are not part of the original engine's vocabulary: pipp_core.exe
+  exits 127 (unknown switch) on them. Without -stack= nothing here is enabled and
+  every existing transcript is unchanged.
+  -stack=mean|sum|median   Register the selected frames and combine them into ONE final image
+                           written as <output>/<name><ext>, instead of one file per frame.
+                           mean and sum accumulate in double precision and quantise the
+                           result half away from zero, clamped to the input depth; median
+                           takes the exact middle sample (the two middle samples averaged
+                           half-up, like the legacy stacker, for an even count).
+  -stack_coverage=crop     Output covers only the region every contributor can fill after
+                           registration, so the frame shrinks per the shifts. This is the
+                           default.
+  -stack_coverage=canvas   Keep the first frame's canvas; pixels no frame can supply are
+                           written as 0 rather than a background estimate.
+  -stack_subpixel=on       Apply the fractional part of each alignment offset with bilinear
+                           resampling (default).
+  -stack_subpixel=off      Apply whole pixels only, rounding half away from zero: exactly
+                           the pre-0.2 shift, with no resampling.
+  -stack_coverage and -stack_subpixel require -stack= and are rejected otherwise. -qw
+  weights mean/sum by each frame's copy count; median expands the copies into frames
+  because it takes no weights. A cancelled or failed integration leaves no output file.
+
 Misc options:
   -join                    Join all input files and treat them as one input (Join mode).
   -gui                     Running under the GUI front-end.

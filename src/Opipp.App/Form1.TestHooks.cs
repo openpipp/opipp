@@ -1,7 +1,9 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace PIPP_Application;
@@ -212,4 +214,27 @@ public partial class Form1
 
     /// <summary>True once the transcript's final verdict line has been written.</summary>
     internal bool RunVerdictWrittenForTest => run_verdict_written;
+
+    /// <summary>
+    /// The final-image integration choice the next run will hand to the engine. Tests set it
+    /// directly instead of driving the modal dialog.
+    /// </summary>
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal FinalImageSettings FinalImageSettingsForTest
+    {
+        get => final_image_settings;
+        set => final_image_settings = value ?? new FinalImageSettings();
+    }
+
+    /// <summary>The switch list the last started run assembled, in the order it was sent.</summary>
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal IReadOnlyList<string> LastEngineArgumentsForTest =>
+        arg_list2 is null ? Array.Empty<string>() : arg_list2.ToArray();
+
+    /// <summary>The Processing menu, so a test can read its items and their order.</summary>
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal ToolStripMenuItem ProcessingMenuForTest => processToolStripMenuItem;
 }

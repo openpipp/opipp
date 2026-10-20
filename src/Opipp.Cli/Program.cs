@@ -5,6 +5,7 @@ using Opipp.Core.Cli;
 using Opipp.Core.Diagnostics;
 using Opipp.Core.Formats;
 using Opipp.Core.Frames;
+using Opipp.Core.Integration;
 using Opipp.Core.Pipeline;
 using Opipp.Core.Processing;
 using Opipp.Core.Quality;
@@ -1225,6 +1226,10 @@ internal static class Program
             // -qw duplicates the top quarter twice and the next quarter once.
             QualityWeighting = o.QualityWeighting,
 
+            // -stack (OPIPP extension): one final image from the selection. Left null when the
+            // switch is absent, so the legacy master path and every per-frame writer are untouched.
+            Integration = BuildIntegration(o),
+
             // Animation sequencing (-anim_*). The engine rejects an all-repeat count of zero with
             // "Illegal anim_all_rep value"; every other combination is accepted and shapes the AVI
             // and GIF frame order in the output stage.
@@ -1297,6 +1302,34 @@ internal static class Program
         settings.MasterFlatDark = LoadMaster(o.MasterFlatDarkTmpFile, null, "flat dark", o.FlatDarkSubtraction);
 
         return settings;
+    }
+
+    /// <summary>
+    /// Builds the final-image integration options (<c>-stack=</c>, OPIPP extension), or null when
+    /// the switch is absent.
+    /// </summary>
+    /// <remarks>
+    /// The parser already rejects an unknown method/policy/flag and any qualifier without
+    /// <c>-stack=</c>, so this only translates the accepted values. Defaults match the documented
+    /// ones: crop to the common region and sub-pixel registration on.
+    /// </remarks>
+    private static IntegrationOptions? BuildIntegration(OpippOptions o)
+    {
+        if (o.StackMethod is not PippStackMethod method) return null;
+
+        return new IntegrationOptions
+        {
+            Method = method switch
+            {
+                PippStackMethod.Sum => IntegrationMethod.Sum,
+                PippStackMethod.Median => IntegrationMethod.Median,
+                _ => IntegrationMethod.Mean,
+            },
+            Coverage = o.StackCoverage == PippStackCoverage.Canvas
+                ? CoveragePolicy.KeepCanvas
+                : CoveragePolicy.CropToOverlap,
+            Subpixel = o.StackSubpixel ?? true,
+        };
     }
 
     /// <summary>

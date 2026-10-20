@@ -5,11 +5,11 @@ produce every figure on this page.
 
 | | |
 |---|---|
-| Latest release | `0.1.12-alpha`; unreleased changes below describe the current checkout |
+| Version | `0.2.0-alpha` at the tagged commit |
 | SDK | .NET 10.0.402 (local `~/.dotnet-sdk`) |
-| Tests | **1029 tests, 0 failing** across nine projects (2 skip when the non-redistributable Saturn fixture is absent) |
+| Tests | **1164 tests, 0 failing** across nine projects (2 skip when the non-redistributable Saturn fixture is absent) |
 | Parity | **27 compared, 27 matched, 2 deliberate differences, 0 gaps, 0 failed** |
-| Release | `v0.1.12-alpha`, Windows x64 zip, self-contained |
+| Release | `v0.2.0-alpha`, Windows x64 zip, self-contained |
 | History | [`journal.md`](journal.md) — dated findings, superseded details |
 
 ```bash
@@ -28,6 +28,9 @@ dotnet run --project tools/Opipp.Parity -- --real
 - Master creation (dark, flat-dark, flat) reads and writes the engine's `.tmp` masters, subtracts a
   flat-dark exactly once, keeps RGB masters three-channel, is cancellable, and publishes nothing when
   a build fails.
+- Final-image integration is available from the CLI (`-stack=mean|sum|median`, `-stack_coverage`,
+  `-stack_subpixel`) and a GUI dialog: one output file, subpixel registration, coverage masks that
+  never invent edge samples, a double-precision intermediate, and exact disk-backed median.
 - A later FITS IMAGE header that the reader rejects fails the file with the HDU named; it is never
   silently skipped, and `-check` applies the same constraint set as the reader.
 - Joined stacks report the identity of the source that actually contributed the selected frames,
@@ -109,12 +112,12 @@ Documented skips: `-raw_db`, `-raw_hl`, `-raw_ocs`, `-raw_hpf` (need the statica
 | 16-bit Bayer debayer | 8-bit is byte-identical and a normal parity case; the 16-bit quantisation path is unverified |
 | RAW/dcraw absolute values | `-raw_*` skips above; decoding exists but is not value-parity-proven |
 | Colour GIF palette | Bounded by design (262,144-sample reservoir); large-capture RGB output intentionally differs from the pre-0.1.5 encoder |
-| Median stacking scale | Retains at most 64 frames (759 MiB for 64 RGB frames at 1920x1080); disk-backed tiled median is not implemented |
-| Final-image stacking interface | The stacker is a Core API capability; the CLI and GUI do not yet expose mean/sum/median as a user-facing control |
+| Integration rejection | No sigma-clipped or robust rejection; every selected frame contributes |
+| Integration precision | Accumulation is double, but the delivered image is quantised to the input depth; there is no float FITS output yet |
 | Unequal master goldens | Native master files are pinned from identical inputs; unequal-frame native fixtures that would distinguish averaging rules are still missing |
 | Bayer-marked stacking | Raw stacking requires one consistent CFA pattern after geometry; debayer before combining different phases. Persisted calibration `.tmp` masters do not carry a Bayer tag |
 
-## Unreleased correctness changes
+## 0.2.0 correctness changes
 
 - FITS scanning rejects a nonzero incomplete later header, including a tail shorter than one card.
   A truncated payload in an HDU that would otherwise be skipped also fails instead of reporting a

@@ -207,6 +207,37 @@ public enum PippBinningCalculation
 }
 
 /// <summary>
+/// Final-image integration method (<c>-stack=mean|sum|median</c>).
+/// </summary>
+/// <remarks>
+/// An OPIPP extension: <c>pipp_core.exe</c> exits 127 (unknown switch) on <c>-stack</c>. Nothing is
+/// emitted for it unless the operator asks for integration.
+/// </remarks>
+public enum PippStackMethod
+{
+    /// <summary>Weighted mean of the registered frames (0).</summary>
+    Mean = 0,
+
+    /// <summary>Weighted sum, clamped to the output depth (1).</summary>
+    Sum = 1,
+
+    /// <summary>Exact per-pixel median; quality weights are materialised as duplicate frames (2).</summary>
+    Median = 2,
+}
+
+/// <summary>
+/// Coverage policy for final-image integration (<c>-stack_coverage=crop|canvas</c>).
+/// </summary>
+public enum PippStackCoverage
+{
+    /// <summary>Cover only the region every contributor can fill (0, the default).</summary>
+    Crop = 0,
+
+    /// <summary>Keep the first frame's canvas; pixels no contributor fills become the fill sample (1).</summary>
+    Canvas = 1,
+}
+
+/// <summary>
 /// Typed, mutable model of the complete <c>pipp_core.exe</c> command-line vocabulary.
 /// </summary>
 /// <remarks>
@@ -563,6 +594,43 @@ public sealed record OpippOptions
     /// order"; both meanings map onto this single property and the builder emits it once.
     /// </remarks>
     public bool NoRenumber { get; set; }
+
+    // ---------------------------------------------------------------------------------------------
+    // Final image (OPIPP extension)
+    // ---------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Combine the selected frames into one final image (<c>-stack=mean|sum|median</c>).
+    /// <see langword="null"/> means the switch was absent, i.e. no integration.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// OPIPP extension, not part of the original engine vocabulary: <c>pipp_core.exe</c> exits 127
+    /// (unknown switch) on it. Requiring the value is what enables the stage, so a run that never
+    /// spells <c>-stack=</c> behaves exactly like the engine.
+    /// </para>
+    /// <para>
+    /// Distinct from a legacy master build: the legacy stacker combines frames that were already
+    /// shifted and writes their mean, while integration registers the unshifted frames itself and
+    /// writes exactly one image under a coverage policy.
+    /// </para>
+    /// </remarks>
+    public PippStackMethod? StackMethod { get; set; }
+
+    /// <summary>
+    /// Border policy for the integrated image (<c>-stack_coverage=crop|canvas</c>);
+    /// <see langword="null"/> means the switch was absent and cropping applies.
+    /// </summary>
+    /// <remarks>Only meaningful together with <see cref="StackMethod"/>; the parser rejects it otherwise.</remarks>
+    public PippStackCoverage? StackCoverage { get; set; }
+
+    /// <summary>
+    /// Apply the fractional part of each alignment offset when integrating
+    /// (<c>-stack_subpixel=on|off</c>); <see langword="null"/> means the switch was absent and
+    /// sub-pixel registration applies.
+    /// </summary>
+    /// <remarks>Only meaningful together with <see cref="StackMethod"/>; the parser rejects it otherwise.</remarks>
+    public bool? StackSubpixel { get; set; }
 
     // ---------------------------------------------------------------------------------------------
     // Output options

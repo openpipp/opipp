@@ -55,6 +55,12 @@ public sealed class ParseResult
 /// <c>-q=&lt;n&gt;</c> (keep the best n), and <c>-db</c> (debayer the frames) versus
 /// <c>-db=&lt;pattern&gt;</c> (Bayer pattern index).
 /// </para>
+/// <para>
+/// <c>-stack</c>, <c>-stack_coverage</c> and <c>-stack_subpixel</c> are OPIPP extensions: the
+/// original engine exits 127 on them. Each requires a value, and the two qualifiers are rejected
+/// unless <c>-stack</c> selects a method, so a command line never carries a setting that cannot
+/// take effect.
+/// </para>
 /// </remarks>
 public static class CommandLineParser
 {
@@ -524,6 +530,23 @@ public static class CommandLineParser
                     break;
 
                 // ---------------------------------------------------------------------------------
+                // Final image (OPIPP extension; pipp_core.exe exits 127 on these)
+                // ---------------------------------------------------------------------------------
+                case "-stack":
+                    // Required value: this switch is what enables integration, so a bare -stack is a
+                    // configuration error rather than a request with no method.
+                    if (TryStackMethod(token, value, out var stackMethod)) options.StackMethod = stackMethod;
+                    break;
+
+                case "-stack_coverage":
+                    if (TryStackCoverage(token, value, out var stackCoverage)) options.StackCoverage = stackCoverage;
+                    break;
+
+                case "-stack_subpixel":
+                    if (TryOnOff(token, value, out bool stackSubpixel)) options.StackSubpixel = stackSubpixel;
+                    break;
+
+                // ---------------------------------------------------------------------------------
                 // Output options
                 // ---------------------------------------------------------------------------------
                 case "-osubdir":
@@ -678,6 +701,22 @@ public static class CommandLineParser
             }
         }
 
+        // -stack_coverage / -stack_subpixel only shape an integration. Without -stack= they would
+        // silently do nothing, so a command line that relies on one is a configuration error rather
+        // than an accepted no-op. Order does not matter: -stack is checked after the whole line.
+        if (options.StackMethod is null)
+        {
+            if (options.StackCoverage is not null)
+            {
+                errors.Add("Switch '-stack_coverage' requires '-stack=mean|sum|median'.");
+            }
+
+            if (options.StackSubpixel is not null)
+            {
+                errors.Add("Switch '-stack_subpixel' requires '-stack=mean|sum|median'.");
+            }
+        }
+
         return new ParseResult(options, errors, wantsHelp, inputs);
 
         // ---- local helpers ---------------------------------------------------------------------
@@ -773,6 +812,72 @@ public static class CommandLineParser
         bool TryEnum(string switchToken, string? switchValue, int minimum, int maximum, out int index)
         {
             return TryInt(switchToken, switchValue, minimum, maximum, out index);
+        }
+
+        bool TryStackMethod(string switchToken, string? switchValue, out PippStackMethod method)
+        {
+            method = PippStackMethod.Mean;
+            if (!HasValue(switchToken, switchValue, out var text)) return false;
+
+            switch (text.Trim().ToLowerInvariant())
+            {
+                case "mean":
+                    method = PippStackMethod.Mean;
+                    return true;
+                case "sum":
+                    method = PippStackMethod.Sum;
+                    return true;
+                case "median":
+                    method = PippStackMethod.Median;
+                    return true;
+                default:
+                    // Names the offending value: an integration method is a word, not an index, so
+                    // the generic integer diagnostic would not tell the operator what was wrong.
+                    errors.Add(
+                        $"Value '{text}' for switch '{switchToken}' is not an integration method; " +
+                        "expected mean, sum or median.");
+                    return false;
+            }
+        }
+
+        bool TryStackCoverage(string switchToken, string? switchValue, out PippStackCoverage coverage)
+        {
+            coverage = PippStackCoverage.Crop;
+            if (!HasValue(switchToken, switchValue, out var text)) return false;
+
+            switch (text.Trim().ToLowerInvariant())
+            {
+                case "crop":
+                    coverage = PippStackCoverage.Crop;
+                    return true;
+                case "canvas":
+                    coverage = PippStackCoverage.Canvas;
+                    return true;
+                default:
+                    errors.Add(
+                        $"Value '{text}' for switch '{switchToken}' is not a coverage policy; " +
+                        "expected crop or canvas.");
+                    return false;
+            }
+        }
+
+        bool TryOnOff(string switchToken, string? switchValue, out bool on)
+        {
+            on = false;
+            if (!HasValue(switchToken, switchValue, out var text)) return false;
+
+            switch (text.Trim().ToLowerInvariant())
+            {
+                case "on":
+                    on = true;
+                    return true;
+                case "off":
+                    on = false;
+                    return true;
+                default:
+                    errors.Add($"Value '{text}' for switch '{switchToken}' is not a flag; expected on or off.");
+                    return false;
+            }
         }
 
         bool TryPositiveDouble(string switchToken, string? switchValue, out double number)

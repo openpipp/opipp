@@ -1,5 +1,6 @@
 namespace Opipp.Core.Tests;
 
+using Opipp.Core.Integration;
 using Opipp.Core.Pipeline;
 using Xunit;
 
@@ -63,4 +64,28 @@ public class PipelineSettingsTests
     [Fact]
     public void RetentionBudget_ExplicitValueWinsOverTheOverride() =>
         WithOverride("4096", () => Assert.Equal(7L, new PipelineSettings { RetentionBudgetBytes = 7 }.RetentionBudgetBytes));
+
+    /// <summary>
+    /// Final-image integration (<c>-stack=</c>) is opt-in. With no options supplied the settings carry
+    /// no integration, so the legacy single-master <see cref="PipelineSettings.Stack"/> path and the
+    /// per-frame writers keep their exact behaviour; the two stages are independent settings.
+    /// </summary>
+    [Fact]
+    public void Integration_IsOptInAndIndependentOfTheLegacyStack()
+    {
+        var settings = new PipelineSettings();
+        Assert.Null(settings.Integration);
+        Assert.Null(settings.Stack);
+
+        var integration = new IntegrationOptions
+        {
+            Method = IntegrationMethod.Median,
+            Coverage = CoveragePolicy.KeepCanvas,
+            Subpixel = false,
+        };
+        settings.Integration = integration;
+
+        Assert.Same(integration, settings.Integration);
+        Assert.Null(settings.Stack);
+    }
 }
