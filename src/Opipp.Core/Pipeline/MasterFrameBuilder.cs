@@ -1,5 +1,6 @@
 using Opipp.Core.Formats;
 using Opipp.Core.Frames;
+using Opipp.Core.Processing;
 using Opipp.Core.Quality;
 using Opipp.Core.Stacking;
 
@@ -297,7 +298,7 @@ public static class MasterFrameBuilder
             throw;
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or
-                                       ArgumentException or UnauthorizedAccessException)
+                                       ArgumentException or UnauthorizedAccessException or BayerPhaseException)
         {
             return MasterBuildResult.Failed(ex.Message);
         }

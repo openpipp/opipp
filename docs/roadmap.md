@@ -45,7 +45,7 @@ continue that way. Claims in this file are expected to be backed by a test or a 
 | Build output excluded | `dist/`, `obj/`, `bin/` per project are git-ignored |
 | Secrets | none: no credentials, tokens or connection strings anywhere in the tree |
 | Tests runnable from a clone | yes - the 80 KB synthetic parity fixtures are committed |
-| CI | running on every push: build + 971 tests; parity stays out of CI because it needs the original binaries |
+| CI | running on every push: build + 1029 tests; parity stays out of CI because it needs the original binaries |
 | Next release | 0.2.0-alpha: final-image integration exposed in CLI and GUI (method, precision, selection, alignment, border policy, disk-backed median), with join and master building kept separate |
 
 ## Where the numbers come from
@@ -86,7 +86,7 @@ notes, the test suite and the recorded parity cases are the evidence, and they a
 | --- | --- |
 | Artifact | `OPIPP-0.1.12-alpha-win-x64.zip` on [Releases](https://github.com/openpipp/opipp/releases) (self-contained win-x64, 52.4 MB) |
 | Provenance | `Version=0.1.12-alpha` in `Directory.Build.props`; window title `OPIPP 0.1.12-alpha - Open PIPP` |
-| Verified | 971 tests, parity 27 compared / 27 matched / 2 known differences / 0 gaps, CLI conversion of 30 real frames, GUI launch, no native DLL |
+| Verified | 1029 tests, parity 27 compared / 27 matched / 2 known differences / 0 gaps, CLI conversion of 30 real frames, GUI launch, no native DLL |
 | Notes | [`alpha.md`](alpha.md) |
 
 Rebuild with the two `dotnet publish` commands in `alpha.md`. `dist/` is git-ignored.
@@ -116,7 +116,7 @@ Rebuild with the two `dotnet publish` commands in `alpha.md`. `dist/` is git-ign
 | 1. Drop-in parity (layout, logs, exit codes, `-gui`) | **done** — trees and logs compared, 127 on unknown switch, `-gui` byte-identical |
 | 2. Remaining formats (BMP, Y8, GIF, colour SER, AVI/MJPEG input) | **done** — deliberate divergences documented |
 | 3. Calibration and master frames | **done** — `.tmp` format, save/load, `-flat_bayer` |
-| 4. Selection, alignment, stacking | **done except tracking exactness** |
+| 4. Selection, alignment, stacking | **in progress** — Core combination is tested; tracking, final-image controls and disk-backed median remain open |
 | 5. Animation and long tail | **done** — `-anim_*`, WinJUPOS, legacy AVI, RAW switches |
 | 6. GUI parity | **done** — managed, `LegacyNativeApi` deleted, `-gui` verified |
 | 7. Alpha build | **done** — 0.1.12-alpha published on GitHub Releases |
@@ -155,7 +155,7 @@ applies no shift, and Saturn reaches ≥28/30. Notes: [`../notes/tracking.md`](.
 ### 2026-10-18 — the reconstruction is named OPIPP, and the alpha ships
 
 Chosen over further parity work because the engine is functionally complete: 0.1.12-alpha is a working
-preview (971 tests, 27/27 compared parity), and shipping it makes the remaining gap concrete instead of
+preview (1029 tests, 27/27 compared parity), and shipping it makes the remaining gap concrete instead of
 theoretical. Tracking at 23/30 is documented in the release notes rather than hidden.
 
 ### 2026-10-18 — coarse stage disabled until its reference capture is faithful

@@ -5,9 +5,9 @@ produce every figure on this page.
 
 | | |
 |---|---|
-| Version | `0.1.12-alpha` at the tagged commit |
+| Latest release | `0.1.12-alpha`; unreleased changes below describe the current checkout |
 | SDK | .NET 10.0.402 (local `~/.dotnet-sdk`) |
-| Tests | **971 tests, 0 failing** across nine projects (2 skip when the non-redistributable Saturn fixture is absent) |
+| Tests | **1029 tests, 0 failing** across nine projects (2 skip when the non-redistributable Saturn fixture is absent) |
 | Parity | **27 compared, 27 matched, 2 deliberate differences, 0 gaps, 0 failed** |
 | Release | `v0.1.12-alpha`, Windows x64 zip, self-contained |
 | History | [`journal.md`](journal.md) — dated findings, superseded details |
@@ -112,7 +112,20 @@ Documented skips: `-raw_db`, `-raw_hl`, `-raw_ocs`, `-raw_hpf` (need the statica
 | Median stacking scale | Retains at most 64 frames (759 MiB for 64 RGB frames at 1920x1080); disk-backed tiled median is not implemented |
 | Final-image stacking interface | The stacker is a Core API capability; the CLI and GUI do not yet expose mean/sum/median as a user-facing control |
 | Unequal master goldens | Native master files are pinned from identical inputs; unequal-frame native fixtures that would distinguish averaging rules are still missing |
-| Bayer-marked stacking | A Bayer frame is stacked as ordinary samples and the result carries `Bayer=None`; pre-debayer the selection or accept a plain mono master |
+| Bayer-marked stacking | Raw stacking requires one consistent CFA pattern after geometry; debayer before combining different phases. Persisted calibration `.tmp` masters do not carry a Bayer tag |
+
+## Unreleased correctness changes
+
+- FITS scanning rejects a nonzero incomplete later header, including a tail shorter than one card.
+  A truncated payload in an HDU that would otherwise be skipped also fails instead of reporting a
+  successful shorter capture. Valid different-sized images remain excluded by the same-shape rule.
+  Supported images with a short payload retain the existing labelled partial-failure behavior.
+- The reader and `-check` reject image sizes that cannot fit the decoder's sample or byte buffers,
+  before attempting a pixel allocation.
+- Mean, sum and median preserve the accepted frames' common Bayer pattern. An incompatible pattern,
+  a mixture of raw Bayer and plain mono, or a Bayer tag on RGB is rejected before altering the stack.
+  Calibration-master creation reports this as a controlled failure without publishing a master.
+  This does not add final-image stacking controls to the CLI or GUI.
 
 ## Format boundaries
 
