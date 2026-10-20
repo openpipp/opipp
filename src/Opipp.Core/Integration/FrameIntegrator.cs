@@ -23,13 +23,25 @@ using Opipp.Core.Processing;
 /// Bilinear resampling needs both taps of the kernel, so a fractional shift loses one border pixel on
 /// the side it samples from; the coverage rectangle accounts for that loss instead of clamping the
 /// sample at the edge (which would invent data).</para>
+/// <para><b>Raw mosaics are registered by whole pixels only, and the phase follows the placement.</b>
+/// A CFA image is a 2x2 colour lattice, so a raw frame's pattern is part of its geometry: an odd shift
+/// along either axis moves the tile to a different one of the four patterns, and bilinear resampling
+/// would blend different colour sites into one sample. This integrator therefore (a) rejects a
+/// fractional offset on a mosaic frame with <see cref="BayerPhaseException"/> — debayer to colour, or
+/// turn sub-pixel off — and (b) compares the <em>effective</em> pattern each frame's placement produces
+/// rather than the input headers, so two frames tagged RGGB and GRBG can share one phase when the
+/// second is registered by an odd column, while two frames both tagged RGGB cannot when one of them is.
+/// The result is tagged with the pattern the output samples actually have at the output origin, after
+/// the placement and after any crop; no stale input tag is copied forward.</para>
 /// <para><b>Accumulation and quantisation.</b> Every contribution is accumulated in
 /// <see cref="double"/>. The unquantised result is exposed through
 /// <see cref="IntegrationResult.PrecisionSamples"/> in the output depth's scale. The quantised frame
 /// rounds with half away from zero (<see cref="MidpointRounding.AwayFromZero"/>) and then clamps to
 /// the output depth (255 for 8-bit, 65535 for 16-bit). Since samples and weights are non-negative,
 /// half away from zero is half-up at every <c>.5</c> boundary: 100.5 becomes 101, and a sum above the
-/// depth maximum saturates.</para>
+/// depth maximum saturates. A finite weight can still overflow the accumulator (1e307 x 200 is
+/// 2e309), so a non-finite precision sample is rejected with a diagnostic instead of being written as
+/// a plausible-looking pixel.</para>
 /// <para><b>Coverage.</b> <see cref="IntegrationResult.Coverage"/> has one entry per pixel of the
 /// first frame's canvas, row-major, and counts the frames that can supply that pixel. Under
 /// <see cref="CoveragePolicy.CropToOverlap"/> the output frame is the intersection of the frames'
@@ -38,12 +50,11 @@ using Opipp.Core.Processing;
 /// <see cref="CoveragePolicy.KeepCanvas"/> the frame keeps the first frame's canvas, pixels no frame
 /// can supply are written as <see cref="FillSample"/> and reported with coverage 0, and
 /// <see cref="IntegrationResult.OutputRect"/> is the whole canvas.</para>
-/// <para><b>Bayer.</b> A colour (three-channel) frame must not carry a Bayer marker, and all frames
-/// must share one mosaic pattern; mixing patterns throws <see cref="BayerPhaseException"/> before any
-/// sample is combined. The result frame keeps the common pattern (always
-/// <see cref="BayerPattern.None"/> for colour).</para>
-/// <para>Median is not handled here: the exact, disk-backed median lives in
-/// <c>TiledMedianIntegrator</c>, which a facade will route to.</para>
+/// <para><b>Bayer.</b> A colour (three-channel) frame must not carry a Bayer marker. For a mosaic
+/// selection the output tag is the effective pattern at the output origin; a plain mono frame mixed
+/// with a mosaic one is rejected, because a CFA plane and a non-CFA plane cannot be combined.</para>
+/// <para>Median is not handled here: the exact median lives in <see cref="MedianIntegrator"/>, which
+/// <see cref="FinalImageIntegrator"/> routes to.</para>
 /// </remarks>
 public static class FrameIntegrator
 {
@@ -64,10 +75,13 @@ public static class FrameIntegrator
     /// <param name="cancellationToken">Checked before work and periodically while accumulating.</param>
     /// <exception cref="ArgumentException">
     /// No frames, mismatched shift/weight counts, mismatched geometry/depth/channels, a colour frame
-    /// carrying a Bayer marker, a non-finite offset, or a non-finite/negative weight. The message
-    /// names the reason.
+    /// carrying a Bayer marker, a non-finite offset, a non-finite/negative weight, a non-finite weight
+    /// total, or a precision sample that overflowed <see cref="double"/>. The message names the reason.
     /// </exception>
-    /// <exception cref="BayerPhaseException">The frames carry different Bayer patterns.</exception>
+    /// <exception cref="BayerPhaseException">
+    /// The frames' effective mosaic phases differ, a raw mosaic frame needs a fractional shift, or a
+    /// mosaic frame is mixed with a plain mono one.
+    /// </exception>
     /// <exception cref="NotSupportedException">The median method was requested.</exception>
     /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
     public static IntegrationResult Integrate(
@@ -100,114 +114,177 @@ public static class FrameIntegrator
                 nameof(weights));
         }
 
-        if (options.Method == IntegrationMethod.Median)
-        {
-            throw new NotSupportedException(
-                "Median integration is not implemented by FrameIntegrator. The exact, disk-backed " +
-                "median path is TiledMedianIntegrator; a facade will route median requests there.");
-        }
-
-        if (options.Method is not (IntegrationMethod.Mean or IntegrationMethod.Sum))
-        {
-            throw new ArgumentOutOfRangeException(nameof(options), options.Method, "unknown integration method");
-        }
-
-        if (options.Coverage is not (CoveragePolicy.CropToOverlap or CoveragePolicy.KeepCanvas))
-        {
-            throw new ArgumentOutOfRangeException(nameof(options), options.Coverage, "unknown coverage policy");
-        }
+        IntegrationSupport.RequireMeanSumOptions(options);
 
         var first = frames[0]
             ?? throw new ArgumentException("frames[0] is null", nameof(frames));
         int width = first.Width, height = first.Height, channels = first.Channels, depth = first.BitDepth;
-        RequireColourHasNoBayer(first, 1, nameof(frames));
-        for (int i = 1; i < frames.Count; i++)
+        for (int i = 0; i < frames.Count; i++)
         {
             var frame = frames[i]
                 ?? throw new ArgumentException($"frames[{i}] is null", nameof(frames));
 
-            if (frame.Width != width || frame.Height != height)
-            {
-                throw new ArgumentException(
-                    $"frame {i + 1} is {frame.Width}x{frame.Height} but frame 1 is {width}x{height}; " +
-                    "all frames must share one geometry",
-                    nameof(frames));
-            }
-
-            if (frame.Channels != channels)
-            {
-                throw new ArgumentException(
-                    $"frame {i + 1} has {frame.Channels} channel(s) but frame 1 has {channels}; " +
-                    "all frames must share one channel count",
-                    nameof(frames));
-            }
-
-            if (frame.BitDepth != depth)
-            {
-                throw new ArgumentException(
-                    $"frame {i + 1} is {frame.BitDepth}-bit but frame 1 is {depth}-bit; " +
-                    "all frames must share one depth",
-                    nameof(frames));
-            }
-
-            RequireColourHasNoBayer(frame, i + 1, nameof(frames));
-
-            if (frame.Bayer != first.Bayer)
-            {
-                throw new BayerPhaseException(
-                    $"frame {i + 1} has Bayer pattern {frame.Bayer} but frame 1 has {first.Bayer}. " +
-                    "Combining different mosaic phases would mix colour sites. Debayer the inputs to " +
-                    "colour, or use frames with one pattern and alignment shifts of matching parity.");
-            }
+            IntegrationSupport.RequireCompatibleFrame(frame, i, width, height, channels, depth, nameof(frames));
         }
 
         // Snapshot and validate the weights so a caller's mutable list cannot change mid-run.
-        double[]? appliedWeights = null;
-        if (weights is not null)
-        {
-            appliedWeights = new double[frames.Count];
-            double total = 0;
-            for (int i = 0; i < weights.Count; i++)
-            {
-                double value = weights[i];
-                if (!double.IsFinite(value))
-                {
-                    throw new ArgumentException(
-                        $"weight {i + 1} is {value}; weights must be finite", nameof(weights));
-                }
+        double[]? appliedWeights = IntegrationSupport.SnapshotMeanWeights(weights, frames.Count);
 
-                if (value < 0)
-                {
-                    throw new ArgumentException(
-                        $"weight {i + 1} is negative ({value}); weights must be non-negative", nameof(weights));
-                }
+        var placement = IntegrationSupport.Placements(shifts, options, nameof(shifts));
 
-                appliedWeights[i] = value;
-                total += value;
-            }
-
-            if (total <= 0)
-            {
-                throw new ArgumentException("weights must contain at least one positive value", nameof(weights));
-            }
-        }
-
-        var placement = new SubpixelSampler[frames.Count];
-        for (int i = 0; i < frames.Count; i++)
-        {
-            AlignmentOffset shift = shifts[i];
-            if (!double.IsFinite(shift.Dx) || !double.IsFinite(shift.Dy))
-            {
-                throw new ArgumentException(
-                    $"shift {i + 1} is ({shift.Dx}, {shift.Dy}); offsets must be finite", nameof(shifts));
-            }
-
-            placement[i] = SubpixelSampler.FromOffset(shift, options.Subpixel);
-        }
+        // Validate the whole selection before a sample is touched, so a mixed-phase or
+        // fractional-mosaic request fails without allocating output buffers.
+        BayerPattern canvasPattern = IntegrationSupport.RequireCommonPhase(frames, placement);
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        PixelRect outputRect = ComputeOutputRect(placement, width, height, options.Coverage, nameof(shifts));
+        var selection = new IntegrationSelection(
+            width, height, channels, depth, canvasPattern, first.Index, first.SourceName);
+
+        return IntegrateReader(
+            i => frames[i],
+            frames.Count,
+            placement,
+            appliedWeights,
+            options,
+            selection,
+            firstFrame: null,
+            validate: null,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Streaming overload: combines frames pulled one at a time from <paramref name="readFrame"/>
+    /// instead of from a materialised list, so a caller holding thousands of frames — or re-reading
+    /// them from a container — never has to keep them all resident.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Read contract.</b> Indices are requested in ascending order, <c>0 .. frameCount - 1</c>,
+    /// exactly once each, and the frame returned for an index is accumulated before the next request. A
+    /// source may therefore hand back the same <see cref="Frame"/> instance or sample buffer for every
+    /// index: nothing the source returns is held across a <c>readFrame</c> call. The frame in the
+    /// result is a new one owned by this method.</para>
+    /// <para><b>Validation.</b> Frame 0 fixes the geometry, depth, channel count and provenance. Every
+    /// later frame is checked as it arrives (geometry, depth, channels, Bayer marker, effective CFA
+    /// phase) and rejected before it contributes, so a bad frame fails the run but never corrupts the
+    /// accumulated result: nothing is returned on a throw.</para>
+    /// </remarks>
+    /// <param name="readFrame">Supplies frame <c>i</c>; must not return null.</param>
+    /// <param name="frameCount">Number of frames to pull.</param>
+    /// <param name="shifts">One alignment offset per frame, index-aligned with the reads.</param>
+    /// <param name="weights">Optional per-frame weights; see the list overload.</param>
+    /// <param name="options">Method, coverage policy and sub-pixel switch.</param>
+    /// <param name="cancellationToken">Checked before work and periodically while accumulating.</param>
+    /// <exception cref="ArgumentException">Same as the list overload.</exception>
+    /// <exception cref="InvalidOperationException"><paramref name="readFrame"/> returned null.</exception>
+    /// <exception cref="BayerPhaseException">
+    /// The effective mosaic phases differ, or a raw mosaic frame needs a fractional shift.
+    /// </exception>
+    /// <exception cref="NotSupportedException">The median method was requested.</exception>
+    /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
+    public static IntegrationResult Integrate(
+        Func<int, Frame> readFrame,
+        int frameCount,
+        IReadOnlyList<AlignmentOffset> shifts,
+        IReadOnlyList<double>? weights,
+        IntegrationOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(readFrame);
+        ArgumentNullException.ThrowIfNull(shifts);
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (frameCount < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(frameCount), frameCount, "at least one frame is required");
+        }
+
+        if (shifts.Count != frameCount)
+        {
+            throw new ArgumentException(
+                $"got {shifts.Count} shift(s) for {frameCount} frame(s); every frame needs one offset",
+                nameof(shifts));
+        }
+
+        if (weights is not null && weights.Count != frameCount)
+        {
+            throw new ArgumentException(
+                $"got {weights.Count} weight(s) for {frameCount} frame(s); weights are per frame",
+                nameof(weights));
+        }
+
+        IntegrationSupport.RequireMeanSumOptions(options);
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        Frame first = ReadFrame(readFrame, 0, frameCount);
+        int width = first.Width, height = first.Height, channels = first.Channels, depth = first.BitDepth;
+        IntegrationSupport.RequireCompatibleFrame(first, 0, width, height, channels, depth, nameof(readFrame));
+
+        double[]? appliedWeights = IntegrationSupport.SnapshotMeanWeights(weights, frameCount);
+        var placement = IntegrationSupport.Placements(shifts, options, nameof(shifts));
+
+        // Frame 0's effective phase is the reference every later frame must match. Its samples are read
+        // once, during the accumulation of index 0, so a reused source buffer stays safe.
+        BayerPattern canvasPattern = IntegrationSupport.EffectivePattern(0, first.Bayer, placement[0]);
+        var selection = new IntegrationSelection(
+            width, height, channels, depth, canvasPattern, first.Index, first.SourceName);
+
+        return IntegrateReader(
+            readFrame,
+            frameCount,
+            placement,
+            appliedWeights,
+            options,
+            selection,
+            firstFrame: first,
+            validate: (frame, index) =>
+            {
+                IntegrationSupport.RequireCompatibleFrame(
+                    frame, index, width, height, channels, depth, nameof(readFrame));
+
+                if (index > 0)
+                {
+                    IntegrationSupport.RequireSameEffectivePhase(index, frame.Bayer, placement[index], canvasPattern);
+                }
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Quantises a precision sample: half away from zero, then clamped to the depth maximum.
+    /// Samples reaching this point are non-negative, so every exact <c>.5</c> rounds up.
+    /// </summary>
+    public static ushort Quantise(double value, int maxValue)
+    {
+        double rounded = Math.Round(value, MidpointRounding.AwayFromZero);
+        if (rounded <= 0)
+        {
+            return 0;
+        }
+
+        return rounded >= maxValue ? (ushort)maxValue : (ushort)rounded;
+    }
+
+    /// <summary>
+    /// The shared mean/sum engine. Both public overloads funnel through here, so the arithmetic,
+    /// coverage bookkeeping and quantisation cannot diverge between the list and streaming paths; they
+    /// differ only in where a frame comes from and whether it still needs validating.
+    /// </summary>
+    private static IntegrationResult IntegrateReader(
+        Func<int, Frame> readFrame,
+        int frameCount,
+        SubpixelSampler[] placement,
+        double[]? appliedWeights,
+        IntegrationOptions options,
+        IntegrationSelection selection,
+        Frame? firstFrame,
+        Action<Frame, int>? validate,
+        CancellationToken cancellationToken)
+    {
+        int width = selection.Width, height = selection.Height, channels = selection.Channels, depth = selection.BitDepth;
+
+        PixelRect outputRect = ComputeOutputRect(placement, width, height, options.Coverage, "shifts");
 
         int pixels = checked(width * height);
         int sampleCount = checked(pixels * channels);
@@ -215,12 +292,24 @@ public static class FrameIntegrator
         var precision = new double[sampleCount];
         var pixelWeight = new double[pixels];
         int maxValue = depth == 8 ? 255 : 65535;
+        var sourceNames = new string?[frameCount];
 
-        for (int i = 0; i < frames.Count; i++)
+        // A frame supplied for index 0 by the streaming overload is used for that slot only: it is
+        // accumulated before the next readFrame call, and the reference is dropped so nothing can reach
+        // into a source buffer the next read may have overwritten.
+        Frame? pending = firstFrame;
+
+        for (int i = 0; i < frameCount; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            Frame frame = pending ?? ReadFrame(readFrame, i, frameCount);
+            pending = null;
+            validate?.Invoke(frame, i);
+            sourceNames[i] = frame.SourceName;
+
             Accumulate(
-                frames[i],
+                frame,
                 placement[i],
                 appliedWeights?[i] ?? 1.0,
                 outputRect,
@@ -260,11 +349,17 @@ public static class FrameIntegrator
             }
         }
 
+        // Extreme but finite weights can overflow the double accumulator; refuse to quantise an
+        // infinity into a wrong-looking pixel.
+        IntegrationSupport.RequireFinitePrecision(precision, options.Method);
+
         var result = new Frame(outputRect.Width, outputRect.Height, channels, depth)
         {
-            Bayer = first.Bayer,
-            Index = first.Index,
-            SourceName = first.SourceName,
+            // The tag describes the output samples: the selection's canvas phase moved to the output
+            // origin by the crop (an odd crop origin swaps the 2x2 tile).
+            Bayer = IntegrationSupport.AtRectOrigin(selection.CanvasPattern, outputRect),
+            Index = selection.Index,
+            SourceName = selection.SourceName,
         };
 
         for (int y = 0; y < outputRect.Height; y++)
@@ -295,11 +390,11 @@ public static class FrameIntegrator
             }
         }
 
-        var contributors = new IntegrationContributor[frames.Count];
-        for (int i = 0; i < frames.Count; i++)
+        var contributors = new IntegrationContributor[frameCount];
+        for (int i = 0; i < frameCount; i++)
         {
             contributors[i] = new IntegrationContributor(
-                frames[i].SourceName ?? string.Empty,
+                sourceNames[i] ?? string.Empty,
                 appliedWeights?[i] ?? 1.0,
                 placement[i].Applied);
         }
@@ -315,30 +410,11 @@ public static class FrameIntegrator
         };
     }
 
-    /// <summary>
-    /// Quantises a precision sample: half away from zero, then clamped to the depth maximum.
-    /// Samples reaching this point are non-negative, so every exact <c>.5</c> rounds up.
-    /// </summary>
-    public static ushort Quantise(double value, int maxValue)
+    private static Frame ReadFrame(Func<int, Frame> readFrame, int index, int frameCount)
     {
-        double rounded = Math.Round(value, MidpointRounding.AwayFromZero);
-        if (rounded <= 0)
-        {
-            return 0;
-        }
-
-        return rounded >= maxValue ? (ushort)maxValue : (ushort)rounded;
-    }
-
-    private static void RequireColourHasNoBayer(Frame frame, int ordinal, string parameterName)
-    {
-        if (frame.Channels != 1 && frame.Bayer != BayerPattern.None)
-        {
-            throw new ArgumentException(
-                $"frame {ordinal} is a colour frame but carries Bayer pattern {frame.Bayer}; " +
-                "Bayer markers apply only to single-channel frames",
-                parameterName);
-        }
+        return readFrame(index)
+            ?? throw new InvalidOperationException(
+                $"readFrame({index}) returned null; the source must supply {frameCount} frame(s)");
     }
 
     /// <summary>

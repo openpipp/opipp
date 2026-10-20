@@ -110,4 +110,62 @@ public sealed class FinalImageSettingsTests
 
         Assert.Throws<ArgumentOutOfRangeException>(() => settings.ToSwitches());
     }
+
+    [Theory]
+    [InlineData("mean", FinalImageMethod.Mean)]
+    [InlineData("sum", FinalImageMethod.Sum)]
+    [InlineData("median", FinalImageMethod.Median)]
+    [InlineData(" SUM ", FinalImageMethod.Sum)]
+    [InlineData("\"median\"", FinalImageMethod.Median)]
+    public void MethodTokens_RoundTripThroughTheOptionsFileSpelling(string token, FinalImageMethod expected)
+    {
+        Assert.True(FinalImageSettings.TryParseMethod(token, out FinalImageMethod method));
+        Assert.Equal(expected, method);
+        Assert.Equal(token.Trim().Trim('"').ToLowerInvariant(), FinalImageSettings.MethodToken(method));
+    }
+
+    [Theory]
+    [InlineData("crop", FinalImageCoverage.CropToOverlap)]
+    [InlineData("canvas", FinalImageCoverage.KeepCanvas)]
+    [InlineData(" Canvas ", FinalImageCoverage.KeepCanvas)]
+    public void CoverageTokens_RoundTripThroughTheOptionsFileSpelling(string token, FinalImageCoverage expected)
+    {
+        Assert.True(FinalImageSettings.TryParseCoverage(token, out FinalImageCoverage coverage));
+        Assert.Equal(expected, coverage);
+        Assert.Equal(token.Trim().ToLowerInvariant(), FinalImageSettings.CoverageToken(coverage));
+    }
+
+    [Theory]
+    [InlineData("on", true)]
+    [InlineData("off", false)]
+    [InlineData("True", true)]
+    [InlineData("false", false)]
+    public void SubpixelTokens_AcceptTheWrittenFormAndABoolean(string token, bool expected)
+    {
+        Assert.True(FinalImageSettings.TryParseSubpixel(token, out bool subpixel));
+        Assert.Equal(expected, subpixel);
+    }
+
+    [Theory]
+    [InlineData("average")]
+    [InlineData("")]
+    public void AnUnknownMethodToken_IsRejected(string token)
+    {
+        Assert.False(FinalImageSettings.TryParseMethod(token, out FinalImageMethod method));
+        Assert.Equal(FinalImageMethod.Mean, method);
+    }
+
+    [Fact]
+    public void AnUnknownCoverageToken_IsRejected()
+    {
+        Assert.False(FinalImageSettings.TryParseCoverage("expand", out FinalImageCoverage coverage));
+        Assert.Equal(FinalImageCoverage.CropToOverlap, coverage);
+    }
+
+    [Fact]
+    public void AnUnknownSubpixelToken_IsRejected()
+    {
+        Assert.False(FinalImageSettings.TryParseSubpixel("maybe", out bool subpixel));
+        Assert.True(subpixel);
+    }
 }

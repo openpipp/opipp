@@ -61,6 +61,26 @@ public partial class Form1
     /// <summary>True while a run owns the form (set from Start Processing until the exit status is shown).</summary>
     internal bool ProcessingRunningForTest => pipp_process_running;
 
+    /// <summary>
+    /// True once the engine process has actually started and is still running, so a test can cancel
+    /// inside the engine rather than before it launches. A form with no process associated reports
+    /// false instead of letting <see cref="System.Diagnostics.Process.HasExited"/> throw.
+    /// </summary>
+    internal bool EngineRunningForTest
+    {
+        get
+        {
+            try
+            {
+                return pipp_process_started && !pipp_process.HasExited;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+        }
+    }
+
     /// <summary>True when Start Processing is clickable (the control the cancel defect left disabled).</summary>
     internal bool RunEnabledForTest => runBTN.Enabled;
 
@@ -226,6 +246,27 @@ public partial class Form1
         get => final_image_settings;
         set => final_image_settings = value ?? new FinalImageSettings();
     }
+
+    /// <summary>
+    /// Redirects the Reset Options snapshot (and Undo Reset) to a test-owned file. Null keeps the
+    /// session's AppData path, so a test never reads or overwrites the running application's own
+    /// snapshot.
+    /// </summary>
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal string? ResetOptionsPathOverride { get; set; }
+
+    /// <summary>Writes the whole option set to <paramref name="path"/>, as Save Options does.</summary>
+    internal void SaveOptionsForTest(string path) => save_options(path);
+
+    /// <summary>Reads an option set from <paramref name="path"/>, as Load Options does.</summary>
+    internal void LoadOptionsForTest(string path) => load_options(path);
+
+    /// <summary>Runs the Reset Options menu action, including its snapshot for Undo Reset.</summary>
+    internal void ResetOptionsForTest() => reset_options_with_save();
+
+    /// <summary>Runs the Undo Reset Options menu action.</summary>
+    internal void UndoResetOptionsForTest() => undo_reset_options();
 
     /// <summary>The switch list the last started run assembled, in the order it was sent.</summary>
     [Browsable(false)]

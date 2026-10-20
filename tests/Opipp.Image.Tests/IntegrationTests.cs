@@ -483,7 +483,10 @@ public class IntegrationTests
         second.Bayer = BayerPattern.RGGB;
         second.SourceName = "capture-2.ser";
 
-        var result = Run([first, second], [new AlignmentOffset(1.5, 0), new AlignmentOffset(1.5, 0)], subpixel: true);
+        // An even whole-pixel placement is the only registration a raw mosaic may take: it keeps the
+        // 2x2 tile where the RGGB tag says it is (an odd one would retag the output GRBG, and a
+        // fractional one is refused outright — see IntegrationCfaPhaseTests).
+        var result = Run([first, second], [new AlignmentOffset(2, 0), new AlignmentOffset(2, 0)], subpixel: true);
 
         Assert.Equal(BayerPattern.RGGB, result.Frame.Bayer);
         Assert.Equal("capture-1.ser", result.Frame.SourceName);
@@ -491,7 +494,7 @@ public class IntegrationTests
         Assert.Equal(2, result.Contributors.Count);
         Assert.Equal("capture-1.ser", result.Contributors[0].SourceName);
         Assert.Equal("capture-2.ser", result.Contributors[1].SourceName);
-        Assert.Equal(1.5, result.Contributors[0].Shift.Dx);
+        Assert.Equal(2.0, result.Contributors[0].Shift.Dx);
         Assert.Equal(IntegrationMethod.Mean, result.Method);
     }
 

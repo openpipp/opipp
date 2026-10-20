@@ -564,6 +564,14 @@ public sealed class Processor
     /// </summary>
     internal Action<int>? ContainerFramePrepared { get; init; }
 
+    /// <summary>
+    /// Test seam raised with the integration index of every frame the final-image integrator pulls
+    /// from the retention store. Mean and sum read each frame once, in order; median re-reads the
+    /// whole selection per band, so its indices repeat band by band. A test can therefore prove the
+    /// selection is streamed rather than materialised, and can cancel mid-integration.
+    /// </summary>
+    internal Action<int>? IntegrationFrameRead { get; init; }
+
     /// <summary>Runs the pipeline over the given input files.</summary>
     /// <param name="inputFiles">Input containers.</param>
     /// <param name="cancellationToken">Cancels between input frames and between written output frames.</param>
@@ -1039,57 +1047,76 @@ public sealed class Processor
                     // mean/sum pass the count as that frame's weight, while median - whose facade
                     // rejects non-uniform weights - gets the copies as extra frames instead. Both
                     // shapes combine the same multiset the legacy stacker would have seen.
-                    var delivered = new List<(Frame Frame, AlignmentOffset Offset, int Copies)>(weighted.Count);
-                    foreach (var (retained, _, offset, suffix) in queue)
-                    {
-                        if (suffix.Length == 0)
-                        {
-                            delivered.Add((retained.Frame, offset, 1));
-                        }
-                        else
-                        {
-                            // The queue emits a frame's primary entry first, then its a/b copies.
-                            var previous = delivered[^1];
-                            delivered[^1] = (previous.Frame, previous.Offset, previous.Copies + 1);
-                        }
-                    }
-
-                    var integrateFrames = new List<Frame>(queue.Count);
+                    //
+                    // Only handles and shifts are collected here. A frame's pixels are read from the
+                    // retention store when the integrator asks for them, so a selection that spilled
+                    // is never materialised into one big list: a 100-frame selection at 512x256 mono
+                    // used to add ~26 MB of live pixels before integration even started.
+                    var handles = new List<RetainedFrame>(queue.Count);
                     var integrateShifts = new List<AlignmentOffset>(queue.Count);
                     List<double>? integrateWeights = integration.Method == IntegrationMethod.Median
                         ? null
-                        : new List<double>(delivered.Count);
-                    foreach (var (frame, offset, copies) in delivered)
+                        : new List<double>(queue.Count);
+                    foreach (var (retained, _, offset, suffix) in queue)
                     {
-                        Frame prepared = ApplyGeometryWithoutShift(frame);
-                        if (integrateWeights is null)
+                        if (suffix.Length == 0 || integrateWeights is null)
                         {
-                            for (int copy = 0; copy < copies; copy++)
-                            {
-                                integrateFrames.Add(prepared);
-                                integrateShifts.Add(offset);
-                            }
+                            // The queue emits a frame's primary entry first, then its a/b copies.
+                            handles.Add(retained);
+                            integrateShifts.Add(offset);
+                            integrateWeights?.Add(1.0);
                         }
                         else
                         {
-                            integrateFrames.Add(prepared);
-                            integrateShifts.Add(offset);
-                            integrateWeights.Add(copies);
+                            integrateWeights[^1] += 1.0;
                         }
+                    }
+
+                    Action<int>? readObserver = IntegrationFrameRead;
+                    Frame ReadIntegrationFrame(int index)
+                    {
+                        // Read on demand, one frame at a time. The integrator accumulates into its own
+                        // buffers and, for median, re-reads the selection band by band, so the frame
+                        // must not be cached across calls: the store owns the buffer it hands out.
+                        Frame frame = handles[index].Frame;
+                        readObserver?.Invoke(index);
+                        return frame;
                     }
 
                     cancellationToken.ThrowIfCancellationRequested();
                     IntegrationResult result = FinalImageIntegrator.Integrate(
-                        integrateFrames, integrateShifts, integrateWeights, integration, cancellationToken);
-                    Frame final = ApplyOverlay(result.Frame, detectionThreshold);
+                        ReadIntegrationFrame,
+                        handles.Count,
+                        integrateShifts,
+                        integrateWeights,
+                        integration,
+                        cancellationToken);
+
+                    // The area of interest is a request on the delivered canvas, so registration runs
+                    // on the whole frame and the crop is applied to the integrated image afterwards.
+                    // Cropping each contributor first destroyed the pixels the alignment moves into
+                    // the box: a 10x10 request under a 3 px offset came out 7x9.
+                    Frame final = ApplyOverlay(CropIntegratedToAreaOfInterest(result), detectionThreshold);
 
                     // One file. It is written under a staging name and moved into place only once the
                     // whole integration has succeeded, so cancellation or a failure leaves nothing
-                    // behind that could be mistaken for a finished image.
+                    // behind that could be mistaken for a finished image. The staging name carries a
+                    // GUID and the file is created with FileMode.CreateNew, so a file that already
+                    // sits at some other "<base>.integrating<ext>" path is never opened for write and
+                    // never deleted, however this run ends; only the exact path reserved here is
+                    // cleaned, and the finished image still overwrites its destination.
                     string stagingPath = Path.Combine(
-                        outputRoot, baseName + ".integrating" + _settings.OutputExtension);
+                        outputRoot,
+                        baseName + ".integrating-" + Guid.NewGuid().ToString("n") + _settings.OutputExtension);
                     try
                     {
+                        // Reserve this run's staging path atomically. CreateNew fails rather than
+                        // truncating a file that already exists there, so an unrelated file can never
+                        // be clobbered even by a name collision.
+                        using (new FileStream(stagingPath, FileMode.CreateNew, FileAccess.Write))
+                        {
+                        }
+
                         using (IFrameSink sink = FrameSinkFactory.Create(
                             stagingPath, final, 1, _settings.Fps, _settings.AviCodec, _settings.AviQuality))
                         {
@@ -2535,20 +2562,62 @@ public sealed class Processor
     }
 
     /// <summary>
-    /// Applies every geometry stage of <see cref="ApplyGeometry"/> except the alignment shift, which
-    /// the final-image integrator performs itself. Only the area-of-interest crop can apply here; the
-    /// flip, rotation, binning, resize and crop stages already ran during preparation.
+    /// Crops an integrated image to the requested area of interest, in output coordinates.
     /// </summary>
     /// <remarks>
-    /// Kept separate rather than parameterising <see cref="ApplyGeometry"/>: the legacy path's order
-    /// (shift, then crop) and its CFA retag must not change, and a shift-free frame keeps the mosaic
-    /// phase it was delivered with, which is what the integrator validates across frames.
+    /// <para>
+    /// The request is expressed on the delivered canvas, but the integrated image covers only
+    /// <see cref="IntegrationResult.OutputRect"/> — the region every contributor can fill under
+    /// <see cref="CoveragePolicy.CropToOverlap"/>, or the whole canvas under
+    /// <see cref="CoveragePolicy.KeepCanvas"/>. The rectangle is therefore translated into the
+    /// output frame's coordinates and intersected with that region, exactly like the per-frame crop
+    /// clamps a request to the frame it crops.
+    /// </para>
+    /// <para>
+    /// This runs after registration on purpose. Cropping each contributor first — which is what the
+    /// integration branch used to do — discards the pixels the alignment moves into the requested
+    /// box from outside it, so a 10x10 request under a 3 px offset came out 7x9.
+    /// </para>
     /// </remarks>
-    private Frame ApplyGeometryWithoutShift(Frame frame) => ApplyAreaOfInterestCrop(frame);
+    /// <exception cref="InvalidOperationException">
+    /// The requested rectangle lies wholly outside the integrated region, so no pixel of the image
+    /// could honour it. Reported rather than silently writing pixels the operator did not ask for.
+    /// </exception>
+    private Frame CropIntegratedToAreaOfInterest(IntegrationResult result)
+    {
+        if (!_settings.AreaOfInterestCrop || _settings.AreaOfInterest is not PixelRect aoi ||
+            aoi.Width <= 0 || aoi.Height <= 0)
+        {
+            return result.Frame;
+        }
+
+        PixelRect output = result.OutputRect;
+        int left = Math.Max(aoi.X, output.X);
+        int top = Math.Max(aoi.Y, output.Y);
+        int right = (int)Math.Min((long)aoi.X + aoi.Width, (long)output.X + output.Width);
+        int bottom = (int)Math.Min((long)aoi.Y + aoi.Height, (long)output.Y + output.Height);
+        if (right <= left || bottom <= top)
+        {
+            throw new InvalidOperationException(
+                $"the requested area of interest ({aoi.X},{aoi.Y}) {aoi.Width}x{aoi.Height} does not overlap " +
+                $"the integrated region ({output.X},{output.Y}) {output.Width}x{output.Height}: the frames' " +
+                "aligned overlap and the request have no pixel in common. Widen or move the area of interest, " +
+                "reduce the alignment offsets, or integrate with canvas coverage.");
+        }
+
+        return GeometricTransforms.Crop(
+            result.Frame, left - output.X, top - output.Y, right - left, bottom - top);
+    }
 
     /// <summary>
     /// Crops one delivered frame to the requested area of interest, clamped to its own bounds.
     /// </summary>
+    /// <remarks>
+    /// This is the per-frame (legacy) geometry stage. Integration does not use it: cropping a
+    /// contributor before registration throws away the pixels the alignment moves into the box, so
+    /// the integration branch applies the request to the integrated image instead — see
+    /// <see cref="CropIntegratedToAreaOfInterest"/>.
+    /// </remarks>
     private Frame ApplyAreaOfInterestCrop(Frame frame)
     {
         if (_settings.AreaOfInterestCrop && _settings.AreaOfInterest is PixelRect aoi &&

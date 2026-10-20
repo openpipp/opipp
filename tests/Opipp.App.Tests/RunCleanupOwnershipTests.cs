@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Threading;
+using System.Windows.Forms;
 using Opipp.Core.Pipeline;
 using PIPP_Application;
 
@@ -241,6 +242,118 @@ public sealed class RunCleanupOwnershipTests
 
                 Assert.Equal("CANCELLED", form.StatusTextForTest);
                 AssertSentinelsSurvived(keeper, sentinel, "status=" + form.StatusTextForTest);
+            }
+            finally
+            {
+                // Detach before disposal: the engine's async readers may still deliver a
+                // trailing line, and marshalling it to a disposed form kills the test host.
+                form.DetachEngineCallbacksForTest();
+                AppTestSupport.PumpFor(TimeSpan.FromMilliseconds(250));
+                form.SetProcessingRunningForTest(false);
+                AppTestSupport.DeleteQuietly(directory);
+            }
+        });
+    }
+
+    [SkippableFact]
+    public void CancelledIntegrationRun_LeavesNoFinishedImage_DeletesNothingItDidNotCreate_AndTheNextRunSucceeds()
+    {
+        AppTestSupport.RunSta(() =>
+        {
+            using var form = new Form1();
+            _ = form.Handle;
+            var errors = new List<string>();
+            form.ErrorDialogOverride = (message, caption) => errors.Add(caption + ": " + message);
+
+            string directory = AppTestSupport.TempDirectory();
+            try
+            {
+                // 40 small frames: the engine is still reading them when Cancel lands, so the run is
+                // stopped inside the engine rather than before the process exists.
+                string science = AppTestSupport.WritePlanetSer(directory, "capture.ser", 40);
+                string output = Path.Combine(directory, "out");
+                Directory.CreateDirectory(output);
+                (string keeper, string sentinel) = WriteSentinels(output);
+
+                // What a hard-killed earlier run can leave behind: an empty staging file. It must
+                // survive this run's cancel (this run did not create it), and its .integrating name
+                // is what keeps it from being read as a finished image.
+                string orphan = Path.Combine(output, "capture.integrating-9c1d4e.tif");
+                File.WriteAllBytes(orphan, Array.Empty<byte>());
+
+                form.FinalImageSettingsForTest = new FinalImageSettings
+                {
+                    Enabled = true,
+                    Method = FinalImageMethod.Mean,
+                };
+                form.PrepareRunForTest(
+                    [science],
+                    outputDirectory: output,
+                    flatCalibration: false,
+                    flatDarkSubtraction: false,
+                    darkSubtraction: false);
+
+                form.StartProcessingForTest();
+                Assert.True(form.ProcessingRunningForTest, "the run did not start: " + form.OutputTextForTest);
+
+                // Cancel inside the engine (the case where a killed process cannot run its own
+                // staging cleanup), but never before the process has launched: a cancel that lands
+                // between the run's launch check and Process.Start would let the engine finish and
+                // make "no finished image" a coin toss. If the engine never launches the run is
+                // cancelled before it starts, which is the same outcome for these assertions.
+                DateTime startDeadline = DateTime.UtcNow.AddSeconds(5);
+                while (!form.EngineRunningForTest && DateTime.UtcNow < startDeadline)
+                {
+                    Application.DoEvents();
+                    Thread.Sleep(5);
+                }
+
+                form.CancelProcessingForTest();
+                AppTestSupport.PumpUntil(() => !form.ProcessingRunningForTest, "the cancelled run to finish");
+
+                Assert.Equal("CANCELLED", form.StatusTextForTest);
+
+                // No finished image: only the staging-shaped orphan may remain, and that is not an
+                // output the operator could mistake for the integrated result.
+                string[] finished = Directory
+                    .GetFiles(output, "*.tif", SearchOption.AllDirectories)
+                    .Where(file => !Path.GetFileName(file).Contains(".integrating", StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+                Assert.Empty(finished);
+                AssertSentinelsSurvived(keeper, sentinel, "status=" + form.StatusTextForTest);
+                Assert.True(File.Exists(orphan), "the cancelled run deleted a staging file it did not create");
+
+                // The next run from the same form, same settings, same output directory. The engine
+                // callbacks stay attached: the form needs them to see this run's exit.
+                File.Delete(orphan);
+                form.StartProcessingForTest();
+                Assert.True(form.ProcessingRunningForTest, "the second run did not start: " + form.OutputTextForTest);
+                AppTestSupport.PumpUntil(() => !form.ProcessingRunningForTest, "the second run to finish");
+                AppTestSupport.PumpUntilRunVerdict(form);
+
+                bool unknownSwitch =
+                    form.LastExitCodeForTest == 127
+                    && form.OutputTextForTest.Contains("Unknown switch", StringComparison.Ordinal);
+
+                form.DetachEngineCallbacksForTest();
+                AppTestSupport.PumpFor(TimeSpan.FromMilliseconds(250));
+
+                Skip.If(unknownSwitch, "the engine does not recognise -stack: " + form.OutputTextForTest);
+
+                Assert.False(
+                    form.ProcessingFailedForTest,
+                    "status=" + form.StatusTextForTest
+                    + " exit=" + form.LastExitCodeForTest
+                    + " output=" + form.OutputTextForTest
+                    + " errors=" + string.Join(" | ", errors));
+                Assert.Equal("COMPLETE", form.StatusTextForTest);
+
+                string[] produced = Directory.GetFiles(output, "*.tif", SearchOption.AllDirectories);
+                Assert.Single(produced);
+                Assert.DoesNotContain(".integrating", produced[0], StringComparison.OrdinalIgnoreCase);
+                Assert.True(new FileInfo(produced[0]).Length > 0, "the finished image is empty");
+                Assert.Equal(32, AppTestSupport.ReadSingleTiff(output).Width);
+                AssertSentinelsSurvived(keeper, sentinel, "after the second run");
             }
             finally
             {

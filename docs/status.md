@@ -5,11 +5,11 @@ produce every figure on this page.
 
 | | |
 |---|---|
-| Version | `0.2.0-alpha` at the tagged commit |
+| Version | `0.2.1-alpha` at the tagged commit |
 | SDK | .NET 10.0.402 (local `~/.dotnet-sdk`) |
-| Tests | **1164 tests, 0 failing** across nine projects (2 skip when the non-redistributable Saturn fixture is absent) |
+| Tests | **1319 tests, 0 failing** across nine projects (2 skip when the non-redistributable Saturn fixture is absent) |
 | Parity | **27 compared, 27 matched, 2 deliberate differences, 0 gaps, 0 failed** |
-| Release | `v0.2.0-alpha`, Windows x64 zip, self-contained |
+| Release | `v0.2.1-alpha`, Windows x64 zip, self-contained |
 | History | [`journal.md`](journal.md) — dated findings, superseded details |
 
 ```bash
@@ -29,8 +29,11 @@ dotnet run --project tools/Opipp.Parity -- --real
   flat-dark exactly once, keeps RGB masters three-channel, is cancellable, and publishes nothing when
   a build fails.
 - Final-image integration is available from the CLI (`-stack=mean|sum|median`, `-stack_coverage`,
-  `-stack_subpixel`) and a GUI dialog: one output file, subpixel registration, coverage masks that
-  never invent edge samples, a double-precision intermediate, and exact disk-backed median.
+  `-stack_subpixel`) and a GUI dialog: one output per batch input (one per joined unit), subpixel
+  registration, coverage masks that never invent edge samples, a double-precision intermediate, and
+  exact median (in memory below the caps, disk-backed above). If an input fails to decode, the accepted frames are still integrated and
+  published as a labelled partial result (exit 1); final integration does not require every selected
+  file to decode.
 - A later FITS IMAGE header that the reader rejects fails the file with the HDU named; it is never
   silently skipped, and `-check` applies the same constraint set as the reader.
 - Joined stacks report the identity of the source that actually contributed the selected frames,
@@ -117,7 +120,7 @@ Documented skips: `-raw_db`, `-raw_hl`, `-raw_ocs`, `-raw_hpf` (need the statica
 | Unequal master goldens | Native master files are pinned from identical inputs; unequal-frame native fixtures that would distinguish averaging rules are still missing |
 | Bayer-marked stacking | Raw stacking requires one consistent CFA pattern after geometry; debayer before combining different phases. Persisted calibration `.tmp` masters do not carry a Bayer tag |
 
-## 0.2.0 correctness changes
+## 0.2.1 correctness changes
 
 - FITS scanning rejects a nonzero incomplete later header, including a tail shorter than one card.
   A truncated payload in an HDU that would otherwise be skipped also fails instead of reporting a

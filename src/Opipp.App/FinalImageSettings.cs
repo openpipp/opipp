@@ -89,6 +89,31 @@ public sealed class FinalImageSettings
         _ => throw new ArgumentOutOfRangeException(nameof(method), method, "unknown final-image method"),
     };
 
+    /// <summary>
+    /// Reads the method token an options file stores. Case and surrounding quotes/space are
+    /// ignored; an absent or unrecognised token is refused so the caller can report it rather than
+    /// silently running a different method than the file named.
+    /// </summary>
+    /// <returns>True only for <c>mean</c>, <c>sum</c> or <c>median</c>.</returns>
+    public static bool TryParseMethod(string? token, out FinalImageMethod method)
+    {
+        switch (Normalize(token))
+        {
+            case "mean":
+                method = FinalImageMethod.Mean;
+                return true;
+            case "sum":
+                method = FinalImageMethod.Sum;
+                return true;
+            case "median":
+                method = FinalImageMethod.Median;
+                return true;
+            default:
+                method = FinalImageMethod.Mean;
+                return false;
+        }
+    }
+
     /// <summary>The engine's spelling of a coverage policy.</summary>
     public static string CoverageToken(FinalImageCoverage coverage) => coverage switch
     {
@@ -96,6 +121,58 @@ public sealed class FinalImageSettings
         FinalImageCoverage.KeepCanvas => "canvas",
         _ => throw new ArgumentOutOfRangeException(nameof(coverage), coverage, "unknown final-image coverage"),
     };
+
+    /// <summary>
+    /// Reads the coverage token an options file stores (<c>crop</c> or <c>canvas</c>), with the
+    /// same tolerance and the same refusal of an unknown value as <see cref="TryParseMethod"/>.
+    /// </summary>
+    /// <returns>True only for <c>crop</c> or <c>canvas</c>.</returns>
+    public static bool TryParseCoverage(string? token, out FinalImageCoverage coverage)
+    {
+        switch (Normalize(token))
+        {
+            case "crop":
+                coverage = FinalImageCoverage.CropToOverlap;
+                return true;
+            case "canvas":
+                coverage = FinalImageCoverage.KeepCanvas;
+                return true;
+            default:
+                coverage = FinalImageCoverage.CropToOverlap;
+                return false;
+        }
+    }
+
+    /// <summary>The options-file spelling of the subpixel state: <c>on</c> or <c>off</c>.</summary>
+    public static string SubpixelToken(bool subpixel) => subpixel ? "on" : "off";
+
+    /// <summary>
+    /// Reads the subpixel token an options file stores. <c>on</c>/<c>off</c> are the written form;
+    /// <c>true</c>/<c>false</c> are accepted too so a hand-edited file using the file's other
+    /// boolean spelling still loads.
+    /// </summary>
+    /// <returns>False when the value is neither token nor a boolean.</returns>
+    public static bool TryParseSubpixel(string? token, out bool subpixel)
+    {
+        switch (Normalize(token))
+        {
+            case "on":
+            case "true":
+                subpixel = true;
+                return true;
+            case "off":
+            case "false":
+                subpixel = false;
+                return true;
+            default:
+                subpixel = true;
+                return false;
+        }
+    }
+
+    /// <summary>Trims the padding and the quotes a text-valued options line can carry.</summary>
+    private static string Normalize(string? token) =>
+        (token ?? string.Empty).Trim().Trim('"').Trim().ToLowerInvariant();
 
     /// <summary>The operator-facing method name ("Mean", "Sum", "Median").</summary>
     public static string MethodLabel(FinalImageMethod method) => method switch

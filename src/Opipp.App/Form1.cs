@@ -1892,14 +1892,22 @@ public partial class Form1 : Form
 
 	private void reset_options_with_save()
 	{
-		save_options(Application.LocalUserAppDataPath + "\\reset_options.pof");
+		save_options(ResetOptionsSnapshotPath);
 		reset_options();
 	}
 
 	private void undo_reset_options()
 	{
-		load_options(Application.LocalUserAppDataPath + "\\reset_options.pof");
+		load_options(ResetOptionsSnapshotPath);
 	}
+
+	/// <summary>
+	/// Where Reset Options parks the pre-reset snapshot Undo Reset reads back. It is the session's
+	/// AppData path in production; a test points it at its own temporary directory so it cannot
+	/// read or overwrite the snapshot of the developer's running application.
+	/// </summary>
+	private string ResetOptionsSnapshotPath =>
+		ResetOptionsPathOverride ?? Path.Combine(Application.LocalUserAppDataPath, "reset_options.pof");
 
 	private void load_options(string filename = "")
 	{
@@ -2670,6 +2678,44 @@ public partial class Form1 : Form
 				saveRejectedFramesToolStripMenuItem.Checked = result;
 				flag = flag2;
 				break;
+			case "FINAL_IMAGE_ENABLED":
+				final_image_settings.Enabled = result;
+				flag = flag2;
+				break;
+			case "FINAL_IMAGE_METHOD":
+				// An options file written before integration existed has none of these keys, so the
+				// reset above already left the explicit defaults (disabled, mean, crop, subpixel on).
+				// A key that is present but unreadable is reported like any other bad value rather
+				// than silently running a method the file did not name.
+				if (FinalImageSettings.TryParseMethod(text3, out FinalImageMethod method))
+				{
+					final_image_settings.Method = method;
+				}
+				else
+				{
+					flag = true;
+				}
+				break;
+			case "FINAL_IMAGE_COVERAGE":
+				if (FinalImageSettings.TryParseCoverage(text3, out FinalImageCoverage coverage))
+				{
+					final_image_settings.Coverage = coverage;
+				}
+				else
+				{
+					flag = true;
+				}
+				break;
+			case "FINAL_IMAGE_SUBPIXEL":
+				if (FinalImageSettings.TryParseSubpixel(text3, out bool subpixel))
+				{
+					final_image_settings.Subpixel = subpixel;
+				}
+				else
+				{
+					flag = true;
+				}
+				break;
 			case "DEBUG_FIND":
 				flag = flag2;
 				break;
@@ -2849,6 +2895,13 @@ public partial class Form1 : Form
 		list.Add("WJUPOS_NAME_ENABLE " + winjuposfilenameCB.Checked);
 		list.Add("WJUPOS_TIME " + winjupostimeCB.SelectedIndex);
 		list.Add("SAVE_REJECTED " + saveRejectedFramesToolStripMenuItem.Checked);
+		// The final-image integration choice is saved with the rest of the options; without these
+		// lines a saved profile re-opened with integration off, and a fresh form loading the file
+		// did not know the operator had ever enabled it.
+		list.Add("FINAL_IMAGE_ENABLED " + final_image_settings.Enabled);
+		list.Add("FINAL_IMAGE_METHOD " + FinalImageSettings.MethodToken(final_image_settings.Method));
+		list.Add("FINAL_IMAGE_COVERAGE " + FinalImageSettings.CoverageToken(final_image_settings.Coverage));
+		list.Add("FINAL_IMAGE_SUBPIXEL " + FinalImageSettings.SubpixelToken(final_image_settings.Subpixel));
 		saveoptionsFD.Title = "Save PIPP Options File";
 		saveoptionsFD.Filter = "PIPP Options File|*.pof";
 		saveoptionsFD.InitialDirectory = cPersistentData.options_directory;
@@ -5365,6 +5418,14 @@ public partial class Form1 : Form
 		// folder the operator owns — with the default settings it is the source folder itself — so
 		// enumerating its *.tmp files destroyed unrelated files (a keeper.tmp put there by another
 		// tool). The masters a cancelled run leaves behind are session temp files, not output files.
+		//
+		// The engine stages its integrated image under <name>.integrating<ext> and deletes that
+		// staging file in its own finally; a hard kill of the process skips that finally. The
+		// front-end never creates that path and cannot know the exact name the engine gives it, so
+		// the only safe cleanup here is the registry below: matching *.integrating* in the output
+		// directory would delete another run's staging file (or an operator's file) rather than this
+		// run's. An orphan left by a hard kill is inert — it carries the .integrating name, so it is
+		// never mistaken for a finished image, and the next run writes a fresh one.
 		run_temp_artifacts?.DeleteAll();
 	}
 
@@ -5473,6 +5534,9 @@ public partial class Form1 : Form
 		reset_animation_options();
 		reset_output_options();
 		reset_menu_strip();
+		// Integration is one of the saved options, so Reset Options must turn it off as well: a
+		// reset that left the setting alone still handed the engine -stack=... on the next run.
+		final_image_settings = new FinalImageSettings();
 	}
 
 	private int generate_cmdline_options(ref List<string> arg_list)
