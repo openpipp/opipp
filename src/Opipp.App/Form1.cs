@@ -5057,8 +5057,17 @@ public partial class Form1 : Form
 		}
 		catch (Exception ex)
 		{
+			// A cancelled run can still throw while its engine pipes are being torn down ("The pipe
+			// is being closed" is the usual one). The operator asked for a cancel, so the verdict is
+			// CANCELLED even when shutdown is noisy; only an unrequested failure is reported as one.
 			Invoke((MethodInvoker)(() =>
 			{
+				if (processed_killed)
+				{
+					show_cancelled_state_and_reset_controls();
+					return;
+				}
+
 				show_processing_start_failure("Processing could not start:" + Environment.NewLine + Environment.NewLine + ex.Message);
 			}));
 		}
@@ -5158,6 +5167,35 @@ public partial class Form1 : Form
 		// A cancel that arrived during the master builds must not reach the engine launch: the
 		// masters it needs were abandoned. The operator's intent is CANCELLED, not a partial run.
 		cancellationToken.ThrowIfCancellationRequested();
+
+		// One Process object per run. After a kill the old object's stdin pipe is already disposed,
+		// and reusing it made the next run fail with "The pipe is being closed" (a cancel followed by
+		// another run is a supported workflow). Detach the old handlers before disposing so a late
+		// async callback cannot touch a form that has moved on.
+		Process previous_process = pipp_process;
+		previous_process.OutputDataReceived -= pipp_process_OutputDataReceived;
+		previous_process.ErrorDataReceived -= pipp_process_ErrorDataReceived;
+		previous_process.Exited -= pipp_process_Exited;
+		try
+		{
+			previous_process.Dispose();
+		}
+		catch (InvalidOperationException)
+		{
+			// Already disposed or never started; nothing to release.
+		}
+
+		pipp_process = new Process();
+		// The designer's process marshalled its async callbacks to the UI thread through this; a
+		// replacement without it delivers them on pool threads and the transcript/verdict updates
+		// race the form (the partial-failure tests caught exactly that).
+		pipp_process.SynchronizingObject = this;
+		pipp_process.OutputDataReceived += pipp_process_OutputDataReceived;
+		pipp_process.ErrorDataReceived += pipp_process_ErrorDataReceived;
+		pipp_process.Exited += pipp_process_Exited;
+		// The new object is not started yet: a cancel arriving during the remaining setup must not
+		// ask HasExited on it (which throws for a process that never started).
+		pipp_process_started = false;
 
 		// Engine path is centralised in EngineLocator (see the comment there about the managed replacement).
 		string text = EngineLocator.FindEngineExecutable();
