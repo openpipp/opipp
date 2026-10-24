@@ -268,9 +268,10 @@ public sealed class RunCleanupOwnershipTests
             string directory = AppTestSupport.TempDirectory();
             try
             {
-                // 40 small frames: the engine is still reading them when Cancel lands, so the run is
-                // stopped inside the engine rather than before the process exists.
-                string science = AppTestSupport.WritePlanetSer(directory, "capture.ser", 40);
+                // 2,000 tiny frames: 40 finished before Cancel could land, which made the verdict a
+                // race between "still reading" and "already completed". The larger selection keeps
+                // the engine busy long enough for the cancel to be the thing that ends the run.
+                string science = AppTestSupport.WritePlanetSer(directory, "capture.ser", 2000);
                 string output = Path.Combine(directory, "out");
                 Directory.CreateDirectory(output);
                 (string keeper, string sentinel) = WriteSentinels(output);
@@ -311,7 +312,13 @@ public sealed class RunCleanupOwnershipTests
                 form.CancelProcessingForTest();
                 AppTestSupport.PumpUntil(() => !form.ProcessingRunningForTest, "the cancelled run to finish");
 
-                Assert.Equal("CANCELLED", form.StatusTextForTest);
+                Assert.True(
+                    form.StatusTextForTest == "CANCELLED",
+                    "status=" + form.StatusTextForTest
+                    + " exit=" + form.LastExitCodeForTest
+                    + " running=" + form.ProcessingRunningForTest
+                    + " output=" + form.OutputTextForTest
+                    + " errors=" + string.Join(" | ", errors));
 
                 // No finished image: only the staging-shaped orphan may remain, and that is not an
                 // output the operator could mistake for the integrated result.

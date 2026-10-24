@@ -5,11 +5,11 @@ produce every figure on this page.
 
 | | |
 |---|---|
-| Version | `0.2.1-alpha` at the tagged commit |
+| Version | `0.2.2-alpha` at the tagged commit |
 | SDK | .NET 10.0.402 (local `~/.dotnet-sdk`) |
-| Tests | **1319 tests, 0 failing** across nine projects (2 skip when the non-redistributable Saturn fixture is absent) |
+| Tests | **1324 tests, 0 failing** across nine projects (2 skip when the non-redistributable Saturn fixture is absent) |
 | Parity | **27 compared, 27 matched, 2 deliberate differences, 0 gaps, 0 failed** |
-| Release | `v0.2.1-alpha`, Windows x64 zip, self-contained |
+| Release | `v0.2.2-alpha`, Windows x64 zip, self-contained |
 | History | [`journal.md`](journal.md) — dated findings, superseded details |
 
 ```bash
@@ -28,6 +28,14 @@ dotnet run --project tools/Opipp.Parity -- --real
 - Master creation (dark, flat-dark, flat) reads and writes the engine's `.tmp` masters, subtracts a
   flat-dark exactly once, keeps RGB masters three-channel, is cancellable, and publishes nothing when
   a build fails.
+- Integration has been exercised on real captures: a 2011 Jupiter/Ganymede AVI (frames extracted), a
+  2022 Saturn SER (8,984 frames), a 2023 Jupiter TIFF, and Moon/Mars stills. Raw CFA + centring is
+  rejected as designed; `-db` first is the working path, and the error text now names it.
+  See [validation.md](validation.md).
+- Process memory is measured, not estimated: the integration probe reports peak working set for
+  streaming mean/sum, in-memory median and tiled median. See [memory.md](memory.md).
+- Integration staging lives in a run-owned `.opipp-staging/<guid>/` directory; stale run directories
+  are removed on a later run, and nothing else in the output tree is swept.
 - Final-image integration is available from the CLI (`-stack=mean|sum|median`, `-stack_coverage`,
   `-stack_subpixel`) and a GUI dialog: one output per batch input (one per joined unit), subpixel
   registration, coverage masks that never invent edge samples, a double-precision intermediate, and
@@ -117,6 +125,8 @@ Documented skips: `-raw_db`, `-raw_hl`, `-raw_ocs`, `-raw_hpf` (need the statica
 | Colour GIF palette | Bounded by design (262,144-sample reservoir); large-capture RGB output intentionally differs from the pre-0.1.5 encoder |
 | Integration rejection | No sigma-clipped or robust rejection; every selected frame contributes |
 | Integration precision | Accumulation is double, but the delivered image is quantised to the input depth; there is no float FITS output yet |
+| Real-capture coverage | Saturn/Jupiter captures and Moon/Mars stills are validated; no lunar or solar **sequence** yet, and no deep-sky FITS with scaled/float data |
+| AVI input gaps | I420/planar-YUV AVI and ffmpeg `rawvideo bgr24` AVI are rejected; PNG-frame extraction is the workaround |
 | Unequal master goldens | Native master files are pinned from identical inputs; unequal-frame native fixtures that would distinguish averaging rules are still missing |
 | Bayer-marked stacking | Raw stacking requires one consistent CFA pattern after geometry; debayer before combining different phases. Persisted calibration `.tmp` masters do not carry a Bayer tag |
 

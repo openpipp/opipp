@@ -280,8 +280,11 @@ internal static class IntegrationSupport
                 $"({applied.Dx}, {applied.Dy}) has a fractional part. Bilinear resampling blends each " +
                 "output sample from four neighbouring pixels, which in a CFA image are different " +
                 "colour sites, so the interpolated sample has no single colour. Debayer the frames to " +
-                "colour first (Bayer = None) and integrate those, or turn sub-pixel registration off " +
-                "so only whole pixels move.");
+                "colour first with -db (or -db=<pattern> to override the detected mosaic pattern) and " +
+                "integrate those; in the GUI, enable \"Debayer Monochrome Frames\" before the run. " +
+                "Alternatively turn sub-pixel registration off with -stack_subpixel=off so only whole " +
+                "pixels move, and only when the rounded offsets are even on both axes, because an odd " +
+                "whole-pixel shift moves the CFA phase too.");
         }
 
         return AtCanvasOrigin(pattern, placement);
@@ -312,16 +315,19 @@ internal static class IntegrationSupport
 
             throw new BayerPhaseException(
                 $"{detail}. A CFA plane and a debayered or mono plane cannot be combined; debayer every " +
-                "input to colour, or none of them.");
+                "input to colour with -db, or none of them.");
         }
 
         throw new BayerPhaseException(
             $"frame {index + 1} carries Bayer mosaic pattern {pattern} and its shift ({applied.Dx}, " +
             $"{applied.Dy}) places it at effective pattern {actual}, but frame 1's contribution is at " +
             $"{expected}. Registering a mosaic by an odd number of pixels moves its 2x2 colour tile to " +
-            "another phase, so combining these frames would average different colour sites. Use " +
-            $"frames tagged at the phase their placement produces ({expected}), use even shifts on both " +
-            "axes, or debayer the frames to colour first.");
+            "another phase, so combining these frames would average different colour sites. Debayer the " +
+            "frames to colour first with -db (or -db=<pattern> to override the detected mosaic pattern) " +
+            "and integrate the colour frames; in the GUI, enable \"Debayer Monochrome Frames\" before the " +
+            $"run. Alternatively use frames tagged at the phase their placement produces ({expected}), " +
+            "or keep every shift even on both axes (-stack_subpixel=off rounds a fractional shift, but " +
+            "an odd whole-pixel offset still moves the phase).");
     }
 
     /// <summary>

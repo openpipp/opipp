@@ -50,9 +50,22 @@ Selection does not help: it runs after the frames have accumulated.
 
 ## Measured
 
-`tools/Opipp.MemProbe` generates a synthetic 16-bit mono SER, runs the real `Opipp.Cli.exe` as a
-child process with `OPIPP_RETENTION_BUDGET_MB` set, samples `PeakWorkingSet64` every 25 ms (with
-`Process.Refresh()`, without which every read returns the start snapshot) and reports the peak.
+Two probes, because there are two questions, and neither of them estimates live objects: both run
+real code in a real process and report `Process.PeakWorkingSet64` sampled *while* the work runs (the
+counter throws once the process object has exited, and without `Process.Refresh()` every read returns
+the snapshot taken at start).
+
+- **`tools/Opipp.MemProbe`** runs the whole `Opipp.Cli.exe` over a synthetic capture, so its peak
+  covers the reader, retention, the stacker and the writers under a chosen
+  `OPIPP_RETENTION_BUDGET_MB`.
+- **`tools/Opipp.IntegrationProbe`** measures final-image integration alone. It generates a synthetic
+  SER, reads it back, retains the frames exactly the way `Processor.Retain` does — inline while a
+  byte budget holds, then one `FrameStore` with the frames already accepted migrated into it — and
+  calls `FinalImageIntegrator`. One child process per configuration, because the peak never falls
+  and a second configuration in the same process would inherit the first one's high-water mark.
+
+### Whole CLI run (retention budget)
+
 Command:
 
 ```
@@ -79,6 +92,100 @@ Caveats: the peak includes the .NET runtime and transient transform buffers, so 
 plus zero; the figures are from a Debug build on this host and will differ elsewhere; and a budget of
 4096 MB does not mean 4 GB was used — it means nothing spilled, which is the control case.
 
+### Final-image integration (process peaks)
+
+Command, from the repository root with a Release build:
+
+```
+dotnet run -c Release --project tools/Opipp.IntegrationProbe -- --suite memory --out memory.csv
+```
+
+The probe generates each fixture once, then runs every row in a fresh child process, sampling
+`PeakWorkingSet64` every 20 ms. `shape=streaming` is the overload `Processor` calls (the integrator
+pulls one frame at a time from the retained handles); `shape=list` materialises the selection first
+and therefore routes a median between its in-memory and tiled implementations.
+
+| Configuration | Frames | Method / shape | Route | Peak working set | Integration | Retained | Scratch |
+|---|---|---:|---|---|---:|---:|---:|---:|
+| 300 × 512×256 mono8, 1 MB budget | 300 | mean, streaming | — | **46 MB** | 0.1 s | 0 MB | 75 MB |
+| 300 × 512×256 mono8, no budget | 300 | mean, streaming | — | **106 MB** | 0.1 s | 75 MB | 0 MB |
+| 300 × 512×256 mono8, 1 MB budget | 300 | median, streaming | Streamed | **89 MB** | 1.1 s | 0 MB | 75 MB |
+| 300 × 512×256 mono8, 1 MB budget | 300 | median, list | Tiled | **402 MB** | 1.2 s | 75 MB | 150 MB |
+| 100 × 1920×1080 RGB16, 512 MB budget | 100 | median, list | InMemory | **2,476 MB** | 6.3 s | 1,187 MB | 1,187 MB |
+| 100 × 1920×1080 RGB16, no budget | 100 | median, list | InMemory | **2,473 MB** | 6.0 s | 1,187 MB | 0 MB |
+| 200 × 1920×1080 RGB16, 512 MB + 4 GB median scratch | 200 | median, list | Tiled | **11,679 MB** | 64.2 s | 2,373 MB | 4,746 MB |
+| 100 × 1920×1080 RGB16, no budget | 100 | mean, streaming | — | **1,311 MB** | 0.9 s | 1,187 MB | 0 MB |
+
+`Retained` is the pixel data in managed memory when integration starts — for a list-shaped call that
+includes the materialised selection. `Scratch` is what the run wrote to disk: the retention store's
+file plus, on the tiled median route, the one translated copy per frame that route spills itself.
+`Integration` is the integrator call alone; reading and retaining the 100 Full-HD frames took
+1.1–1.3 s more, the 200 frames 2.8 s.
+
+Reading the table:
+
+- **The retention budget bounds the small capture; the capture bounds everything else.** 75 MB of
+  pixels cost 46 MB of process spilled and 106 MB inline. Spilling does not halve the peak — it
+  removes the part that grows with the capture.
+- **A streaming median is the cheapest way to integrate a large selection**: 89 MB at 300 frames,
+  against 402 MB once a list-shaped caller holds the selection and the median spills it a second
+  time. The doubled scratch (150 MB) is the same effect on disk.
+- **The in-memory median route costs two copies of the selection.** 100 Full-HD RGB frames are
+  1,187 MB of samples; the peak is 2,473–2,477 MB across runs whether the input came from the store
+  or sat inline, because `InMemoryMedianIntegrator` snapshots every frame into a buffer it owns —
+  which is what makes it safe against a reused source buffer. Raising `MaxRetainedMedianFrames` to
+  run 100 frames in memory buys no memory at this size: the route's advantage is speed on small
+  selections, not footprint.
+- **Mean is cheaper than median at the same size**: 1,311 MB for the same 1,187 MB of frames, the
+  ~124 MB difference being the `double` precision buffer (8 bytes per sample, 50 MB here), the output
+  frame and coverage map (20 MB), the per-pixel weight map (8 MB) and the runtime floor. There is no
+  second copy of the selection.
+- **The tiled route bounds live pixels, not allocation.** At 200 Full-HD frames it peaks at
+  11,679 MB. The live data at that peak is about 2.5 GB (2,373 MB materialised selection, 74 MB band
+  table, 20 MB output and coverage); the rest is the collector's headroom for 6,800 temporary
+  12.4 MB frames — 34 bands × 200 frames, 84 GB allocated in total. The route's documented
+  "O(one frame)" bound describes what it *keeps*, not what the process reaches.
+- **The default budgets refuse that run outright**: 200 Full-HD RGB frames need 2,488,320,000 bytes
+  of median scratch against a 512 MiB `MedianScratchBudgetBytes`. The refusal happens before any
+  scratch is written and names the budget (reproducer below); the 11,679 MB row was measured with
+  `--median-scratch-mb 4096`.
+
+A bare child process of this probe peaks at ~27–30 MB (64×32 fixture), so that much of every row is
+the runtime floor.
+
+### What these numbers are not
+
+- They are **measured process peaks on one machine**, not guarantees. Host: Windows 11 Pro
+  10.0.26300, Intel Core i5-13600K (14 cores, 20 logical processors), 127.7 GiB RAM, .NET 10.0.13,
+  Release build, workstation concurrent GC. A different runtime, GC mode, CPU count or concurrent
+  load moves them; a Debug build moves them further.
+- They are single runs. Repeating the suite three times reproduced every row within 1 MB except
+  `300 × 512×256 median, streaming` (82–89 MB), the one row whose peak sits close to the runtime
+  floor and to GC timing.
+- They include the runtime (~27–30 MB) and transient buffers, so "budget 512 MB" never means "peak
+  512 MB".
+- They describe integration only. A full CLI run adds the reader, the stacker and the writers; the
+  whole-run table above is the reference for that.
+
+### Reproducing
+
+```
+# whole suite as published (fixtures are generated, then deleted)
+dotnet run -c Release --project tools/Opipp.IntegrationProbe -- --suite memory --out memory.csv
+
+# one row: name,method[:shape],frames,width,height,format,retentionMB
+#         [,medianMaxFrames[,medianMemMB[,medianScratchMB[,bandRows[,shiftPixels]]]]]
+dotnet run -c Release --project tools/Opipp.IntegrationProbe -- \
+    --case hd-median-tiled,median:list,200,1920,1080,rgb16,512,0,0,4096
+
+# the default-budget refusal (exits 1 and writes nothing)
+dotnet run -c Release --project tools/Opipp.IntegrationProbe -- --case refused,median:list,100,1920,1080,rgb16,512
+```
+
+`retentionMB` 0 means no retention budget (nothing spills); a `0` for a median option leaves that
+`IntegrationOptions` default in place. `--work <dir>` puts the fixtures somewhere specific, `--keep`
+leaves them behind, `--sample-ms` changes the sampling interval.
+
 ## Notes and remaining limits
 
 - `GifWriter.Write` writes one image block at a time and builds a colour palette from a sampled pass
@@ -89,3 +196,10 @@ plus zero; the figures are from a Debug build on this host and will differ elsew
 - The budget bounds retained pixel data, not total process memory — the runtime, transform buffers,
   the reader and the stacker accumulator sit on top, as the measured table shows.
 - `FrameStacker` accumulates a running sum rather than frames, so it is already bounded.
+- The tiled median route bounds *live* pixel data, not allocation: it materialises a fresh frame for
+  every (band, frame) read, so its process peak is the live set plus the collector's headroom for
+  that churn (11.7 GB measured for 200 Full-HD RGB frames). Taller bands cut the churn in proportion
+  to the number of passes, so `MedianBandRows` is the knob.
+- At the defaults `EffectiveMedianInMemoryBudgetBytes` is 1 GiB (twice the 512 MiB scratch budget),
+  enough for 64 Full-HD RGB frames at 759 MiB, so `MaxRetainedMedianFrames` is what normally binds a
+  median's route.

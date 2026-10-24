@@ -9,6 +9,7 @@ Living documents live here; the research trail stays in [`../notes`](../notes).
 | [`roadmap.md`](roadmap.md) | deciding what to work on next, or what "done" means |
 | [`status.md`](status.md) | you need the current build/test/parity numbers and known gaps |
 | [`parity.md`](parity.md) | running or extending the oracle comparison |
+| [`validation.md`](validation.md) | real captures used for validation, their terms, and what they exercised |
 | [`switch-matrix.csv`](switch-matrix.csv) | checking whether a specific switch is implemented |
 | [`coverage.json`](coverage.json) | machine-readable totals behind the roadmap percentages |
 
@@ -20,7 +21,7 @@ OPIPP/
 │   ├── Opipp.Core/        formats, processing, pipeline, CLI model (the engine)
 │   ├── Opipp.Cli/         drop-in replacement for pipp_core.exe
 │   └── Opipp.App/         WinForms front-end (ported from the decompiled PIPP.exe)
-├── tests/                9 projects, 1319 tests - formats, processing, CLI, GUI, end-to-end
+├── tests/                9 projects, 1324 tests - formats, processing, CLI, GUI, end-to-end
 ├── tools/
 │   ├── Opipp.Parity/      oracle comparison harness
 │   └── *.py              synthetic SER fixture generators

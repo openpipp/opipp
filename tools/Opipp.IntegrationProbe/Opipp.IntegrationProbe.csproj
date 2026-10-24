@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Opipp.IntegrationProbe</AssemblyName>
+    <RootNamespace>Opipp.IntegrationProbe</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!-- Workstation GC, like the CLI and the GUI: a server-GC process reports a different working set
+         for the same live objects, and these numbers are meant to describe the shipped runtime. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Opipp.Core\Opipp.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -25,14 +25,14 @@ namespace PIPP_Application;
 /// the only reachable deletion is a path the run itself created.
 /// </para>
 /// <para>
-/// The one file the engine stages in the output tree is its integrated image, written as
-/// <c>&lt;name&gt;.integrating&lt;ext&gt;</c> and moved onto the final name only after the whole
-/// integration succeeded; the engine removes the staging file in its own <c>finally</c>. A hard kill
-/// of the engine process — which is how the GUI cancels a run — skips that <c>finally</c>, so a
-/// staging orphan can survive a cancel. The front-end never creates that path and cannot know the
-/// exact name the engine gives it, so it does not guess: a pattern sweep would delete another run's
-/// staging file or an operator's own file. The orphan is inert — its <c>.integrating</c> name keeps
-/// it from being mistaken for a finished image, and the next run writes its own.
+/// The one file the engine stages in the output tree is its integrated image, written inside a
+/// run-owned directory as <c>.opipp-staging/&lt;run-guid&gt;/&lt;name&gt;.integrating&lt;ext&gt;</c> and
+/// moved onto the final name only after the whole integration succeeded; the engine removes that
+/// directory in its own <c>finally</c>, and a later run removes stale GUID directories left by a hard
+/// kill (older than an hour). A hard kill of the engine process — which is how the GUI cancels a run
+/// — skips that <c>finally</c>, so a run directory can survive a cancel until the next run. The
+/// front-end never creates that path and does not sweep it: the engine owns the cleanup, and a GUI
+/// pattern match could delete another run's staging directory or an operator's own file.
 /// </para>
 /// </remarks>
 internal sealed class RunTempArtifacts

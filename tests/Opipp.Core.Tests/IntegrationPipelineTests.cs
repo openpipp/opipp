@@ -8,7 +8,8 @@ namespace Opipp.Core.Tests;
 
 /// <summary>
 /// Pipeline-level tests for final-image integration: the selection is streamed from the retention
-/// store instead of materialised, the staging file cannot touch an unrelated file, and the requested
+/// store instead of materialised, each run stages inside its own directory so it can never touch an
+/// unrelated file, a killed run's orphaned directory is swept by the next run, and the requested
 /// area of interest is applied after registration so it keeps its full geometry.
 /// </summary>
 /// <remarks>
@@ -218,16 +219,17 @@ public sealed class IntegrationPipelineTests
     }
 
     // ---------------------------------------------------------------------------------------------
-    // Staging: only this run's own file is ever written or deleted
+    // Staging: each run owns a directory, and only its own files are ever written or deleted
     // ---------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// A file that already sits at the old predictable staging name must survive a successful run:
-    /// the run stages under a GUID name of its own and moves that file into place, so the unrelated
-    /// file is neither truncated nor moved away.
+    /// A successful run stages inside its own <c>.opipp-staging/&lt;run-guid&gt;/</c> directory and
+    /// removes it along with the finished image: the output root ends up holding the image and the
+    /// operator's files, and no engine bookkeeping at all. The file already sitting at the old
+    /// predictable staging name is neither truncated nor moved away.
     /// </summary>
     [Fact]
-    public void Staging_LeavesAPreexistingStagingNamedFileUntouched_OnSuccess()
+    public void Staging_SuccessLeavesNoStagingDirectory_AndAPreexistingStagingNamedFileUntouched()
     {
         string directory = NewDirectory();
         Directory.CreateDirectory(directory);
@@ -248,10 +250,16 @@ public sealed class IntegrationPipelineTests
                 Integration = new IntegrationOptions { Method = IntegrationMethod.Mean },
             }).Run([input]);
 
-            Assert.Single(report.OutputFiles);
-            Assert.Equal(Path.Combine(output, "capture.tif"), report.OutputFiles[0]);
+            string integrated = Path.Combine(output, "capture.tif");
+            Assert.Equal(integrated, Assert.Single(report.OutputFiles));
+
+            // The staged file really landed at the destination with the integrated samples.
+            Frame image = ReadTiff(integrated);
+            Assert.Equal(Width, image.Width);
+            Assert.Equal(100, image.Samples[(20 * Width) + 20]);
+
             Assert.Equal(sentinelBytes, File.ReadAllBytes(sentinel));
-            Assert.Empty(StagingFiles(output, ".tif"));
+            AssertNoStaging(output);
         }
         finally
         {
@@ -260,8 +268,9 @@ public sealed class IntegrationPipelineTests
     }
 
     /// <summary>
-    /// A failure after the staging file exists removes exactly that file: the writer rejects a
-    /// 16-bit frame for AVI, so the reservation, the failed write and the cleanup all run.
+    /// A failure after the staging file exists removes this run's whole staging directory: the writer
+    /// rejects a 16-bit frame for AVI, so the directory creation, the failed write and the cleanup all
+    /// run, and the sentinel at the old staging name survives.
     /// </summary>
     [Fact]
     public void Staging_IsRemovedAfterAWriterFailure_AndTheSentinelSurvives()
@@ -286,8 +295,8 @@ public sealed class IntegrationPipelineTests
             }).Run([input]));
 
             Assert.Equal(sentinelBytes, File.ReadAllBytes(sentinel));
-            Assert.Empty(StagingFiles(output, ".avi"));
             Assert.False(File.Exists(Path.Combine(output, "capture.avi")));
+            AssertNoStaging(output);
         }
         finally
         {
@@ -296,8 +305,8 @@ public sealed class IntegrationPipelineTests
     }
 
     /// <summary>
-    /// A cancelled integration leaves no image and no staging file, and the unrelated sentinel at
-    /// the old predictable name is untouched: this run only ever owned the GUID path it reserved.
+    /// A cancelled integration leaves no image and no staging directory, and the unrelated sentinel at
+    /// the old predictable name is untouched: this run only ever owned the directory it created.
     /// </summary>
     [Fact]
     public void Staging_IsRemovedAfterCancellation_AndTheSentinelSurvives()
@@ -323,15 +332,99 @@ public sealed class IntegrationPipelineTests
             })
             {
                 // The integration has read a frame, so the failure lands inside the branch that owns
-                // the staging file rather than in the input stage.
+                // the staging directory rather than in the input stage.
                 IntegrationFrameRead = _ => cancellation.Cancel(),
             };
 
             Assert.Throws<OperationCanceledException>(() => processor.Run([input], cancellation.Token));
 
             Assert.Equal(sentinelBytes, File.ReadAllBytes(sentinel));
-            Assert.Empty(StagingFiles(output, ".tif"));
             Assert.False(File.Exists(Path.Combine(output, "capture.tif")));
+            AssertNoStaging(output);
+        }
+        finally
+        {
+            Delete(directory);
+        }
+    }
+
+    /// <summary>
+    /// A GUI kill cannot run the engine's cleanup, so the run's staging directory outlives it. The
+    /// next run sweeps that orphan, but only that one: a recent directory may belong to a run that is
+    /// still writing, a directory this engine did not name is not its to delete, and files outside
+    /// <c>.opipp-staging</c> are never enumerated at all.
+    /// </summary>
+    [Fact]
+    public void Staging_StaleRunDirectoryFromAKilledRun_IsRemovedByTheNextRun()
+    {
+        string directory = NewDirectory();
+        Directory.CreateDirectory(directory);
+        try
+        {
+            string input = WriteCapture(directory, "capture.ser", 3, 64, 48, f => 130);
+            string output = Path.Combine(directory, "out");
+            string stagingRoot = Path.Combine(output, ".opipp-staging");
+            Directory.CreateDirectory(stagingRoot);
+
+            // The kill: the staged file and its run's directory were left behind, timestamped long ago.
+            string staleRun = Path.Combine(stagingRoot, new string('a', 32));
+            Directory.CreateDirectory(staleRun);
+            File.WriteAllBytes(Path.Combine(staleRun, "capture.integrating.tif"), [1, 2, 3]);
+            File.WriteAllText(Path.Combine(staleRun, "leftover.bin"), "partial output");
+            Directory.SetLastWriteTimeUtc(staleRun, DateTime.UtcNow - TimeSpan.FromHours(2));
+
+            // A run still staging right now: fresh, so the sweep must leave it alone.
+            string liveRun = Path.Combine(stagingRoot, new string('b', 32));
+            Directory.CreateDirectory(liveRun);
+            File.WriteAllText(Path.Combine(liveRun, "capture.integrating.tif"), "in flight");
+            Directory.SetLastWriteTimeUtc(liveRun, DateTime.UtcNow);
+
+            // Anything under the staging root that this engine did not name belongs to the operator.
+            string operatorDirectory = Path.Combine(stagingRoot, "operator-notes");
+            Directory.CreateDirectory(operatorDirectory);
+            File.WriteAllText(Path.Combine(operatorDirectory, "note.txt"), "not staging");
+            Directory.SetLastWriteTimeUtc(operatorDirectory, DateTime.UtcNow - TimeSpan.FromDays(30));
+
+            // Unrelated files outside the staging root, including one at the old staging name.
+            string sentinel = Path.Combine(output, "capture.integrating.tif");
+            byte[] sentinelBytes = "operator data, not staging"u8.ToArray();
+            File.WriteAllBytes(sentinel, sentinelBytes);
+            string note = Path.Combine(output, "notes.txt");
+            File.WriteAllText(note, "keep me");
+
+            ProcessingReport report = new Processor(new PipelineSettings
+            {
+                OutputDirectory = output,
+                OutputExtension = ".tif",
+                WriteLogFile = false,
+                Integration = new IntegrationOptions { Method = IntegrationMethod.Mean },
+            }).Run([input]);
+
+            string integrated = Path.Combine(output, "capture.tif");
+            Assert.Equal(integrated, Assert.Single(report.OutputFiles));
+
+            // The next run's own image is correct and its own directory is gone with it.
+            Frame image = ReadTiff(integrated);
+            Assert.Equal(64, image.Width);
+            Assert.Equal(48, image.Height);
+            Assert.Equal(130, image.Samples[(10 * 64) + 10]);
+
+            Assert.False(Directory.Exists(staleRun), "the killed run's directory must be swept");
+            Assert.False(File.Exists(Path.Combine(staleRun, "leftover.bin")));
+            Assert.True(Directory.Exists(liveRun), "a recent staging directory may belong to a live run");
+            Assert.Equal("in flight", File.ReadAllText(Path.Combine(liveRun, "capture.integrating.tif")));
+            Assert.True(Directory.Exists(operatorDirectory), "only GUID-named run directories are swept");
+            Assert.Equal("not staging", File.ReadAllText(Path.Combine(operatorDirectory, "note.txt")));
+            Assert.Equal(sentinelBytes, File.ReadAllBytes(sentinel));
+            Assert.Equal("keep me", File.ReadAllText(note));
+
+            // Nothing was added to the staging root by the sweep, and the surviving operator entries
+            // are the only things left in it besides the live run.
+            string[] remaining = Directory.GetDirectories(stagingRoot);
+            Array.Sort(remaining, StringComparer.OrdinalIgnoreCase);
+            string[] expected = [liveRun, operatorDirectory];
+            Array.Sort(expected, StringComparer.OrdinalIgnoreCase);
+            Assert.Equal(expected, remaining);
         }
         finally
         {
@@ -585,9 +678,19 @@ public sealed class IntegrationPipelineTests
         return frame;
     }
 
-    /// <summary>Staging files this run created, matching the GUID shape and excluding the sentinel.</summary>
-    private static string[] StagingFiles(string directory, string extension) =>
-        Directory.GetFiles(directory, "*.integrating-*" + extension);
+    /// <summary>
+    /// Asserts the output root carries no staging bookkeeping: no <c>.opipp-staging</c> container
+    /// anywhere beneath it (a finished or cleaned-up run leaves none) and no file at the old
+    /// <c>&lt;name&gt;.integrating-&lt;guid&gt;&lt;ext&gt;</c> shape, which is what a killed run used
+    /// to leave in the output root itself.
+    /// </summary>
+    private static void AssertNoStaging(string outputRoot)
+    {
+        Assert.False(
+            Directory.Exists(Path.Combine(outputRoot, Processor.StagingDirectoryName)),
+            "the run's staging directory must not survive the run");
+        Assert.Empty(Directory.GetFiles(outputRoot, "*.integrating-*", SearchOption.AllDirectories));
+    }
 
     private static Frame ReadTiff(string path)
     {

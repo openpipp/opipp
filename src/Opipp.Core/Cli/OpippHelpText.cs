@@ -182,6 +182,17 @@ Final image (OPIPP extension):
   -stack_coverage and -stack_subpixel require -stack= and are rejected otherwise. -qw
   weights mean/sum by each frame's copy count; median expands the copies into frames
   because it takes no weights. A cancelled or failed integration leaves no output file.
+  Raw Bayer capture: a mosaic frame can move only by whole pixels, and every frame must
+  land on the same CFA phase. An alignment that moves a frame by an odd number of pixels
+  (a centring shift of -20,+39 on a raw RGGB capture, for example) moves its 2x2 colour
+  tile to another phase, so integrating that raw capture directly fails with exit 1 and
+  writes nothing. Debayer first with -db, or -db=<pattern> to override the detected
+  pattern (0 GBRG, 1 BGGR, 2 RGGB, 3 GRBG), and integrate the colour frames. Keeping the
+  mosaic works only when every shift is an even whole number of pixels. Turning sub-pixel
+  registration off (-stack_subpixel=off) makes the shifts integral, but an odd rounded
+  offset is still refused, and a fractional offset is refused as well because bilinear
+  resampling across CFA sites has no single colour. In the GUI, enable "Debayer
+  Monochrome Frames" before a final-image run on a raw colour capture.
 
 Misc options:
   -join                    Join all input files and treat them as one input (Join mode).

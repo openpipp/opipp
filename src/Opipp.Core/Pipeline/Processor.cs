@@ -1098,24 +1098,25 @@ public sealed class Processor
                     // the box: a 10x10 request under a 3 px offset came out 7x9.
                     Frame final = ApplyOverlay(CropIntegratedToAreaOfInterest(result), detectionThreshold);
 
-                    // One file. It is written under a staging name and moved into place only once the
-                    // whole integration has succeeded, so cancellation or a failure leaves nothing
-                    // behind that could be mistaken for a finished image. The staging name carries a
-                    // GUID and the file is created with FileMode.CreateNew, so a file that already
-                    // sits at some other "<base>.integrating<ext>" path is never opened for write and
-                    // never deleted, however this run ends; only the exact path reserved here is
-                    // cleaned, and the finished image still overwrites its destination.
+                    // One file. It is written inside a staging directory owned by this run -
+                    // .opipp-staging/<run-guid>/ - and moved into place only once the whole
+                    // integration has succeeded, so cancellation or a failure leaves nothing behind
+                    // that could be mistaken for a finished image, and nothing this run did not
+                    // create is ever opened or deleted. The directory name carries its own GUID, so
+                    // two runs (or two units of one run) can never collide, and the finished image
+                    // still overwrites its destination.
+                    string stagingRoot = Path.Combine(outputRoot, StagingDirectoryName);
+                    string stagingRunDirectory = Path.Combine(stagingRoot, Guid.NewGuid().ToString("n"));
                     string stagingPath = Path.Combine(
-                        outputRoot,
-                        baseName + ".integrating-" + Guid.NewGuid().ToString("n") + _settings.OutputExtension);
+                        stagingRunDirectory, baseName + ".integrating" + _settings.OutputExtension);
                     try
                     {
-                        // Reserve this run's staging path atomically. CreateNew fails rather than
-                        // truncating a file that already exists there, so an unrelated file can never
-                        // be clobbered even by a name collision.
-                        using (new FileStream(stagingPath, FileMode.CreateNew, FileAccess.Write))
-                        {
-                        }
+                        Directory.CreateDirectory(stagingRunDirectory);
+
+                        // A GUI process killed outright cannot run its finally, so its run directory
+                        // survives. A later run sweeps directories older than an hour; anything
+                        // younger may be a run that is still staging in another process.
+                        DeleteStaleStagingRuns(stagingRoot, stagingRunDirectory, DateTime.UtcNow);
 
                         using (IFrameSink sink = FrameSinkFactory.Create(
                             stagingPath, final, 1, _settings.Fps, _settings.AviCodec, _settings.AviQuality))
@@ -1129,20 +1130,10 @@ public sealed class Processor
                     finally
                     {
                         // Staging cleanup is best-effort: a cleanup fault must never replace the
-                        // cancellation or integration failure that caused it.
-                        try
-                        {
-                            if (File.Exists(stagingPath))
-                            {
-                                File.Delete(stagingPath);
-                            }
-                        }
-                        catch (IOException)
-                        {
-                        }
-                        catch (UnauthorizedAccessException)
-                        {
-                        }
+                        // cancellation or integration failure that caused it. Only this run's own
+                        // directory is removed, and the shared staging root goes with it once empty
+                        // so a completed output directory carries no engine bookkeeping.
+                        DeleteStagingRun(stagingRunDirectory, stagingRoot);
                     }
 
                     outputFrames++;
@@ -1299,7 +1290,9 @@ public sealed class Processor
                                 "Frames of one run end up with different phases when the alignment shift " +
                                 "moves some by an odd number of pixels and others by an even number (or " +
                                 "by none), and joined inputs with different CFA headers always do; " +
-                                "debayer to colour, write separate outputs, or disable the shift.");
+                                "debayer to colour first with -db (or -db=<pattern> to override the " +
+                                "detected pattern), write separate outputs, or keep every shift even. " +
+                                "In the GUI, enable \"Debayer Monochrome Frames\" before the run.");
                         }
 
                         ContainerFramePrepared?.Invoke(q);
@@ -2673,6 +2666,137 @@ public sealed class Processor
         IntegrationMethod.Median => "median",
         _ => method.ToString().ToLowerInvariant(),
     };
+
+    /// <summary>
+    /// Container for integration staging, one GUID-named directory per writing run. It lives inside
+    /// the output root so the staged file and its destination share a volume and the final move is a
+    /// rename, not a copy; it is removed again as soon as its last run directory is gone.
+    /// </summary>
+    internal const string StagingDirectoryName = ".opipp-staging";
+
+    /// <summary>
+    /// Age at which a staging directory is treated as an orphan. A run that is killed outright - the
+    /// GUI terminating its engine process, a power loss - cannot run its <c>finally</c>, so its
+    /// directory outlives it; a later run sweeps it once it is this old. Anything younger may belong
+    /// to another process that is staging right now, so it is left alone.
+    /// </summary>
+    private static readonly TimeSpan StaleStagingAge = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// Removes staging directories left behind by runs that died before cleaning up. Best effort and
+    /// tightly scoped: only directories directly under <paramref name="stagingRoot"/>, only when
+    /// their name has the shape this component generates, and never the directory the current run
+    /// just created. Files and directories outside the staging root are never enumerated or touched,
+    /// and a cleanup fault is swallowed because it must not fail a run that is otherwise healthy.
+    /// </summary>
+    private static void DeleteStaleStagingRuns(string stagingRoot, string currentRunDirectory, DateTime utcNow)
+    {
+        string[] candidates;
+        try
+        {
+            if (!Directory.Exists(stagingRoot))
+            {
+                return;
+            }
+
+            candidates = Directory.GetDirectories(stagingRoot);
+        }
+        catch (IOException)
+        {
+            return;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        foreach (string candidate in candidates)
+        {
+            // A directory this component did not name is not ours to delete, whatever its age.
+            if (string.Equals(candidate, currentRunDirectory, StringComparison.OrdinalIgnoreCase)
+                || !IsStagingRunName(Path.GetFileName(candidate)))
+            {
+                continue;
+            }
+
+            try
+            {
+                if (utcNow - Directory.GetLastWriteTimeUtc(candidate) < StaleStagingAge)
+                {
+                    continue;
+                }
+
+                Directory.Delete(candidate, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+
+        TryDeleteEmptyStagingRoot(stagingRoot);
+    }
+
+    /// <summary>
+    /// Deletes one run's staging directory after its file has been moved into place or abandoned.
+    /// Best effort: the run is already ending, so a cleanup fault must not replace the outcome that
+    /// caused it, and a directory another process re-created under the same name is not re-entered.
+    /// </summary>
+    private static void DeleteStagingRun(string runDirectory, string stagingRoot)
+    {
+        try
+        {
+            Directory.Delete(runDirectory, recursive: true);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+
+        TryDeleteEmptyStagingRoot(stagingRoot);
+    }
+
+    /// <summary>Drops the staging root once no run owns it, leaving a finished output root clean.</summary>
+    private static void TryDeleteEmptyStagingRoot(string stagingRoot)
+    {
+        try
+        {
+            Directory.Delete(stagingRoot);
+        }
+        catch (IOException)
+        {
+            // Still holds a live or orphaned run directory: leave it for that run (or a later sweep).
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// True for the 32 hex digits of a GUID in "n" format - the only names this component creates
+    /// under the staging root. Anything else there belongs to the operator and is never deleted.
+    /// </summary>
+    private static bool IsStagingRunName(string name)
+    {
+        if (name.Length != 32)
+        {
+            return false;
+        }
+
+        foreach (char c in name)
+        {
+            if (!char.IsAsciiHexDigit(c))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     /// <summary>The channel order <c>-rgb</c> uses for its file prefixes: <c>r_</c>, <c>g_</c>, <c>b_</c>.</summary>
     private static readonly (char Letter, int Channel)[] RgbChannels = [('r', 0), ('g', 1), ('b', 2)];

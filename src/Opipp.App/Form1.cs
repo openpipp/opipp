@@ -5419,13 +5419,12 @@ public partial class Form1 : Form
 		// enumerating its *.tmp files destroyed unrelated files (a keeper.tmp put there by another
 		// tool). The masters a cancelled run leaves behind are session temp files, not output files.
 		//
-		// The engine stages its integrated image under <name>.integrating<ext> and deletes that
-		// staging file in its own finally; a hard kill of the process skips that finally. The
-		// front-end never creates that path and cannot know the exact name the engine gives it, so
-		// the only safe cleanup here is the registry below: matching *.integrating* in the output
-		// directory would delete another run's staging file (or an operator's file) rather than this
-		// run's. An orphan left by a hard kill is inert — it carries the .integrating name, so it is
-		// never mistaken for a finished image, and the next run writes a fresh one.
+		// The engine stages its integrated image inside .opipp-staging/<run-guid>/ and deletes that
+		// run directory in its own finally; a hard kill of the process skips that finally. The engine
+		// removes stale GUID directories (older than an hour) at the start of a later run, so the
+		// front-end must not sweep the output tree itself: matching staging names there could delete
+		// another run's directory or an operator's file. The registry below stays the only deletion
+		// path here, and an orphan directory is inert — its name keeps it from being read as output.
 		run_temp_artifacts?.DeleteAll();
 	}
 
