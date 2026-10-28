@@ -19,10 +19,14 @@ projects — is `Opipp.*`.
 
 ## Status: early development — feedback wanted
 
-OPIPP is at **0.2.2-alpha**. The engine is functionally complete and parity-tested against the
+OPIPP is at **0.3.0-alpha**. The engine is functionally complete and parity-tested against the
 original across 27 compared cases, with two declared differences, but one algorithm (surface-feature
 tracking) is still one pixel off on part of the real-data fixture, and the UI has not seen broad
 real-world use. Treat it as a working preview.
+
+A new OPIPP extension, `-derotate=on`, corrects field rotation during final-image stacking — the
+original PIPP aligns by translation only, so a rotating capture blurs at the limb. Measured gains,
+limits and the verification against the original are in [docs/derotation.md](docs/derotation.md).
 
 Feedback is genuinely wanted, especially from people who image planets:
 
@@ -120,7 +124,7 @@ dotnet run --project src/Opipp.App
 ## Status
 
 Working end to end (verified by tests): SER → pipeline → FITS/TIFF/SER/AVI/GIF output, calibration
-subtract/divide, histogram stretch, quality selection, alignment, stacking and animation. **1324 tests**
+subtract/divide, histogram stretch, quality selection, alignment, optional field-rotation correction, stacking and animation. **1446 tests**
 across nine projects (0 failing; two skip without the evaluation capture); [`docs/status.md`](docs/status.md) is the authoritative summary.
 
 The CLI is a drop-in engine: it accepts the GUI's stdin protocol (switches and file paths, one per

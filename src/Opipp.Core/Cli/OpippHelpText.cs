@@ -179,7 +179,29 @@ Final image (OPIPP extension):
                            resampling (default).
   -stack_subpixel=off      Apply whole pixels only, rounding half away from zero: exactly
                            the pre-0.2 shift, with no resampling.
-  -stack_coverage and -stack_subpixel require -stack= and are rejected otherwise. -qw
+  -derotate=on             Correct field rotation while integrating. PIPP's alignment is
+                           translation-only, so a capture whose field rotates (alt-az
+                           tracking, a handheld camera, camera roll) smears around the edges
+                           however well it is centred: each frame is shifted into place but
+                           still turned, so the limb of the object and every surface feature
+                           streak along an arc. With -derotate=on every frame is
+                           measured against frame 0, with a predicted window to
+                           keep the search cheap; a keyframe sample anchors long
+                           selections, and beyond 120 frames a subset is refined
+                           and the rest interpolated. Every frame is then
+                           rotated about the image centre by its own angle, and
+                           all frames are cropped to the one rectangle every
+                           rotation can fill, so the integrated edges are sharp
+                           instead of radially smeared. The output is therefore
+                           smaller than the input whenever an angle is not zero.
+                           Off by default.
+  -derotate_search=<deg>   Largest rotation searched either side of frame 0, from 0.1 to 45
+                           degrees (default 5). A wider search costs time and can lock onto
+                           the wrong angle when the frame repeats itself; a narrower one
+                           refuses captures that rotated further. Only used with
+                           -derotate=on.
+  -stack_coverage, -stack_subpixel, -derotate and -derotate_search require -stack= and are
+  rejected otherwise. -qw
   weights mean/sum by each frame's copy count; median expands the copies into frames
   because it takes no weights. A cancelled or failed integration leaves no output file.
   Raw Bayer capture: a mosaic frame can move only by whole pixels, and every frame must
@@ -192,7 +214,9 @@ Final image (OPIPP extension):
   registration off (-stack_subpixel=off) makes the shifts integral, but an odd rounded
   offset is still refused, and a fractional offset is refused as well because bilinear
   resampling across CFA sites has no single colour. In the GUI, enable "Debayer
-  Monochrome Frames" before a final-image run on a raw colour capture.
+  Monochrome Frames" before a final-image run on a raw colour capture. -derotate
+  refuses a raw mosaic outright: rotating resamples across the colour lattice, so
+  debayer with -db first and derotate the colour frames.
 
 Misc options:
   -join                    Join all input files and treat them as one input (Join mode).

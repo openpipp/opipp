@@ -2716,6 +2716,29 @@ public partial class Form1 : Form
 					flag = true;
 				}
 				break;
+			case "FINAL_IMAGE_DEROTATE":
+				// Same explicit-default policy as the four keys above: the file is read onto a
+				// reset form, so a file written before derotation existed keeps it off, and a
+				// present-but-unreadable value is reported instead of guessed at.
+				if (FinalImageSettings.TryParseDerotate(text3, out bool derotate))
+				{
+					final_image_settings.Derotate = derotate;
+				}
+				else
+				{
+					flag = true;
+				}
+				break;
+			case "FINAL_IMAGE_DEROTATE_SEARCH":
+				if (FinalImageSettings.TryParseDerotateSearch(text3, out double derotateSearch))
+				{
+					final_image_settings.DerotateSearchDegrees = derotateSearch;
+				}
+				else
+				{
+					flag = true;
+				}
+				break;
 			case "DEBUG_FIND":
 				flag = flag2;
 				break;
@@ -2902,6 +2925,10 @@ public partial class Form1 : Form
 		list.Add("FINAL_IMAGE_METHOD " + FinalImageSettings.MethodToken(final_image_settings.Method));
 		list.Add("FINAL_IMAGE_COVERAGE " + FinalImageSettings.CoverageToken(final_image_settings.Coverage));
 		list.Add("FINAL_IMAGE_SUBPIXEL " + FinalImageSettings.SubpixelToken(final_image_settings.Subpixel));
+		// Derotation is part of the same choice: written invariantly with one decimal so a profile
+		// saved on a comma-decimal machine reads back as the same angle.
+		list.Add("FINAL_IMAGE_DEROTATE " + FinalImageSettings.DerotateToken(final_image_settings.Derotate));
+		list.Add("FINAL_IMAGE_DEROTATE_SEARCH " + FinalImageSettings.FormatDerotateSearch(final_image_settings.DerotateSearchDegrees));
 		saveoptionsFD.Title = "Save PIPP Options File";
 		saveoptionsFD.Filter = "PIPP Options File|*.pof";
 		saveoptionsFD.InitialDirectory = cPersistentData.options_directory;

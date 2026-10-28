@@ -1,7 +1,7 @@
 # HANDOFF - start here
 
 Cold-start guide for continuing this project in a fresh session. Read this first, then the two
-documents it points at. Everything here is verified as of the **v0.1.10-alpha** release.
+documents it points at. Everything here is verified as of the **v0.3.0-alpha** release.
 
 ## What the project is
 
@@ -17,8 +17,9 @@ git-ignored, never published or committed. The repository is GPLv3 for its own c
 | --- | --- |
 | Repo | <https://github.com/openpipp/opipp> (public, GitHub organization `openpipp`) |
 | Build | `dotnet build OPIPP.slnx` - clean |
-| Tests | **1324 tests, 0 failing** (9 projects; 2 skip without `samples/saturn30.ser`) |
+| Tests | **1446 tests, 0 failing** (9 projects; 2 skip without `samples/saturn30.ser`) |
 | Parity | **27 compared, 27 matched**, 2 deliberate differences, 0 gaps (`--real`) |
+| Field rotation | `-derotate=on` / `-derotate_search=<deg>`; 2.42x edge sharpness at 1.45 deg, 21.5x at 116 deg; see `docs/derotation.md` |
 | Switches | **131 parse; 76 verified / 43 wired / 12 inert** (see `docs/status.md`) |
 | Managed code | Core 11.8k lines, Cli 0.3k, App 14.5k, tests 5.5k |
 | Reference | `decompiled/` 14,277 lines C#; `ghidra/out/pipp_core.c` 4,229 functions |

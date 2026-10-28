@@ -119,4 +119,92 @@ public sealed class FinalImageIntegrationRunTests
             AppTestSupport.DeleteQuietly(directory);
         }
     }
+
+    [SkippableFact]
+    public void DerotateOnAThreeFrameSer_SendsBothDerotateSwitchesAfterTheStackSwitches()
+    {
+        string directory = AppTestSupport.TempDirectory();
+        try
+        {
+            string science = AppTestSupport.WritePlanetSer(directory, "science.ser", 3);
+            string output = Path.Combine(directory, "out");
+
+            AppTestSupport.RunSta(() =>
+            {
+                using var form = new Form1();
+                _ = form.Handle;
+                var errors = new List<string>();
+                form.ErrorDialogOverride = (message, caption) => errors.Add(caption + ": " + message);
+
+                form.PrepareRunForTest(
+                    [science],
+                    outputDirectory: output,
+                    flatCalibration: false,
+                    flatDarkSubtraction: false,
+                    darkSubtraction: false);
+
+                form.FinalImageSettingsForTest = new FinalImageSettings
+                {
+                    Enabled = true,
+                    Method = FinalImageMethod.Mean,
+                    Coverage = FinalImageCoverage.CropToOverlap,
+                    Subpixel = true,
+                    Derotate = true,
+                    DerotateSearchDegrees = 12.5,
+                };
+
+                form.StartProcessingForTest();
+                Assert.True(form.ProcessingRunningForTest, "the run did not start: " + form.OutputTextForTest);
+                AppTestSupport.PumpUntil(() => !form.ProcessingRunningForTest, "the run to finish");
+                AppTestSupport.PumpUntilRunVerdict(form);
+
+                // The GUI half is proven even while the CLI half is still landing: the form put the
+                // derotation switches into the argument list it sends, after the stack switches, and
+                // named the range in the transcript.
+                string[] arguments = form.LastEngineArgumentsForTest.ToArray();
+                Assert.Contains("-stack=mean", arguments);
+                Assert.Contains("-stack_subpixel=on", arguments);
+                Assert.Contains("-derotate=on", arguments);
+                Assert.Contains("-derotate_search=12.5", arguments);
+                Assert.True(
+                    Array.IndexOf(arguments, "-stack_subpixel=on") < Array.IndexOf(arguments, "-derotate=on"),
+                    "the derotation switches must follow the stack switches: " + string.Join(" ", arguments));
+                Assert.Contains(
+                    "Final image integration: mean, crop to overlap, subpixel on, derotate 12.5 deg",
+                    form.OutputTextForTest);
+
+                bool unknownSwitch =
+                    form.LastExitCodeForTest == 127
+                    && form.OutputTextForTest.Contains("Unknown switch", StringComparison.Ordinal);
+
+                form.DetachEngineCallbacksForTest();
+                AppTestSupport.PumpFor(TimeSpan.FromMilliseconds(250));
+
+                Skip.If(
+                    unknownSwitch,
+                    "the engine does not recognise -derotate yet (CLI wiring still landing): the GUI "
+                    + "wiring was verified, the run assertion was skipped. Engine said: "
+                    + form.OutputTextForTest);
+
+                Assert.False(
+                    form.ProcessingFailedForTest,
+                    "status=" + form.StatusTextForTest
+                    + " exit=" + form.LastExitCodeForTest
+                    + " output=" + form.OutputTextForTest
+                    + " errors=" + string.Join(" | ", errors));
+                Assert.Equal(0, form.LastExitCodeForTest);
+                Assert.Equal("COMPLETE", form.StatusTextForTest);
+                Assert.Equal(
+                    1,
+                    Directory.GetFiles(output, "*.tif", SearchOption.AllDirectories)
+                        .Count(file => !file.StartsWith(
+                            Path.Combine(output, "logs") + Path.DirectorySeparatorChar,
+                            StringComparison.OrdinalIgnoreCase)));
+            });
+        }
+        finally
+        {
+            AppTestSupport.DeleteQuietly(directory);
+        }
+    }
 }

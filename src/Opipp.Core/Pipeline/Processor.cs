@@ -17,6 +17,11 @@ using Opipp.Core.Stacking;
 // racing other runs that share the process temp directory.
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Opipp.Core.Tests")]
 
+// The derotation curve helpers (keyframe spacing and the piecewise-linear interpolation between
+// samples) are internal so the CLI's end-to-end tests can assert the arithmetic that shapes a
+// -derotate run without exposing it on the public API.
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Opipp.Cli.Tests")]
+
 namespace Opipp.Core.Pipeline;
 
 /// <summary>Progress notification raised while a pipeline run advances.</summary>
@@ -446,6 +451,26 @@ public sealed class PipelineSettings
     /// that were already shifted, while integration registers the unshifted frames itself.
     /// </remarks>
     public IntegrationOptions? Integration { get; set; }
+
+    /// <summary>
+    /// Field-rotation correction during final-image integration (<c>-derotate=on</c>, OPIPP
+    /// extension). <see langword="null"/> means the switch was absent or off, and the integration
+    /// stays translation-only.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Read only by the <see cref="Integration"/> branch: with no integration there is nothing to
+    /// derotate, and the CLI rejects <c>-derotate</c> without <c>-stack=</c> before a run starts.
+    /// </para>
+    /// <para>
+    /// When enabled, a keyframe sample of the selection is measured against frame 0, the angle curve
+    /// is interpolated to every delivered frame, each frame is rotated about the image centre by its
+    /// own angle, and all frames are cropped to the one rectangle every rotation can fill. The
+    /// translation that registers a rotated frame is then measured by the estimator rather than taken
+    /// from the tracking stages, because rotating a frame moves its object.
+    /// </para>
+    /// </remarks>
+    public DerotationOptions? Derotation { get; set; }
 
     /// <summary>Frames per second metadata for video outputs.</summary>
     public double Fps { get; set; }
@@ -1073,12 +1098,51 @@ public sealed class Processor
                     }
 
                     Action<int>? readObserver = IntegrationFrameRead;
+
+                    // Field rotation (-derotate, OPIPP extension). The angle curve is estimated once
+                    // on a keyframe sample and interpolated to every delivered frame, and the
+                    // translation each rotated frame needs is measured by the estimator rather than
+                    // taken from the tracking stages: rotating a frame moves its object.
+                    DerotationPlan? derotation = _settings.Derotation is { Enabled: true } derotationOptions
+                        ? BuildDerotationPlan(handles, derotationOptions, cancellationToken)
+                        : null;
+
+                    IReadOnlyList<AlignmentOffset> shifts = integrateShifts;
+                    if (derotation is not null)
+                    {
+                        // A pre-pass over the selection: one rotation per frame, kept only long enough
+                        // to read a centroid, so nothing is materialised. The integrator snapshots its
+                        // shift list before it reads any frame, so these offsets have to exist up
+                        // front; the pixels themselves are still rotated on demand inside
+                        // ReadIntegrationFrame. A 20-frame mean therefore pays two rotations per frame
+                        // (one to measure, one to supply), and a median pays one per output band plus
+                        // the measurement, which is the documented cost of not holding the rotated
+                        // selection resident.
+                        var measured = new AlignmentOffset[handles.Count];
+                        for (int i = 0; i < handles.Count; i++)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            measured[i] = derotation.Measure(handles[i].Frame, i);
+                        }
+
+                        shifts = measured;
+                        _protocol?.WriteLine(derotation.ProtocolLine);
+                    }
+
                     Frame ReadIntegrationFrame(int index)
                     {
                         // Read on demand, one frame at a time. The integrator accumulates into its own
                         // buffers and, for median, re-reads the selection band by band, so the frame
                         // must not be cached across calls: the store owns the buffer it hands out.
                         Frame frame = handles[index].Frame;
+                        if (derotation is not null)
+                        {
+                            // Rotation, crop and centroid are recomputed on every read. That is the
+                            // price of never holding the rotated selection: median re-reads each
+                            // index once per band, so it rotates each frame that many times over.
+                            frame = derotation.Read(frame, index);
+                        }
+
                         readObserver?.Invoke(index);
                         return frame;
                     }
@@ -1087,7 +1151,7 @@ public sealed class Processor
                     IntegrationResult result = FinalImageIntegrator.Integrate(
                         ReadIntegrationFrame,
                         handles.Count,
-                        integrateShifts,
+                        shifts,
                         integrateWeights,
                         integration,
                         cancellationToken);
@@ -2601,6 +2665,202 @@ public sealed class Processor
         return GeometricTransforms.Crop(
             result.Frame, left - output.X, top - output.Y, right - left, bottom - top);
     }
+
+    // -----------------------------------------------------------------------------------------
+    // Field rotation (-derotate, OPIPP extension)
+    // -----------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Diagnostic for a raw Bayer selection that was asked to derotate. It names <c>-db</c>, the
+    /// switch that fixes it, in the same words the integration stage uses for its CFA refusals.
+    /// </summary>
+    private const string DerotationBayerDiagnostic =
+        "-derotate cannot correct a raw Bayer mosaic: it rotates every frame about the image centre, " +
+        "and resampling across the 2x2 colour lattice would blend different colour sites into one " +
+        "sample. Debayer first with -db, or -db=<pattern> to override the detected pattern " +
+        "(0 GBRG, 1 BGGR, 2 RGGB, 3 GRBG), and integrate the colour frames. In the GUI, enable " +
+        "\"Debayer Monochrome Frames\" before a derotated final-image run.";
+
+    /// <summary>
+    /// Estimates the rotation curve for one integrated selection and the geometry every frame will
+    /// be rotated into.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The estimator is handed a reader over the retained selection, so it decodes one frame at a
+    /// time: nothing materialises the selection. It measures the curve at
+    /// <see cref="DerotationOptions.Keyframes"/> anchors, subdivides any link whose rotation is wider
+    /// than the search range, refines every frame in a narrow window around the interpolated angle
+    /// (<see cref="DerotationOptions.RefineDegrees"/>, capped at
+    /// <see cref="DerotationOptions.MaxRefinedFrames"/> frames), and returns one angle per delivered
+    /// frame.
+    /// </para>
+    /// <para>
+    /// Frame 0 is rotated and cropped exactly as every other frame will be, and that image is the
+    /// reference the per-frame translation is correlated against. Registration is
+    /// <see cref="Derotator.MatchOffset"/>, not a centroid difference: the centroid of a limb-lit disc
+    /// moves with the threshold and with the zero-filled corners a rotation adds, and on a real lunar
+    /// sequence it shifted frames by several pixels — worse than no translation at all.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="BayerPhaseException">
+    /// The selection is a raw mosaic, which cannot be rotated faithfully.
+    /// </exception>
+    private DerotationPlan BuildDerotationPlan(
+        IReadOnlyList<RetainedFrame> handles,
+        DerotationOptions options,
+        CancellationToken cancellationToken)
+    {
+        Frame referenceFrame = handles[0].Frame;
+        if (referenceFrame.Bayer != BayerPattern.None)
+        {
+            throw new BayerPhaseException(DerotationBayerDiagnostic);
+        }
+
+        int[] keyframes = DerotationKeyframes(handles.Count, options.Keyframes);
+
+        double[] angles;
+        try
+        {
+            angles = Derotator.EstimateAngles(
+                index => handles[index].Frame, handles.Count, keyframes, options, cancellationToken);
+        }
+        catch (Exception ex) when (ex is BayerPhaseException or NotSupportedException)
+        {
+            // A joined selection can mix a mosaic frame with a plain one, which the check on frame 0
+            // cannot see. The estimator's refusal means the same thing, so it gets the same remedy.
+            throw new BayerPhaseException(DerotationBayerDiagnostic);
+        }
+
+        double maxAbsAngle = 0;
+        foreach (double angle in angles)
+        {
+            maxAbsAngle = Math.Max(maxAbsAngle, Math.Abs(angle));
+        }
+
+        // Every frame is cropped to the rectangle all rotations can fill. Rotating preserves the
+        // canvas size, so the crop is measured on the unrotated geometry.
+        PixelRect crop = Derotator.CommonCrop(referenceFrame.Width, referenceFrame.Height, maxAbsAngle);
+        Frame croppedReference = Derotator.RotateAndCrop(referenceFrame, angles[0], crop);
+
+        // A rotated, cropped frame is fully covered by real pixels, so the correlation search is
+        // bounded only by how far the capture drifted. A quarter of a percent of the frame per pixel
+        // of search keeps the cost fixed while covering a handheld sequence's drift.
+        int maxShift = Math.Clamp(Math.Min(crop.Width, crop.Height) / 24, 4, 24);
+
+        return new DerotationPlan(
+            angles, crop, croppedReference, maxShift, keyframes.Length, maxAbsAngle);
+    }
+
+    /// <summary>
+    /// The frame indices sampled to estimate the rotation curve: at most
+    /// <paramref name="keyframes"/> frames, spaced as evenly as the selection allows, always
+    /// including the first frame (the reference every angle is measured against) and the last.
+    /// </summary>
+    internal static int[] DerotationKeyframes(int frameCount, int keyframes)
+        => Derotator.AnchorIndices(frameCount, keyframes);
+
+    /// <summary>
+    /// Interpolates the angles measured on the keyframe sample (<paramref name="sampleIndices"/>)
+    /// to one angle per delivered frame, linearly between neighbouring samples.
+    /// </summary>
+    /// <remarks>
+    /// The estimator returns one angle per frame it was given, not a fitted model, so the curve
+    /// between samples is the straight line joining them — the same shape a piecewise-linear fit
+    /// through those samples would produce. Samples outside the ends cannot occur because the first
+    /// and last frames are always sampled, but the ends still clamp rather than extrapolate so a
+    /// short selection cannot read past the sample array.
+    /// </remarks>
+    internal static double[] DerotationInterpolate(int[] sampleIndices, double[] sampleAngles, int frameCount)
+    {
+        ArgumentNullException.ThrowIfNull(sampleIndices);
+        ArgumentNullException.ThrowIfNull(sampleAngles);
+        if (sampleIndices.Length != sampleAngles.Length || sampleIndices.Length == 0)
+        {
+            throw new ArgumentException(
+                $"expected one angle per sampled frame; got {sampleAngles.Length} angle(s) for " +
+                $"{sampleIndices.Length} sample(s)", nameof(sampleAngles));
+        }
+
+        var angles = new double[frameCount];
+        int segment = 0;
+        for (int index = 0; index < frameCount; index++)
+        {
+            while (segment + 2 < sampleIndices.Length && index > sampleIndices[segment + 1])
+            {
+                segment++;
+            }
+
+            int left = sampleIndices[segment];
+            int right = sampleIndices[Math.Min(segment + 1, sampleIndices.Length - 1)];
+            if (index <= left || right == left)
+            {
+                angles[index] = sampleAngles[segment];
+                continue;
+            }
+
+            double t = Math.Min(1.0, (double)(index - left) / (right - left));
+            angles[index] = sampleAngles[segment] + ((sampleAngles[segment + 1] - sampleAngles[segment]) * t);
+        }
+
+        return angles;
+    }
+
+    /// <summary>
+    /// The rotation estimate for one integrated selection: the angle of every delivered frame, the
+    /// rectangle all of them are cropped to, and the rotated reference every frame is correlated
+    /// against.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Read"/> is the only way a frame reaches the integrator, so the measurement pass and
+    /// the pixel pass cannot drift apart: both rotate by this frame's angle and crop to
+    /// <see cref="Crop"/>, and <see cref="Measure"/> correlates that same image against the same
+    /// reference with the same search window.
+    /// </remarks>
+    private sealed class DerotationPlan(
+        double[] angles,
+        PixelRect crop,
+        Frame reference,
+        int maxShift,
+        int keyframeCount,
+        double maxAbsAngleDegrees)
+    {
+        /// <summary>Translation below which an offset is left to the alignment stages, in pixels.</summary>
+        private const double MinimumShift = 0.05;
+
+        /// <summary>Rotation of each delivered frame, in degrees, clockwise.</summary>
+        public double[] Angles => angles;
+
+        /// <summary>The one rectangle every rotation is cropped to.</summary>
+        public PixelRect Crop => crop;
+
+        /// <summary>One line describing what the run measured, for the engine protocol.</summary>
+        public string ProtocolLine { get; } = string.Create(
+            CultureInfo.InvariantCulture,
+            $"Derotation: {keyframeCount} keyframes, max |angle| {maxAbsAngleDegrees:F2} deg, " +
+            $"crop {crop.Width}x{crop.Height}");
+
+        /// <summary>Rotates, crops and registers one delivered frame against the reference.</summary>
+        /// <remarks>
+        /// A translation smaller than <see cref="MinimumShift"/> is reported as none. The integrator
+        /// applies the offset by resampling the frame a second time, and at a twentieth of a pixel
+        /// that resampling costs more sharpness than the sub-pixel error it corrects: measured on the
+        /// real lunar sequence, applying the last two hundredths of a pixel lost 1.7% of the stack's
+        /// edge variance for nothing.
+        /// </remarks>
+        public AlignmentOffset Measure(Frame frame, int index)
+        {
+            AlignmentOffset offset = Derotator.MatchOffset(reference, Read(frame, index), maxShift);
+            return Math.Abs(offset.Dx) < MinimumShift && Math.Abs(offset.Dy) < MinimumShift
+                ? AlignmentOffset.Zero
+                : offset;
+        }
+
+        /// <summary>Rotates and crops one delivered frame; the pixels the integrator consumes.</summary>
+        public Frame Read(Frame frame, int index)
+            => Derotator.RotateAndCrop(frame, angles[index], crop);
+    }
+
 
     /// <summary>
     /// Crops one delivered frame to the requested area of interest, clamped to its own bounds.

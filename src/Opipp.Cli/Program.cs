@@ -822,6 +822,17 @@ internal static class Program
                 yield return $"area of interest ({x},{y}) {aoiWidth}x{aoiHeight} for '{path}' exceeds the {width}x{height} processed frame";
             }
         }
+
+        // -derotate rotates every frame about the image centre, which resamples across a raw Bayer
+        // mosaic's colour lattice. A full run refuses the combination when it reaches integration;
+        // naming it here means -check reports the same problem before anything is processed.
+        if (settings.Derotation?.Enabled == true && !options.Debayer && frame.Bayer != BayerPattern.None)
+        {
+            yield return
+                $"-derotate cannot correct the raw {frame.Bayer} mosaic of '{path}': rotating resamples " +
+                "across the colour lattice. Debayer first with -db, or -db=<pattern> to override the " +
+                "detected pattern (0 GBRG, 1 BGGR, 2 RGGB, 3 GRBG), and derotate the colour frames";
+        }
     }
 
     /// <summary>
@@ -1230,6 +1241,10 @@ internal static class Program
             // switch is absent, so the legacy master path and every per-frame writer are untouched.
             Integration = BuildIntegration(o),
 
+            // -derotate / -derotate_search (OPIPP extension): only an enabled request reaches the
+            // pipeline, so an absent or off switch leaves the integration byte-identical.
+            Derotation = BuildDerotation(o),
+
             // Animation sequencing (-anim_*). The engine rejects an all-repeat count of zero with
             // "Illegal anim_all_rep value"; every other combination is accepted and shapes the AVI
             // and GIF frame order in the output stage.
@@ -1329,6 +1344,35 @@ internal static class Program
                 ? CoveragePolicy.KeepCanvas
                 : CoveragePolicy.CropToOverlap,
             Subpixel = o.StackSubpixel ?? true,
+        };
+    }
+
+    /// <summary>
+    /// Builds the field-rotation options (<c>-derotate</c>, OPIPP extension), or null when the
+    /// switch was absent or off.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>-derotate=off</c> is an explicit "no", not a request the pipeline has to honour: returning
+    /// null keeps the plain translation-only integration, so the image is byte-identical to a run
+    /// that never spelled the switch.
+    /// </para>
+    /// <para>
+    /// The parser already rejects an unknown flag and either derotation switch without <c>-stack=</c>,
+    /// and bounds <c>-derotate_search</c> to 0.1-45 degrees, so this only translates the accepted
+    /// values. Keyframe count, sample size and threshold keep the documented defaults; the centroid
+    /// threshold follows <c>-mp</c> through <see cref="PipelineSettings.MinPixelValue"/>, so a run
+    /// that pins the detection cut pins the rotation measurement to the same cut.
+    /// </para>
+    /// </remarks>
+    private static DerotationOptions? BuildDerotation(OpippOptions o)
+    {
+        if (o.Derotate != true) return null;
+
+        return new DerotationOptions
+        {
+            Enabled = true,
+            SearchDegrees = o.DerotateSearchDegrees ?? new DerotationOptions().SearchDegrees,
         };
     }
 

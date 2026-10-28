@@ -632,6 +632,23 @@ public sealed record OpippOptions
     /// <remarks>Only meaningful together with <see cref="StackMethod"/>; the parser rejects it otherwise.</remarks>
     public bool? StackSubpixel { get; set; }
 
+    /// <summary>
+    /// Correct field rotation while integrating (<c>-derotate=on|off</c>, OPIPP extension);
+    /// <see langword="null"/> means the switch was absent and no rotation correction applies.
+    /// </summary>
+    /// <remarks>
+    /// Only meaningful together with <see cref="StackMethod"/>; the parser rejects it otherwise.
+    /// </remarks>
+    public bool? Derotate { get; set; }
+
+    /// <summary>
+    /// Largest rotation searched either side of the reference frame, in degrees
+    /// (<c>-derotate_search=&lt;degrees&gt;</c>, OPIPP extension); <see langword="null"/> means the
+    /// switch was absent and the documented default (5.0) applies.
+    /// </summary>
+    /// <remarks>Only meaningful together with <see cref="StackMethod"/>; the parser rejects it otherwise.</remarks>
+    public double? DerotateSearchDegrees { get; set; }
+
     // ---------------------------------------------------------------------------------------------
     // Output options
     // ---------------------------------------------------------------------------------------------

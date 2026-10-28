@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace PIPP_Application;
 
@@ -52,11 +53,36 @@ public sealed class FinalImageSettings
     public bool Subpixel { get; set; } = true;
 
     /// <summary>
-    /// The exact engine switches for the current choice, in method/coverage/subpixel order.
+    /// Correct field rotation as well as translation while integrating. Off by default: the
+    /// rotation search costs time and only helps a capture whose field actually rotates.
     /// </summary>
-    /// <returns>Three switches when enabled; an empty list when disabled.</returns>
+    public bool Derotate { get; set; }
+
+    /// <summary>
+    /// Largest rotation, in degrees either side of the reference frame, that the derotation search
+    /// considers. Clamped to <see cref="MinDerotateSearchDegrees"/>..<see cref="MaxDerotateSearchDegrees"/>
+    /// by the dialog; <see cref="ToSwitches"/> refuses a value outside that range.
+    /// </summary>
+    public double DerotateSearchDegrees { get; set; } = DefaultDerotateSearchDegrees;
+
+    /// <summary>Smallest rotation range the engine accepts, in degrees.</summary>
+    public const double MinDerotateSearchDegrees = 0.1;
+
+    /// <summary>Largest rotation range the engine accepts, in degrees.</summary>
+    public const double MaxDerotateSearchDegrees = 45.0;
+
+    /// <summary>The rotation range assumed when the operator never changed it, in degrees.</summary>
+    public const double DefaultDerotateSearchDegrees = 5.0;
+
+    /// <summary>
+    /// The exact engine switches for the current choice, in method/coverage/subpixel order, followed
+    /// by the derotation switches when derotation is on.
+    /// </summary>
+    /// <returns>Three switches when enabled, plus two more when derotation is on; an empty list when
+    /// disabled.</returns>
     /// <exception cref="ArgumentOutOfRangeException">A method or coverage value is not one the
-    /// engine accepts. An unknown value must be rejected, not silently mapped onto a default.</exception>
+    /// engine accepts, or the derotation search range is outside 0.1..45 degrees. An unknown value
+    /// must be rejected, not silently mapped onto a default.</exception>
     public IReadOnlyList<string> ToSwitches()
     {
         if (!Enabled)
@@ -64,20 +90,38 @@ public sealed class FinalImageSettings
             return Array.Empty<string>();
         }
 
-        return new[]
+        var switches = new List<string>
         {
             "-stack=" + MethodToken(Method),
             "-stack_coverage=" + CoverageToken(Coverage),
             "-stack_subpixel=" + (Subpixel ? "on" : "off"),
         };
+
+        if (Derotate)
+        {
+            if (!IsValidDerotateSearch(DerotateSearchDegrees))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(DerotateSearchDegrees),
+                    DerotateSearchDegrees,
+                    "derotation search must be " + MinDerotateSearchDegrees + ".." + MaxDerotateSearchDegrees + " degrees");
+            }
+
+            switches.Add("-derotate=on");
+            switches.Add("-derotate_search=" + FormatDerotateSearch(DerotateSearchDegrees));
+        }
+
+        return switches;
     }
 
     /// <summary>
-    /// One short line naming the method, the coverage and the subpixel state, e.g.
-    /// <c>mean, crop to overlap, subpixel on</c>. <c>off</c> while integration is disabled.
+    /// One short line naming the method, the coverage, the subpixel state and, when it is on, the
+    /// derotation range, e.g. <c>mean, crop to overlap, subpixel on, derotate 5.0 deg</c>.
+    /// <c>off</c> while integration is disabled.
     /// </summary>
     public string Summary => Enabled
         ? MethodToken(Method) + ", " + CoverageLabel(Coverage) + ", subpixel " + (Subpixel ? "on" : "off")
+            + (Derotate ? ", derotate " + FormatDerotateSearch(DerotateSearchDegrees) + " deg" : string.Empty)
         : "off";
 
     /// <summary>The engine's lowercase spelling of a method.</summary>
@@ -173,6 +217,70 @@ public sealed class FinalImageSettings
     /// <summary>Trims the padding and the quotes a text-valued options line can carry.</summary>
     private static string Normalize(string? token) =>
         (token ?? string.Empty).Trim().Trim('"').Trim().ToLowerInvariant();
+
+    /// <summary>The options-file spelling of the derotation state: <c>True</c> or <c>False</c>.</summary>
+    public static string DerotateToken(bool derotate) => derotate ? "True" : "False";
+
+    /// <summary>
+    /// Reads the derotation toggle an options file stores. Capitalised booleans are the written form;
+    /// <c>on</c>/<c>off</c> are accepted too so a hand-edited file using the subpixel key's spelling
+    /// still loads.
+    /// </summary>
+    /// <returns>False when the value is neither a boolean nor one of those tokens.</returns>
+    public static bool TryParseDerotate(string? token, out bool derotate)
+    {
+        switch (Normalize(token))
+        {
+            case "on":
+            case "true":
+                derotate = true;
+                return true;
+            case "off":
+            case "false":
+                derotate = false;
+                return true;
+            default:
+                derotate = false;
+                return false;
+        }
+    }
+
+    /// <summary>True only for a finite search range the engine accepts (0.1..45 degrees).</summary>
+    public static bool IsValidDerotateSearch(double degrees) =>
+        !double.IsNaN(degrees)
+        && !double.IsInfinity(degrees)
+        && degrees >= MinDerotateSearchDegrees
+        && degrees <= MaxDerotateSearchDegrees;
+
+    /// <summary>
+    /// The engine's and the options file's spelling of a search range: invariant, one decimal, e.g.
+    /// <c>5.0</c> or <c>12.5</c>. Written invariantly so a profile saved on a comma-decimal machine
+    /// still names the same angle when it is read back.
+    /// </summary>
+    public static string FormatDerotateSearch(double degrees) =>
+        degrees.ToString("0.0", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Reads the derotation search range an options file stores, in invariant or the current culture,
+    /// and refuses a value outside 0.1..45 degrees so the caller can report it instead of silently
+    /// searching a range the engine would reject.
+    /// </summary>
+    /// <returns>True only for a finite value inside the accepted range.</returns>
+    public static bool TryParseDerotateSearch(string? token, out double degrees)
+    {
+        string text = (token ?? string.Empty).Trim().Trim('"').Trim();
+        bool parsed = double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double value)
+            || double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out value);
+
+        if (!parsed || !IsValidDerotateSearch(value))
+        {
+            degrees = DefaultDerotateSearchDegrees;
+            return false;
+        }
+
+        degrees = value;
+        return true;
+    }
 
     /// <summary>The operator-facing method name ("Mean", "Sum", "Median").</summary>
     public static string MethodLabel(FinalImageMethod method) => method switch

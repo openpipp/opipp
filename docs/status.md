@@ -5,11 +5,11 @@ produce every figure on this page.
 
 | | |
 |---|---|
-| Version | `0.2.2-alpha` at the tagged commit |
+| Version | `0.3.0-alpha` at the tagged commit |
 | SDK | .NET 10.0.402 (local `~/.dotnet-sdk`) |
-| Tests | **1324 tests, 0 failing** across nine projects (2 skip when the non-redistributable Saturn fixture is absent) |
+| Tests | **1446 tests, 0 failing** across nine projects (2 skip when the non-redistributable Saturn fixture is absent) |
 | Parity | **27 compared, 27 matched, 2 deliberate differences, 0 gaps, 0 failed** |
-| Release | `v0.2.2-alpha`, Windows x64 zip, self-contained |
+| Release | `v0.3.0-alpha`, Windows x64 zip, self-contained |
 | History | [`journal.md`](journal.md) — dated findings, superseded details |
 
 ```bash
@@ -23,6 +23,11 @@ dotnet run --project tools/Opipp.Parity -- --real
 - SER, FITS, AVI (uncompressed), TIFF, PNG and BMP read/write; GIF write; PGM as calibration input
   only; DNG read-only (restricted uncompressed subset).
 - Debayer, binning, median and mono modes, histogram stretch, gain/gamma, flip/rotate/crop/resize.
+- Field-rotation correction for final-image integration (`-derotate=on`, an OPIPP extension):
+  per-frame angle estimation against frame 0, bicubic rotation about the image centre, a common
+  crop and correlation translation. Edge sharpness 2.42x translation-only at 1.45 deg of rotation
+  and 21.5x at 116 deg; a still sequence is unchanged. The original has no equivalent.
+  See [derotation.md](derotation.md).
 - Dark/flat calibration, applied to raw frames before debayering and binning; a master that does not
   match the capture geometry is a controlled error, not a crash or a silently empty result.
 - Master creation (dark, flat-dark, flat) reads and writes the engine's `.tmp` masters, subtracts a

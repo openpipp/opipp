@@ -88,7 +88,7 @@
   <div class="cta">
     <a class="btn primary" href="https://github.com/openpipp/opipp/releases">Download for Windows</a>
     <a class="btn ghost" href="https://github.com/openpipp/opipp">Source on GitHub</a>
-    <span class="pill">0.2.2-alpha</span>
+    <span class="pill">0.3.0-alpha</span>
     <span class="pill">GPLv3</span>
     <span class="pill">Windows x64 · self-contained</span>
   </div>
@@ -100,7 +100,7 @@
   Only the parity cases are compared with the original binaries; the rest are managed tests, golden
   files and independent decodes.</p>
   <div class="kpi">
-    <div class="card"><div class="v">1324</div><div class="l">tests, 0 failing</div></div>
+    <div class="card"><div class="v">1446</div><div class="l">tests, 0 failing</div></div>
     <div class="card"><div class="v">27/27</div><div class="l">compared parity cases</div></div>
     <div class="card"><div class="v">131</div><div class="l">switches addressed</div></div>
     <div class="card"><div class="v">76</div><div class="l">verified byte-for-byte</div></div>
@@ -108,13 +108,21 @@
   </div>
   <table class="evid">
     <tr><th>Evidence</th><th>What it establishes</th></tr>
-    <tr><td>1324 managed tests</td><td>the managed engine follows the contracts in <a href="https://github.com/openpipp/opipp/blob/main/docs/status.md">status.md</a>; 2 skip in CI without the evaluation capture</td></tr>
+    <tr><td>1446 managed tests</td><td>the managed engine follows the contracts in <a href="https://github.com/openpipp/opipp/blob/main/docs/status.md">status.md</a>; 2 skip in CI without the evaluation capture</td></tr>
     <tr><td>Golden files</td><td>output matches committed native fixtures for the registered synthetic cases</td></tr>
     <tr><td>Independent decodes</td><td>files are readable and numerically correct outside OPIPP's own readers</td></tr>
     <tr><td>27/27 parity</td><td>every registered comparison against the original engine matches; 2 differences are deliberate</td></tr>
     <tr><td>CI</td><td>build, suite, documentation consistency and a packaged smoke convert pass on a clean runner</td></tr>
   </table>
-  <p class="sub" style="margin-top:18px"><strong>0.2.2-alpha</strong> — integration has now been run on
+  <p class="sub" style="margin-top:18px"><strong>0.3.0-alpha</strong> — field-rotation correction is
+  now part of final-image integration. PIPP aligns by translation only, so a rotating capture — a
+  handheld lunar video, or an alt-az mount without a derotator — blurs as the radius grows. OPIPP
+  estimates a per-frame angle against frame 0, rotates bicubically about the image centre, crops to
+  the rectangle every rotation fills, and finishes with a correlation offset. Edge sharpness gains
+  2.42x at 1.45 deg of rotation and 21.5x at 116 deg; a still sequence is byte-identical. See
+  <a href="https://github.com/openpipp/opipp/blob/main/docs/derotation.md">derotation</a>.
+  <a href="https://github.com/openpipp/opipp/releases/tag/v0.3.0-alpha">Release notes</a>.</p>
+  <p class="sub" style="margin-top:18px">Integration has also been run on
   real captures: Jupiter (2011 AVI, 2023 TIFF) and Saturn (2022, 8,984 frames), plus Moon and Mars
   stills. Peak process memory is measured for every integration route, staging is owned by a run
   directory, and a raw Bayer capture now tells you to debayer first (<code>-db</code>) instead of

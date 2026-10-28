@@ -56,10 +56,11 @@ public sealed class ParseResult
 /// <c>-db=&lt;pattern&gt;</c> (Bayer pattern index).
 /// </para>
 /// <para>
-/// <c>-stack</c>, <c>-stack_coverage</c> and <c>-stack_subpixel</c> are OPIPP extensions: the
-/// original engine exits 127 on them. Each requires a value, and the two qualifiers are rejected
-/// unless <c>-stack</c> selects a method, so a command line never carries a setting that cannot
-/// take effect.
+/// <c>-stack</c>, <c>-stack_coverage</c>, <c>-stack_subpixel</c>, <c>-derotate</c> and
+/// <c>-derotate_search</c> are OPIPP extensions: the original engine exits 127 on them. Each requires
+/// a value, and the qualifiers (<c>-stack_coverage</c>, <c>-stack_subpixel</c>, <c>-derotate</c>,
+/// <c>-derotate_search</c>) are rejected unless <c>-stack</c> selects a method, so a command line
+/// never carries a setting that cannot take effect.
 /// </para>
 /// </remarks>
 public static class CommandLineParser
@@ -546,6 +547,18 @@ public static class CommandLineParser
                     if (TryOnOff(token, value, out bool stackSubpixel)) options.StackSubpixel = stackSubpixel;
                     break;
 
+                case "-derotate":
+                    if (TryOnOff(token, value, out bool derotate)) options.Derotate = derotate;
+                    break;
+
+                case "-derotate_search":
+                    if (TryDegrees(token, value, 0.1, 45.0, out double derotateSearch))
+                    {
+                        options.DerotateSearchDegrees = derotateSearch;
+                    }
+
+                    break;
+
                 // ---------------------------------------------------------------------------------
                 // Output options
                 // ---------------------------------------------------------------------------------
@@ -715,6 +728,18 @@ public static class CommandLineParser
             {
                 errors.Add("Switch '-stack_subpixel' requires '-stack=mean|sum|median'.");
             }
+
+            // -derotate / -derotate_search exist only to shape an integrated image, so a line that
+            // carries one without -stack= is a configuration error rather than an accepted no-op.
+            if (options.Derotate is not null)
+            {
+                errors.Add("Switch '-derotate' requires '-stack=mean|sum|median'.");
+            }
+
+            if (options.DerotateSearchDegrees is not null)
+            {
+                errors.Add("Switch '-derotate_search' requires '-stack=mean|sum|median'.");
+            }
         }
 
         return new ParseResult(options, errors, wantsHelp, inputs);
@@ -838,6 +863,38 @@ public static class CommandLineParser
                         "expected mean, sum or median.");
                     return false;
             }
+        }
+
+        bool TryDegrees(string switchToken, string? switchValue, double minimum, double maximum, out double degrees)
+        {
+            degrees = 0;
+            if (!HasValue(switchToken, switchValue, out var text)) return false;
+
+            // Invariant culture, like every other numeric switch, so a comma decimal separator cannot
+            // change what a command line means. NaN and the infinities parse as doubles but are not
+            // angles, so they are rejected with the same diagnostic as a word.
+            if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed) ||
+                double.IsNaN(parsed) ||
+                double.IsInfinity(parsed))
+            {
+                errors.Add(
+                    $"Value '{text.Trim()}' for switch '{switchToken}' is not a number; expected degrees " +
+                    $"between {minimum:0.#} and {maximum:0.#}.");
+                return false;
+            }
+
+            if (parsed < minimum || parsed > maximum)
+            {
+                // Quoted, like every other value diagnostic, so "Value '46'" is what an operator
+                // searches for whichever of the two rejection paths produced it.
+                errors.Add(
+                    $"Value '{text.Trim()}' for switch '{switchToken}' is outside the allowed range " +
+                    $"{minimum:0.#}..{maximum:0.#} degrees.");
+                return false;
+            }
+
+            degrees = parsed;
+            return true;
         }
 
         bool TryStackCoverage(string switchToken, string? switchValue, out PippStackCoverage coverage)

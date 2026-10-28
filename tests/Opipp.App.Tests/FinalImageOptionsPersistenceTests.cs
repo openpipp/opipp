@@ -24,6 +24,22 @@ public sealed class FinalImageOptionsPersistenceTests
         Subpixel = false,
     };
 
+    private static FinalImageSettings DerotateOn => new()
+    {
+        Enabled = true,
+        Method = FinalImageMethod.Sum,
+        Coverage = FinalImageCoverage.KeepCanvas,
+        Subpixel = false,
+        Derotate = true,
+        DerotateSearchDegrees = 12.5,
+    };
+
+    private static void AssertDerotateOn(FinalImageSettings settings, string because)
+    {
+        Assert.True(settings.Derotate, "derotation should be on: " + because);
+        Assert.Equal(12.5, settings.DerotateSearchDegrees);
+    }
+
     private static void AssertSumKeepCanvasNoSubpixel(FinalImageSettings settings, string because)
     {
         Assert.True(settings.Enabled, "integration should be enabled: " + because);
@@ -38,10 +54,12 @@ public sealed class FinalImageOptionsPersistenceTests
         Assert.Equal(FinalImageMethod.Mean, settings.Method);
         Assert.Equal(FinalImageCoverage.CropToOverlap, settings.Coverage);
         Assert.True(settings.Subpixel, "subpixel should be on: " + because);
+        Assert.False(settings.Derotate, "derotation should be off: " + because);
+        Assert.Equal(5.0, settings.DerotateSearchDegrees);
     }
 
     [Fact]
-    public void SaveOptions_WritesTheFourFinalImageKeys()
+    public void SaveOptions_WritesTheSixFinalImageKeys()
     {
         string directory = AppTestSupport.TempDirectory();
         try
@@ -52,7 +70,7 @@ public sealed class FinalImageOptionsPersistenceTests
             {
                 using var form = new Form1();
                 _ = form.Handle;
-                form.FinalImageSettingsForTest = SumKeepCanvasNoSubpixel;
+                form.FinalImageSettingsForTest = DerotateOn;
                 form.SaveOptionsForTest(file);
             });
 
@@ -62,9 +80,36 @@ public sealed class FinalImageOptionsPersistenceTests
             Assert.Contains("FINAL_IMAGE_METHOD sum", lines);
             Assert.Contains("FINAL_IMAGE_COVERAGE canvas", lines);
             Assert.Contains("FINAL_IMAGE_SUBPIXEL off", lines);
+            Assert.Contains("FINAL_IMAGE_DEROTATE True", lines);
+            Assert.Contains("FINAL_IMAGE_DEROTATE_SEARCH 12.5", lines);
             Assert.Equal(
-                4,
+                6,
                 lines.Count(line => line.StartsWith("FINAL_IMAGE_", StringComparison.Ordinal)));
+        }
+        finally
+        {
+            AppTestSupport.DeleteQuietly(directory);
+        }
+    }
+
+    [Fact]
+    public void SaveOptions_WritesDerotationOffAtTheDefaultRange()
+    {
+        string directory = AppTestSupport.TempDirectory();
+        try
+        {
+            string file = Path.Combine(directory, "profile.pof");
+
+            AppTestSupport.RunSta(() =>
+            {
+                using var form = new Form1();
+                _ = form.Handle;
+                form.SaveOptionsForTest(file);
+            });
+
+            string[] lines = File.ReadAllLines(file);
+            Assert.Contains("FINAL_IMAGE_DEROTATE False", lines);
+            Assert.Contains("FINAL_IMAGE_DEROTATE_SEARCH 5.0", lines);
         }
         finally
         {
@@ -300,6 +345,165 @@ public sealed class FinalImageOptionsPersistenceTests
 
                 AssertDefaults(form.FinalImageSettingsForTest, "after loading a file without the new keys");
                 Assert.Empty(errors);
+            });
+        }
+        finally
+        {
+            AppTestSupport.DeleteQuietly(directory);
+        }
+    }
+
+    [Fact]
+    public void AFreshForm_LoadingAProfileWithDerotation_RestoresTheToggleAndTheRange()
+    {
+        string directory = AppTestSupport.TempDirectory();
+        try
+        {
+            string file = Path.Combine(directory, "profile.pof");
+
+            AppTestSupport.RunSta(() =>
+            {
+                using (var writer = new Form1())
+                {
+                    _ = writer.Handle;
+                    writer.FinalImageSettingsForTest = DerotateOn;
+                    writer.SaveOptionsForTest(file);
+                }
+
+                using var reader = new Form1();
+                _ = reader.Handle;
+                var errors = new List<string>();
+                reader.ErrorDialogOverride = (message, caption) => errors.Add(caption + ": " + message);
+                Assert.False(reader.FinalImageSettingsForTest.Derotate, "a fresh form starts with derotation off");
+
+                reader.LoadOptionsForTest(file);
+
+                AssertDerotateOn(reader.FinalImageSettingsForTest, "in a fresh form loading the saved profile");
+                AssertSumKeepCanvasNoSubpixel(reader.FinalImageSettingsForTest, "alongside the rest of the choice");
+                Assert.Empty(errors);
+            });
+        }
+        finally
+        {
+            AppTestSupport.DeleteQuietly(directory);
+        }
+    }
+
+    [Fact]
+    public void ResetOptions_TurnsDerotationOff_AndUndoReset_RestoresToggleAndRange()
+    {
+        string directory = AppTestSupport.TempDirectory();
+        try
+        {
+            string snapshot = Path.Combine(directory, "reset_options.pof");
+
+            AppTestSupport.RunSta(() =>
+            {
+                using var form = new Form1();
+                _ = form.Handle;
+                form.ResetOptionsPathOverride = snapshot;
+                form.FinalImageSettingsForTest = DerotateOn;
+
+                form.ResetOptionsForTest();
+
+                AssertDefaults(form.FinalImageSettingsForTest, "after Reset Options");
+                Assert.True(File.Exists(snapshot), "Reset Options must park a snapshot for Undo Reset");
+
+                form.UndoResetOptionsForTest();
+
+                AssertDerotateOn(form.FinalImageSettingsForTest, "after Undo Reset Options");
+                AssertSumKeepCanvasNoSubpixel(form.FinalImageSettingsForTest, "after Undo Reset Options");
+            });
+        }
+        finally
+        {
+            AppTestSupport.DeleteQuietly(directory);
+        }
+    }
+
+    [Fact]
+    public void AnOptionsFileWithOnlyTheOriginalFourFinalImageKeys_LoadsWithDerotationOff()
+    {
+        string directory = AppTestSupport.TempDirectory();
+        try
+        {
+            // A profile from before derotation existed: the four integration keys are there, the two
+            // FINAL_IMAGE_DEROTATE* keys are not. It must load as integration on and derotation off.
+            string file = Path.Combine(directory, "old-with-integration.pof");
+            File.WriteAllLines(
+                file,
+                new[]
+                {
+                    "[PIPP OPTIONS FILE]",
+                    "BATCH_MODE True",
+                    "OUTPUT_TIF True",
+                    "FINAL_IMAGE_ENABLED True",
+                    "FINAL_IMAGE_METHOD sum",
+                    "FINAL_IMAGE_COVERAGE canvas",
+                    "FINAL_IMAGE_SUBPIXEL off",
+                });
+
+            AppTestSupport.RunSta(() =>
+            {
+                using var form = new Form1();
+                _ = form.Handle;
+                var errors = new List<string>();
+                form.ErrorDialogOverride = (message, caption) => errors.Add(caption + ": " + message);
+
+                // A form that had derotation on must not keep it just because the file predates the keys.
+                form.FinalImageSettingsForTest = DerotateOn;
+
+                form.LoadOptionsForTest(file);
+
+                AssertSumKeepCanvasNoSubpixel(
+                    form.FinalImageSettingsForTest,
+                    "after loading a profile without the derotation keys");
+                Assert.False(form.FinalImageSettingsForTest.Derotate, "old profiles must default derotation off");
+                Assert.Equal(5.0, form.FinalImageSettingsForTest.DerotateSearchDegrees);
+                Assert.Empty(errors);
+            });
+        }
+        finally
+        {
+            AppTestSupport.DeleteQuietly(directory);
+        }
+    }
+
+    [Fact]
+    public void AnUnreadableDerotateValue_LeavesTheExplicitDefaults()
+    {
+        string directory = AppTestSupport.TempDirectory();
+        try
+        {
+            string file = Path.Combine(directory, "bad-derotate.pof");
+            File.WriteAllLines(
+                file,
+                new[]
+                {
+                    "[PIPP OPTIONS FILE]",
+                    "BATCH_MODE True",
+                    "FINAL_IMAGE_ENABLED True",
+                    "FINAL_IMAGE_DEROTATE maybe",
+                    "FINAL_IMAGE_DEROTATE_SEARCH 90",
+                });
+
+            AppTestSupport.RunSta(() =>
+            {
+                using var form = new Form1();
+                _ = form.Handle;
+
+                // Neither value is usable (the toggle is not a boolean, the range is outside 0.1..45),
+                // so both keep the reset defaults rather than being silently turned into a request the
+                // file did not make. The report is the shared "Errors Found In Options File" message
+                // box, which this test lets time out; the rejection itself is asserted directly in
+                // FinalImageSettingsTests.
+                form.FinalImageSettingsForTest = DerotateOn;
+
+                form.LoadOptionsForTest(file);
+
+                Assert.True(form.FinalImageSettingsForTest.Enabled, "the readable keys still apply");
+                Assert.False(form.FinalImageSettingsForTest.Derotate);
+                Assert.Equal(5.0, form.FinalImageSettingsForTest.DerotateSearchDegrees);
             });
         }
         finally
