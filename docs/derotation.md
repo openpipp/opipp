@@ -46,6 +46,7 @@ Outer-annulus Laplacian variance (r 0.35–0.48 of half-width), same command lin
 |---|---:|---:|---:|---:|
 | 30 frames, 0.05°/frame (1.45° total) | 411.7 | **994.4** | **2.42×** | 63.4% |
 | 30 frames, 4°/frame (116° total) | 40.3 | **866.0** | **21.5×** | 55.3% |
+| 40 frames, 0.06°/frame + handheld drift (2.34°) | 34.2 (translation-only `-ctr`: 268.4) | **813.3** mean, **828.0** median | **23.8×** plain; 3.0× centred | 53.1% |
 | 5 identical stills | 1567.4 | 1567.4 | — | 100% (mean abs diff 0.0000) |
 
 Angle accuracy against brute-force truth averages 0.039° (max 0.13°). The mild 1.45° case is the
